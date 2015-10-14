@@ -29,6 +29,9 @@ module LLVM_Backend {
     exclude header "CodeGen/CommandFlags.h"
     exclude header "CodeGen/LinkAllAsmWriterComponents.h"
     exclude header "CodeGen/LinkAllCodegenComponents.h"
+
+    // These are intended for (repeated) textual inclusion.
+    textual header "CodeGen/DIEValue.def"
   }
 
   module Target {
@@ -45,6 +48,11 @@ module LLVM_Backend {
 
 module LLVM_Bitcode { requires cplusplus umbrella "Bitcode" module * { export * } }
 module LLVM_Config { requires cplusplus umbrella "Config" module * { export * } }
+
+module LLVM_DebugInfo {
+  requires cplusplus
+  module DIContext { header "DebugInfo/DIContext.h" export * }
+}
 
 module LLVM_DebugInfo_DWARF {
   requires cplusplus
@@ -116,6 +124,7 @@ module LLVM_IR {
   textual header "IR/DebugInfoFlags.def"
   textual header "IR/Instruction.def"
   textual header "IR/Metadata.def"
+  textual header "IR/Value.def"
 }
 
 module LLVM_IRReader { requires cplusplus umbrella "IRReader" module * { export * } }

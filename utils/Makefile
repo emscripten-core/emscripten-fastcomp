@@ -9,7 +9,7 @@
 
 LEVEL = ..
 PARALLEL_DIRS := FileCheck TableGen PerfectShuffle count fpcmp llvm-lit not \
-                 unittest
+                 unittest yaml-bench
 
 # @LOCALMOD-BEGIN
 ifeq ($(PNACL_BROWSER_TRANSLATOR),1)

@@ -4,6 +4,7 @@ set(LLVM_LINK_COMPONENTS
   MC
   NaClTransforms
   Support
+  Target
   )
 
 add_llvm_tool(llvm-lto

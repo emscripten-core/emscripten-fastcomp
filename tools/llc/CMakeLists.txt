@@ -7,9 +7,11 @@ set(LLVM_LINK_COMPONENTS
   IRReader
   MC
   NaClTransforms
+  MIRParser
   ScalarOpts
   SelectionDAG
   Support
+  Target
   )
 
 # Support plugins.

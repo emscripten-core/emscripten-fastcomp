@@ -1409,12 +1409,26 @@ define <8 x float> @stack_fold_roundps_ymm(<8 x float> %a0) {
 }
 declare <8 x float> @llvm.x86.avx.round.ps.256(<8 x float>, i32) nounwind readnone
 
-; TODO stack_fold_roundsd
+define double @stack_fold_roundsd(double %a0) optsize {
+  ;CHECK-LABEL: stack_fold_roundsd
+  ;CHECK:       vroundsd $1, {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 8-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call double @llvm.floor.f64(double %a0)
+  ret double %2
+}
+declare double @llvm.floor.f64(double) nounwind readnone
 
 ; TODO stack_fold_roundsd_int
 declare <2 x double> @llvm.x86.sse41.round.sd(<2 x double>, <2 x double>, i32) nounwind readnone
 
-; TODO stack_fold_roundss
+define float @stack_fold_roundss(float %a0) optsize {
+  ;CHECK-LABEL: stack_fold_roundss
+  ;CHECK:       vroundss $1, {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 4-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call float @llvm.floor.f32(float %a0)
+  ret float %2
+}
+declare float @llvm.floor.f32(float) nounwind readnone
 
 ; TODO stack_fold_roundss_int
 declare <4 x float> @llvm.x86.sse41.round.ss(<4 x float>, <4 x float>, i32) nounwind readnone
@@ -1699,7 +1713,9 @@ define <2 x double> @stack_fold_unpckhpd(<2 x double> %a0, <2 x double> %a1) {
   ;CHECK:       vunpckhpd {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <2 x double> %a0, <2 x double> %a1, <2 x i32> <i32 1, i32 3>
-  ret <2 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <2 x double> %2, <double 0x0, double 0x0>
+  ret <2 x double> %3
 }
 
 define <4 x double> @stack_fold_unpckhpd_ymm(<4 x double> %a0, <4 x double> %a1) {
@@ -1707,7 +1723,9 @@ define <4 x double> @stack_fold_unpckhpd_ymm(<4 x double> %a0, <4 x double> %a1)
   ;CHECK:       vunpckhpd {{-?[0-9]*}}(%rsp), {{%ymm[0-9][0-9]*}}, {{%ymm[0-9][0-9]*}} {{.*#+}} 32-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x double> %a0, <4 x double> %a1, <4 x i32> <i32 1, i32 5, i32 3, i32 7>
-  ret <4 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x double> %2, <double 0x0, double 0x0, double 0x0, double 0x0>
+  ret <4 x double> %3
 }
 
 define <4 x float> @stack_fold_unpckhps(<4 x float> %a0, <4 x float> %a1) {
@@ -1715,7 +1733,9 @@ define <4 x float> @stack_fold_unpckhps(<4 x float> %a0, <4 x float> %a1) {
   ;CHECK:       vunpckhps {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x float> %a0, <4 x float> %a1, <4 x i32> <i32 2, i32 6, i32 3, i32 7>
-  ret <4 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <4 x float> %3
 }
 
 define <8 x float> @stack_fold_unpckhps_ymm(<8 x float> %a0, <8 x float> %a1) {
@@ -1723,7 +1743,9 @@ define <8 x float> @stack_fold_unpckhps_ymm(<8 x float> %a0, <8 x float> %a1) {
   ;CHECK:       vunpckhps {{-?[0-9]*}}(%rsp), {{%ymm[0-9][0-9]*}}, {{%ymm[0-9][0-9]*}} {{.*#+}} 32-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <8 x float> %a0, <8 x float> %a1, <8 x i32> <i32 2, i32 10, i32 3, i32 11, i32 6, i32 14, i32 7, i32 15>
-  ret <8 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <8 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <8 x float> %3
 }
 
 define <2 x double> @stack_fold_unpcklpd(<2 x double> %a0, <2 x double> %a1) {
@@ -1731,7 +1753,9 @@ define <2 x double> @stack_fold_unpcklpd(<2 x double> %a0, <2 x double> %a1) {
   ;CHECK:       vunpcklpd {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <2 x double> %a0, <2 x double> %a1, <2 x i32> <i32 0, i32 2>
-  ret <2 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <2 x double> %2, <double 0x0, double 0x0>
+  ret <2 x double> %3
 }
 
 define <4 x double> @stack_fold_unpcklpd_ymm(<4 x double> %a0, <4 x double> %a1) {
@@ -1739,7 +1763,9 @@ define <4 x double> @stack_fold_unpcklpd_ymm(<4 x double> %a0, <4 x double> %a1)
   ;CHECK:       vunpcklpd {{-?[0-9]*}}(%rsp), {{%ymm[0-9][0-9]*}}, {{%ymm[0-9][0-9]*}} {{.*#+}} 32-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x double> %a0, <4 x double> %a1, <4 x i32> <i32 0, i32 4, i32 2, i32 6>
-  ret <4 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x double> %2, <double 0x0, double 0x0, double 0x0, double 0x0>
+  ret <4 x double> %3
 }
 
 define <4 x float> @stack_fold_unpcklps(<4 x float> %a0, <4 x float> %a1) {
@@ -1747,7 +1773,9 @@ define <4 x float> @stack_fold_unpcklps(<4 x float> %a0, <4 x float> %a1) {
   ;CHECK:       vunpcklps {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}}, {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x float> %a0, <4 x float> %a1, <4 x i32> <i32 0, i32 4, i32 1, i32 5>
-  ret <4 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <4 x float> %3
 }
 
 define <8 x float> @stack_fold_unpcklps_ymm(<8 x float> %a0, <8 x float> %a1) {
@@ -1755,7 +1783,9 @@ define <8 x float> @stack_fold_unpcklps_ymm(<8 x float> %a0, <8 x float> %a1) {
   ;CHECK:       vunpcklps {{-?[0-9]*}}(%rsp), {{%ymm[0-9][0-9]*}}, {{%ymm[0-9][0-9]*}} {{.*#+}} 32-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <8 x float> %a0, <8 x float> %a1, <8 x i32> <i32 0, i32 8, i32 1, i32 9, i32 4, i32 12, i32 5, i32 13>
-  ret <8 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <8 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <8 x float> %3
 }
 
 define <2 x double> @stack_fold_xorpd(<2 x double> %a0, <2 x double> %a1) {

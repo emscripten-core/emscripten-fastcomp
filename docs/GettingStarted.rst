@@ -326,7 +326,11 @@ Easy steps for installing GCC 4.8.2:
 
 .. code-block:: console
 
-  % wget ftp://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2
+  % wget https://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2
+  % wget https://ftp.gnu.org/gnu/gcc/gcc-4.8.2/gcc-4.8.2.tar.bz2.sig
+  % wget https://ftp.gnu.org/gnu/gnu-keyring.gpg
+  % signature_invalid=`gpg --verify --no-default-keyring --keyring ./gnu-keyring.gpg gcc-4.8.2.tar.bz2.sig`
+  % if [ $signature_invalid ]; then echo "Invalid signature" ; exit 1 ; fi
   % tar -xvjf gcc-4.8.2.tar.bz2
   % cd gcc-4.8.2
   % ./contrib/download_prerequisites
@@ -711,7 +715,7 @@ used by people developing LLVM.
 |                         | as ``LLVM_ALL_TARGETS``, and can be set to include |
 |                         | out-of-tree targets. The default value includes:   |
 |                         | ``AArch64, ARM, CppBackend, Hexagon,               |
-|                         | Mips, MSP430, NVPTX, PowerPC, R600, Sparc,         |
+|                         | Mips, MSP430, NVPTX, PowerPC, AMDGPU, Sparc,       |
 |                         | SystemZ, X86, XCore``.                             |
 +-------------------------+----------------------------------------------------+
 | LLVM_ENABLE_DOXYGEN     | Build doxygen-based documentation from the source  |

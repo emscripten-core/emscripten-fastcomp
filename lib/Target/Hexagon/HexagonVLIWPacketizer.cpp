@@ -57,6 +57,7 @@ static cl::opt<bool> PacketizeVolatiles("hexagon-packetize-volatiles",
       cl::desc("Allow non-solo packetization of volatile memory references"));
 
 namespace llvm {
+  FunctionPass *createHexagonPacketizer();
   void initializeHexagonPacketizerPass(PassRegistry&);
 }
 
@@ -271,9 +272,8 @@ static bool IsIndirectCall(MachineInstr* MI) {
 // reservation fail.
 void HexagonPacketizerList::reserveResourcesForConstExt(MachineInstr* MI) {
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  MachineFunction *MF = MI->getParent()->getParent();
-  MachineInstr *PseudoMI = MF->CreateMachineInstr(QII->get(Hexagon::A4_ext),
-                                                  MI->getDebugLoc());
+  MachineInstr *PseudoMI = MF.CreateMachineInstr(QII->get(Hexagon::A4_ext),
+                                                 MI->getDebugLoc());
 
   if (ResourceTracker->canReserveResources(PseudoMI)) {
     ResourceTracker->reserveResources(PseudoMI);
@@ -289,11 +289,10 @@ bool HexagonPacketizerList::canReserveResourcesForConstExt(MachineInstr *MI) {
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
   assert((QII->isExtended(MI) || QII->isConstExtended(MI)) &&
          "Should only be called for constant extended instructions");
-  MachineFunction *MF = MI->getParent()->getParent();
-  MachineInstr *PseudoMI = MF->CreateMachineInstr(QII->get(Hexagon::A4_ext),
-                                                  MI->getDebugLoc());
+  MachineInstr *PseudoMI = MF.CreateMachineInstr(QII->get(Hexagon::A4_ext),
+                                                 MI->getDebugLoc());
   bool CanReserve = ResourceTracker->canReserveResources(PseudoMI);
-  MF->DeleteMachineInstr(PseudoMI);
+  MF.DeleteMachineInstr(PseudoMI);
   return CanReserve;
 }
 
@@ -301,9 +300,8 @@ bool HexagonPacketizerList::canReserveResourcesForConstExt(MachineInstr *MI) {
 // true, otherwise, return false.
 bool HexagonPacketizerList::tryAllocateResourcesForConstExt(MachineInstr* MI) {
   const HexagonInstrInfo *QII = (const HexagonInstrInfo *) TII;
-  MachineFunction *MF = MI->getParent()->getParent();
-  MachineInstr *PseudoMI = MF->CreateMachineInstr(QII->get(Hexagon::A4_ext),
-                                                  MI->getDebugLoc());
+  MachineInstr *PseudoMI = MF.CreateMachineInstr(QII->get(Hexagon::A4_ext),
+                                                 MI->getDebugLoc());
 
   if (ResourceTracker->canReserveResources(PseudoMI)) {
     ResourceTracker->reserveResources(PseudoMI);
@@ -950,6 +948,9 @@ bool HexagonPacketizerList::ignorePseudoInstruction(MachineInstr *MI,
   if (MI->isDebugValue())
     return true;
 
+  if (MI->isCFIInstruction())
+    return false;
+
   // We must print out inline assembly
   if (MI->isInlineAsm())
     return false;
@@ -967,11 +968,10 @@ bool HexagonPacketizerList::ignorePseudoInstruction(MachineInstr *MI,
 // isSoloInstruction: - Returns true for instructions that must be
 // scheduled in their own packet.
 bool HexagonPacketizerList::isSoloInstruction(MachineInstr *MI) {
-
-  if (MI->isInlineAsm())
+  if (MI->isEHLabel() || MI->isCFIInstruction())
     return true;
 
-  if (MI->isEHLabel())
+  if (MI->isInlineAsm())
     return true;
 
   // From Hexagon V4 Programmer's Reference Manual 3.4.4 Grouping constraints:

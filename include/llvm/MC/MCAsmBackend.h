@@ -62,7 +62,7 @@ public:
   /// region directives will be ignored.
   bool hasDataInCodeSupport() const { return HasDataInCodeSupport; }
 
-  /// @name Target Fixup Interfaces
+  /// \name Target Fixup Interfaces
   /// @{
 
   /// Get the number of target specific fixup kinds.
@@ -88,7 +88,7 @@ public:
 
   /// @}
 
-  /// @name Target Relaxation Interfaces
+  /// \name Target Relaxation Interfaces
   /// @{
 
   /// Check whether the given instruction may need relaxation.
@@ -98,6 +98,12 @@ public:
 
   /// Target specific predicate for whether a given fixup requires the
   /// associated instruction to be relaxed.
+  virtual bool fixupNeedsRelaxationAdvanced(const MCFixup &Fixup, bool Resolved,
+                                            uint64_t Value,
+                                            const MCRelaxableFragment *DF,
+                                            const MCAsmLayout &Layout) const;
+
+  /// Simple predicate for targets where !Resolved implies requiring relaxation
   virtual bool fixupNeedsRelaxation(const MCFixup &Fixup, uint64_t Value,
                                     const MCRelaxableFragment *DF,
                                     const MCAsmLayout &Layout) const = 0;

@@ -296,7 +296,9 @@ static CodeGenOpt::Level GetCodeGenOptLevel() {
 }
 
 // Returns the TargetMachine instance or zero if no triple is provided.
-static TargetMachine* GetTargetMachine(Triple TheTriple) {
+static TargetMachine* GetTargetMachine(Triple TheTriple, StringRef CPUStr,
+                                       StringRef FeaturesStr,
+                                       const TargetOptions &Options) {
   std::string Error;
   // @LOCALMOD-BEGIN: Some optimization passes like SimplifyCFG do nice
   // things for code size, but only do it if the TTI says it is okay.
@@ -313,33 +315,8 @@ static TargetMachine* GetTargetMachine(Triple TheTriple) {
     return nullptr;
   }
 
-  // Package up features to be passed to target/subtarget
-  std::string FeaturesStr;
-  if (MAttrs.size() || MCPU == "native") {
-    SubtargetFeatures Features;
-
-    // If user asked for the 'native' CPU, we need to autodetect features.
-    // This is necessary for x86 where the CPU might not support all the
-    // features the autodetected CPU name lists in the target. For example,
-    // not all Sandybridge processors support AVX.
-    if (MCPU == "native") {
-      StringMap<bool> HostFeatures;
-      if (sys::getHostCPUFeatures(HostFeatures))
-        for (auto &F : HostFeatures)
-          Features.AddFeature(F.first(), F.second);
-    }
-
-    for (unsigned i = 0; i != MAttrs.size(); ++i)
-      Features.AddFeature(MAttrs[i]);
-    FeaturesStr = Features.getString();
-  }
-
-  if (MCPU == "native")
-    MCPU = sys::getHostCPUName();
-
   return TheTarget->createTargetMachine(TheTriple.getTriple(),
-                                        MCPU, FeaturesStr,
-                                        InitTargetOptionsFromCodeGenFlags(),
+                                        CPUStr, FeaturesStr, Options,
                                         RelocModel, CMModel,
                                         GetCodeGenOptLevel());
 }
@@ -387,6 +364,7 @@ int main(int argc, char **argv) {
   initializeRewriteSymbolsPass(Registry);
   initializeWinEHPreparePass(Registry);
   initializeDwarfEHPreparePass(Registry);
+  initializeSjLjEHPreparePass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -540,10 +518,21 @@ int main(int argc, char **argv) {
   }
 
   Triple ModuleTriple(M->getTargetTriple());
+  std::string CPUStr, FeaturesStr;
   TargetMachine *Machine = nullptr;
-  if (ModuleTriple.getArch())
-    Machine = GetTargetMachine(ModuleTriple);
+  const TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
+
+  if (ModuleTriple.getArch()) {
+    CPUStr = getCPUStr();
+    FeaturesStr = getFeaturesStr();
+    Machine = GetTargetMachine(ModuleTriple, CPUStr, FeaturesStr, Options);
+  }
+
   std::unique_ptr<TargetMachine> TM(Machine);
+
+  // Override function attributes based on CPUStr, FeaturesStr, and command line
+  // flags.
+  setFunctionAttributes(CPUStr, FeaturesStr, *M);
 
   // If the output is set to be emitted to standard out, and standard out is a
   // console, print out a warning message and refuse to do it.  We don't

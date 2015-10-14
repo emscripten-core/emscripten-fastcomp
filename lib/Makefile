@@ -12,7 +12,7 @@ include $(LEVEL)/Makefile.config
 
 PARALLEL_DIRS := IR AsmParser Bitcode Analysis Transforms CodeGen Target      \
                  ExecutionEngine Linker LTO MC Object Option DebugInfo        \
-                 IRReader LineEditor ProfileData Passes
+                 IRReader LineEditor ProfileData Passes LibDriver
 
 # @LOCALMOD-BEGIN
 ifeq ($(PNACL_BROWSER_TRANSLATOR),1)

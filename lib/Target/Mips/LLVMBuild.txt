@@ -31,5 +31,17 @@ has_jit = 1
 type = Library
 name = MipsCodeGen
 parent = Mips
-required_libraries = Analysis AsmPrinter CodeGen Core MC MipsAsmPrinter MipsDesc MipsInfo SelectionDAG Support Target NaClTransforms ;LOCALMOD
+required_libraries =
+ Analysis
+ AsmPrinter
+ CodeGen
+ Core
+ MC
+ MipsAsmPrinter
+ MipsDesc
+ MipsInfo
+ NaClTransforms
+ SelectionDAG
+ Support
+ Target
 add_to_library_groups = Mips

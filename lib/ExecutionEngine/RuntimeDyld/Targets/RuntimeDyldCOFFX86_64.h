@@ -114,29 +114,19 @@ public:
                                            const ObjectFile &Obj,
                                            ObjSectionToIDMap &ObjSectionToID,
                                            StubMap &Stubs) override {
-    // Find the symbol referred to in the relocation, and
-    // get its section and offset.
-    //
-    // Insist for now that all symbols be resolvable within
-    // the scope of this object file.
+    // If possible, find the symbol referred to in the relocation,
+    // and the section that contains it.
     symbol_iterator Symbol = RelI->getSymbol();
     if (Symbol == Obj.symbol_end())
       report_fatal_error("Unknown symbol in relocation");
-    unsigned TargetSectionID = 0;
-    uint64_t TargetOffset = UnknownAddressOrSize;
     section_iterator SecI(Obj.section_end());
     Symbol->getSection(SecI);
-    if (SecI == Obj.section_end())
-      report_fatal_error("Unknown section in relocation");
-    bool IsCode = SecI->isText();
-    TargetSectionID = findOrEmitSection(Obj, *SecI, IsCode, ObjSectionToID);
-    TargetOffset = getSymbolOffset(*Symbol);
+    // If there is no section, this must be an external reference.
+    const bool IsExtern = SecI == Obj.section_end();
 
     // Determine the Addend used to adjust the relocation value.
-    uint64_t RelType;
-    Check(RelI->getType(RelType));
-    uint64_t Offset;
-    Check(RelI->getOffset(Offset));
+    uint64_t RelType = RelI->getType();
+    uint64_t Offset = RelI->getOffset();
     uint64_t Addend = 0;
     SectionEntry &Section = Sections[SectionID];
     uintptr_t ObjTarget = Section.ObjAddress + Offset;
@@ -165,14 +155,26 @@ public:
       break;
     }
 
-    StringRef TargetName;
-    Symbol->getName(TargetName);
+    ErrorOr<StringRef> TargetNameOrErr = Symbol->getName();
+    if (std::error_code EC = TargetNameOrErr.getError())
+      report_fatal_error(EC.message());
+    StringRef TargetName = *TargetNameOrErr;
+
     DEBUG(dbgs() << "\t\tIn Section " << SectionID << " Offset " << Offset
                  << " RelType: " << RelType << " TargetName: " << TargetName
                  << " Addend " << Addend << "\n");
 
-    RelocationEntry RE(SectionID, Offset, RelType, TargetOffset + Addend);
-    addRelocationForSection(RE, TargetSectionID);
+    if (IsExtern) {
+      RelocationEntry RE(SectionID, Offset, RelType, Addend);
+      addRelocationForSymbol(RE, TargetName);
+    } else {
+      bool IsCode = SecI->isText();
+      unsigned TargetSectionID =
+          findOrEmitSection(Obj, *SecI, IsCode, ObjSectionToID);
+      uint64_t TargetOffset = getSymbolOffset(*Symbol);
+      RelocationEntry RE(SectionID, Offset, RelType, TargetOffset + Addend);
+      addRelocationForSection(RE, TargetSectionID);
+    }
 
     return ++RelI;
   }

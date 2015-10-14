@@ -1027,12 +1027,16 @@ OperandType RecognizableInstr::typeFromString(const std::string &s,
   TYPE("GR32_NOAX",           TYPE_Rv)
   TYPE("GR64_NOAX",           TYPE_R64)
   TYPE("vx32mem",             TYPE_M32)
+  TYPE("vx32xmem",            TYPE_M32)
   TYPE("vy32mem",             TYPE_M32)
+  TYPE("vy32xmem",            TYPE_M32)
   TYPE("vz32mem",             TYPE_M32)
   TYPE("vx64mem",             TYPE_M64)
+  TYPE("vx64xmem",            TYPE_M64)
   TYPE("vy64mem",             TYPE_M64)
   TYPE("vy64xmem",            TYPE_M64)
   TYPE("vz64mem",             TYPE_M64)
+  TYPE("BNDR",                TYPE_BNDR)
   errs() << "Unhandled type string " << s << "\n";
   llvm_unreachable("Unhandled type string");
 }
@@ -1096,10 +1100,13 @@ RecognizableInstr::rmRegisterEncodingFromString(const std::string &s,
   ENCODING("VR256X",          ENCODING_RM)
   ENCODING("VR512",           ENCODING_RM)
   ENCODING("VK1",             ENCODING_RM)
+  ENCODING("VK2",             ENCODING_RM)
+  ENCODING("VK4",             ENCODING_RM)
   ENCODING("VK8",             ENCODING_RM)
   ENCODING("VK16",            ENCODING_RM)
   ENCODING("VK32",            ENCODING_RM)
   ENCODING("VK64",            ENCODING_RM)
+  ENCODING("BNDR",            ENCODING_RM)
   errs() << "Unhandled R/M register encoding " << s << "\n";
   llvm_unreachable("Unhandled R/M register encoding");
 }
@@ -1133,8 +1140,13 @@ RecognizableInstr::roRegisterEncodingFromString(const std::string &s,
   ENCODING("VK32",            ENCODING_REG)
   ENCODING("VK64",            ENCODING_REG)
   ENCODING("VK1WM",           ENCODING_REG)
+  ENCODING("VK2WM",           ENCODING_REG)
+  ENCODING("VK4WM",           ENCODING_REG)
   ENCODING("VK8WM",           ENCODING_REG)
   ENCODING("VK16WM",          ENCODING_REG)
+  ENCODING("VK32WM",          ENCODING_REG)
+  ENCODING("VK64WM",          ENCODING_REG)
+  ENCODING("BNDR",            ENCODING_REG)
   errs() << "Unhandled reg/opcode register encoding " << s << "\n";
   llvm_unreachable("Unhandled reg/opcode register encoding");
 }
@@ -1204,9 +1216,12 @@ RecognizableInstr::memoryEncodingFromString(const std::string &s,
   ENCODING("opaque80mem",     ENCODING_RM)
   ENCODING("opaque512mem",    ENCODING_RM)
   ENCODING("vx32mem",         ENCODING_RM)
+  ENCODING("vx32xmem",        ENCODING_RM)
   ENCODING("vy32mem",         ENCODING_RM)
+  ENCODING("vy32xmem",        ENCODING_RM)
   ENCODING("vz32mem",         ENCODING_RM)
   ENCODING("vx64mem",         ENCODING_RM)
+  ENCODING("vx64xmem",        ENCODING_RM)
   ENCODING("vy64mem",         ENCODING_RM)
   ENCODING("vy64xmem",        ENCODING_RM)
   ENCODING("vz64mem",         ENCODING_RM)

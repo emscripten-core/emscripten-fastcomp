@@ -12,6 +12,7 @@
 
 #include "X86Subtarget.h"
 #include "llvm/CodeGen/AsmPrinter.h"
+#include "llvm/CodeGen/FaultMaps.h"
 #include "llvm/CodeGen/StackMaps.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
@@ -28,8 +29,7 @@ class MCSymbol;
 class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   const X86Subtarget *Subtarget;
   StackMaps SM;
-
-  void GenerateExportDirective(const MCSymbol *Sym, bool IsData);
+  FaultMaps FM;
 
   // This utility class tracks the length of a stackmap instruction's 'shadow'.
   // It is used by the X86AsmPrinter to ensure that the stackmap shadow
@@ -82,14 +82,17 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
 
   void InsertStackMapShadows(MachineFunction &MF);
   void LowerSTACKMAP(const MachineInstr &MI);
-  void LowerPATCHPOINT(const MachineInstr &MI);
+  void LowerPATCHPOINT(const MachineInstr &MI, X86MCInstLower &MCIL);
+  void LowerSTATEPOINT(const MachineInstr &MI, X86MCInstLower &MCIL);
+  void LowerFAULTING_LOAD_OP(const MachineInstr &MI, X86MCInstLower &MCIL);
 
   void LowerTlsAddr(X86MCInstLower &MCInstLowering, const MachineInstr &MI);
 
  public:
    explicit X86AsmPrinter(TargetMachine &TM,
                           std::unique_ptr<MCStreamer> Streamer)
-       : AsmPrinter(TM, std::move(Streamer)), SM(*this), SMShadowTracker(TM) {}
+       : AsmPrinter(TM, std::move(Streamer)), SM(*this), FM(*this),
+         SMShadowTracker(TM) {}
 
   const char *getPassName() const override {
     return "X86 Assembly / Object Emitter";
@@ -111,7 +114,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   GetTargetLabelAlign(const MachineInstr *MI) const override; //@LOCALMOD
 
   void EmitBasicBlockEnd(const MachineBasicBlock &MBB) override {
-    SMShadowTracker.emitShadowPadding(OutStreamer, getSubtargetInfo());
+    SMShadowTracker.emitShadowPadding(*OutStreamer, getSubtargetInfo());
   }
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNo,

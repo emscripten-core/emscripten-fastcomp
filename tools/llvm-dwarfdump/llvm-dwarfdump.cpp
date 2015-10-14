@@ -13,7 +13,8 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/DebugInfo/DWARF/DIContext.h"
+#include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/RelocVisitor.h"
 #include "llvm/Support/CommandLine.h"
@@ -68,25 +69,25 @@ DumpType("debug-dump", cl::init(DIDT_All),
         clEnumValN(DIDT_StrOffsetsDwo, "str_offsets.dwo", ".debug_str_offsets.dwo"),
         clEnumValEnd));
 
+static void error(StringRef Filename, std::error_code EC) {
+  if (!EC)
+    return;
+  errs() << Filename << ": " << EC.message() << "\n";
+  exit(1);
+}
+
 static void DumpInput(StringRef Filename) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
       MemoryBuffer::getFileOrSTDIN(Filename);
-
-  if (std::error_code EC = BuffOrErr.getError()) {
-    errs() << Filename << ": " << EC.message() << "\n";
-    return;
-  }
+  error(Filename, BuffOrErr.getError());
   std::unique_ptr<MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
   ErrorOr<std::unique_ptr<ObjectFile>> ObjOrErr =
       ObjectFile::createObjectFile(Buff->getMemBufferRef());
-  if (std::error_code EC = ObjOrErr.getError()) {
-    errs() << Filename << ": " << EC.message() << '\n';
-    return;
-  }
+  error(Filename, ObjOrErr.getError());
   ObjectFile &Obj = *ObjOrErr.get();
 
-  std::unique_ptr<DIContext> DICtx(DIContext::getDWARFContext(Obj));
+  std::unique_ptr<DIContext> DICtx(new DWARFContextInMemory(Obj));
 
   outs() << Filename
          << ":\tfile format " << Obj.getFileFormatName() << "\n\n";
@@ -108,5 +109,5 @@ int main(int argc, char **argv) {
 
   std::for_each(InputFilenames.begin(), InputFilenames.end(), DumpInput);
 
-  return 0;
+  return EXIT_SUCCESS;
 }

@@ -61,12 +61,12 @@ const MCExpr *ARMElfTargetObjectFile::getTTypeGlobalReference(
         GV, Encoding, Mang, TM, MMI, Streamer);
   // @LOCALMOD-END
 
-  return MCSymbolRefExpr::Create(TM.getSymbol(GV, Mang),
+  return MCSymbolRefExpr::create(TM.getSymbol(GV, Mang),
                                  MCSymbolRefExpr::VK_ARM_TARGET2, getContext());
 }
 
 const MCExpr *ARMElfTargetObjectFile::
 getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
-  return MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_ARM_TLSLDO,
+  return MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_ARM_TLSLDO,
                                  getContext());
 }

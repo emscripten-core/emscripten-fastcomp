@@ -19,11 +19,8 @@ else
   OPTIONAL_PARALLEL_DIRS := clang
 endif
 
-OPTIONAL_PARALLEL_DIRS += $(SUBZERO_SRC_ROOT) # @LOCALMOD
-
-# Build LLD and LLDB if present. Note LLDB must be built last as it depends on
+# Build LLDB if present. Note LLDB must be built last as it depends on
 # the wider LLVM infrastructure (including Clang).
-OPTIONAL_PARALLEL_DIRS += lld
 OPTIONAL_DIRS := lldb
 
 # NOTE: The tools are organized into five groups of four consisting of one

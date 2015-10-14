@@ -16,6 +16,7 @@
 #define LLVM_LIB_TARGET_ARM_ARM_H
 
 #include "llvm/Support/CodeGen.h"
+#include <functional>
 
 // @LOCALMOD (for LowerARMMachineInstrToMCInstPCRel)
 #include "llvm/MC/MCSymbol.h"
@@ -24,6 +25,7 @@ namespace llvm {
 
 class ARMAsmPrinter;
 class ARMBaseTargetMachine;
+class Function;
 class FunctionPass;
 class ImmutablePass;
 class MachineInstr;
@@ -41,7 +43,8 @@ FunctionPass *createARMConstantIslandPass();
 FunctionPass *createMLxExpansionPass();
 FunctionPass *createThumb2ITBlockPass();
 FunctionPass *createARMOptimizeBarriersPass();
-FunctionPass *createThumb2SizeReductionPass();
+FunctionPass *createThumb2SizeReductionPass(
+    std::function<bool(const Function &)> Ftor = nullptr);
 
 /* @LOCALMOD-START */
 FunctionPass *createARMNaClRewritePass();

@@ -19,6 +19,7 @@ namespace llvm {
 
 class MCTargetOptions;
 class StringRef;
+class TargetRegisterClass;
 
 class MipsABIInfo {
 public:
@@ -35,7 +36,7 @@ public:
   static MipsABIInfo N32() { return MipsABIInfo(ABI::N32); }
   static MipsABIInfo N64() { return MipsABIInfo(ABI::N64); }
   static MipsABIInfo EABI() { return MipsABIInfo(ABI::EABI); }
-  static MipsABIInfo computeTargetABI(Triple TT, StringRef CPU,
+  static MipsABIInfo computeTargetABI(const Triple &TT, StringRef CPU,
                                       const MCTargetOptions &Options);
 
   bool IsKnown() const { return ThisABI != ABI::Unknown; }
@@ -61,6 +62,16 @@ public:
   bool operator<(const MipsABIInfo Other) const {
     return ThisABI < Other.GetEnumValue();
   }
+
+  unsigned GetStackPtr() const;
+  unsigned GetFramePtr() const;
+  unsigned GetBasePtr() const;
+  unsigned GetNullPtr() const;
+  unsigned GetPtrAdduOp() const;
+  unsigned GetPtrAddiuOp() const;
+  inline bool ArePtrs64bit() const { return IsN64(); }
+
+  unsigned GetEhDataReg(unsigned I) const;
 };
 }
 

@@ -314,7 +314,13 @@ define i64 @stack_fold_cvtsd2si64_int(<2 x double> %a0) {
 }
 declare i64 @llvm.x86.sse2.cvtsd2si64(<2 x double>) nounwind readnone
 
-; TODO stack_fold_cvtsd2ss
+define float @stack_fold_cvtsd2ss(double %a0) optsize {
+  ;CHECK-LABEL: stack_fold_cvtsd2ss
+  ;CHECK:       cvtsd2ss {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 8-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = fptrunc double %a0 to float
+  ret float %2
+}
 
 define <4 x float> @stack_fold_cvtsd2ss_int(<2 x double> %a0) optsize {
   ;CHECK-LABEL: stack_fold_cvtsd2ss_int
@@ -878,11 +884,29 @@ define <4 x float> @stack_fold_roundps(<4 x float> %a0) {
 }
 declare <4 x float> @llvm.x86.sse41.round.ps(<4 x float>, i32) nounwind readnone
 
-; TODO stack_fold_roundsd
-; TODO stack_fold_roundsd_int
+define double @stack_fold_roundsd(double %a0) optsize {
+  ;CHECK-LABEL: stack_fold_roundsd
+  ;CHECK:       roundsd $1, {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 8-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call double @llvm.floor.f64(double %a0)
+  ret double %2
+}
+declare double @llvm.floor.f64(double) nounwind readnone
 
-; TODO stack_fold_roundss
+; TODO stack_fold_roundsd_int
+declare <2 x double> @llvm.x86.sse41.round.sd(<2 x double>, <2 x double>, i32) nounwind readnone
+
+define float @stack_fold_roundss(float %a0) optsize {
+  ;CHECK-LABEL: stack_fold_roundss
+  ;CHECK:       roundss $1, {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 4-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call float @llvm.floor.f32(float %a0)
+  ret float %2
+}
+declare float @llvm.floor.f32(float) nounwind readnone
+
 ; TODO stack_fold_roundss_int
+declare <4 x float> @llvm.x86.sse41.round.ss(<4 x float>, <4 x float>, i32) nounwind readnone
 
 ; TODO stack_fold_rsqrtps
 
@@ -932,13 +956,25 @@ define <4 x float> @stack_fold_sqrtps(<4 x float> %a0) {
 }
 declare <4 x float> @llvm.x86.sse.sqrt.ps(<4 x float>) nounwind readnone
 
-; TODO stack_fold_sqrtsd
+define double @stack_fold_sqrtsd(double %a0) optsize {
+  ;CHECK-LABEL: stack_fold_sqrtsd
+  ;CHECK:       sqrtsd {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 8-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call double @llvm.sqrt.f64(double %a0)
+  ret double %2
+}
 declare double @llvm.sqrt.f64(double) nounwind readnone
 
 ; TODO stack_fold_sqrtsd_int
 declare <2 x double> @llvm.x86.sse2.sqrt.sd(<2 x double>) nounwind readnone
 
-; TODO stack_fold_sqrtss
+define float @stack_fold_sqrtss(float %a0) optsize {
+  ;CHECK-LABEL: stack_fold_sqrtss
+  ;CHECK:       sqrtss {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 4-byte Folded Reload
+  %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm1},~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
+  %2 = call float @llvm.sqrt.f32(float %a0)
+  ret float %2
+}
 declare float @llvm.sqrt.f32(float) nounwind readnone
 
 ; TODO stack_fold_sqrtss_int
@@ -1035,7 +1071,9 @@ define <2 x double> @stack_fold_unpckhpd(<2 x double> %a0, <2 x double> %a1) {
   ;CHECK:       unpckhpd {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <2 x double> %a0, <2 x double> %a1, <2 x i32> <i32 1, i32 3>
-  ret <2 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <2 x double> %2, <double 0x0, double 0x0>
+  ret <2 x double> %3
 }
 
 define <4 x float> @stack_fold_unpckhps(<4 x float> %a0, <4 x float> %a1) {
@@ -1043,7 +1081,9 @@ define <4 x float> @stack_fold_unpckhps(<4 x float> %a0, <4 x float> %a1) {
   ;CHECK:       unpckhps {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x float> %a0, <4 x float> %a1, <4 x i32> <i32 2, i32 6, i32 3, i32 7>
-  ret <4 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <4 x float> %3
 }
 
 define <2 x double> @stack_fold_unpcklpd(<2 x double> %a0, <2 x double> %a1) {
@@ -1051,7 +1091,9 @@ define <2 x double> @stack_fold_unpcklpd(<2 x double> %a0, <2 x double> %a1) {
   ;CHECK:       unpcklpd {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <2 x double> %a0, <2 x double> %a1, <2 x i32> <i32 0, i32 2>
-  ret <2 x double> %2
+  ; fadd forces execution domain
+  %3 = fadd <2 x double> %2, <double 0x0, double 0x0>
+  ret <2 x double> %3
 }
 
 define <4 x float> @stack_fold_unpcklps(<4 x float> %a0, <4 x float> %a1) {
@@ -1059,7 +1101,9 @@ define <4 x float> @stack_fold_unpcklps(<4 x float> %a0, <4 x float> %a1) {
   ;CHECK:       unpcklps {{-?[0-9]*}}(%rsp), {{%xmm[0-9][0-9]*}} {{.*#+}} 16-byte Folded Reload
   %1 = tail call <2 x i64> asm sideeffect "nop", "=x,~{xmm2},~{xmm3},~{xmm4},~{xmm5},~{xmm6},~{xmm7},~{xmm8},~{xmm9},~{xmm10},~{xmm11},~{xmm12},~{xmm13},~{xmm14},~{xmm15},~{flags}"()
   %2 = shufflevector <4 x float> %a0, <4 x float> %a1, <4 x i32> <i32 0, i32 4, i32 1, i32 5>
-  ret <4 x float> %2
+  ; fadd forces execution domain
+  %3 = fadd <4 x float> %2, <float 0x0, float 0x0, float 0x0, float 0x0>
+  ret <4 x float> %3
 }
 
 define <2 x double> @stack_fold_xorpd(<2 x double> %a0, <2 x double> %a1) {
