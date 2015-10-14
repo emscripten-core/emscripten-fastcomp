@@ -707,7 +707,11 @@ macro(add_llvm_external_project name)
         "${LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR}"
         CACHE PATH "Path to ${name} source directory")
       mark_as_advanced(LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR)
-      add_subdirectory(${LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR} ${add_llvm_external_dir})
+      if(IS_DIRECTORY "${LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR} ${add_llvm_external_dir}") # XXX EMSCRIPTEN
+        add_subdirectory(${LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR} ${add_llvm_external_dir})
+      else()
+        message("    (ignoring non-existing external_project |${LLVM_EXTERNAL_${nameUPPER}_SOURCE_DIR} ${add_llvm_external_dir}|)")
+      endif()
       set(LLVM_TOOL_${nameUPPER}_BUILD Off)
     endif()
   endif()
