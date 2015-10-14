@@ -913,7 +913,6 @@ void AsmPrinter::EmitFunctionBody() {
       case TargetOpcode::GC_LABEL:
         OutStreamer->EmitLabel(MI.getOperand(0).getMCSymbol());
         break;
-      }
       case TargetOpcode::INLINEASM:
         EmitInlineAsm(&MI);
         break;
