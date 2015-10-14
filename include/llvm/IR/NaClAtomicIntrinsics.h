@@ -40,7 +40,7 @@ public:
 
   struct AtomicIntrinsic {
     Type *OverloadedType;
-    Intrinsic::ID ID : 16;
+    Intrinsic::ID ID;
     uint8_t Overloaded : 1;
     uint8_t NumParams : 7;
     uint8_t ParamType[MaxAtomicIntrinsicsParameters];
