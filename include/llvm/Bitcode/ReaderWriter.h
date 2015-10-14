@@ -23,10 +23,10 @@
 
 namespace llvm {
   class BitstreamWriter;
+  class DataStreamer;
   class LLVMContext;
   class Module;
   class ModulePass;
-  class StreamingMemoryObject; // @LOCALMOD
   class raw_ostream;
 
   /// Read the header of the specified bitcode buffer and prepare for lazy
