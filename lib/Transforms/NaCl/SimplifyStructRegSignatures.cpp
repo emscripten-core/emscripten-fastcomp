@@ -532,7 +532,7 @@ void SimplifyStructRegSignatures::checkNoUnsupportedInstructions(
   for (auto &BB : Fct->getBasicBlockList())
     for (auto &Inst : BB.getInstList())
       if (auto *Landing = dyn_cast<LandingPadInst>(&Inst)) {
-        auto *LType = Landing->getPersonalityFn()->getType();
+        auto *LType = Fct->getPersonalityFn()->getType();
         if (LType != Mapper.getSimpleType(Ctx, LType)) {
           errs() << *Landing << '\n';
           report_fatal_error("Landing pads with aggregate register "
