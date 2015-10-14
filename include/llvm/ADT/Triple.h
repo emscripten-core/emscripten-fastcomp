@@ -259,9 +259,6 @@ public:
 #else
   /// getOS - Get the parsed operating system type of this triple.
   OSType getOS() const { return OS; }
-
-  /// getFormat - Get the object format for this triple.
-  ObjectFormatType getObjectFormat() const { return ObjectFormat; }
 #endif
   // @LOCALMOD-END
 
