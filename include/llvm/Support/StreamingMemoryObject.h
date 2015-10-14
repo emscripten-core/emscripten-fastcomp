@@ -22,24 +22,7 @@ namespace llvm {
 /// Interface to data which is actually streamed from a DataStreamer. In
 /// addition to inherited members, it has the dropLeadingBytes and
 /// setKnownObjectSize methods which are not applicable to non-streamed objects.
-/// @LOCALMOD -- Made dropLeadingBytes/setKnownObjectSize virtual.
 class StreamingMemoryObject : public MemoryObject {
- public:
-  /// Drop s bytes from the front of the stream, pushing the positions of the
-  /// remaining bytes down by s. This is used to skip past the bitcode header,
-  /// since we don't know a priori if it's present, and we can't put bytes
-  /// back into the stream once we've read them.
-  virtual bool dropLeadingBytes(size_t s) = 0;
-
-  /// If the data object size is known in advance, many of the operations can
-  /// be made more efficient, so this method should be called before reading
-  /// starts (although it can be called anytime).
-  virtual void setKnownObjectSize(size_t size) = 0;
-};
-
-/// @LOCALMOD -- split out StreamingMemoryObjectImpl from StreamingMemoryObject.
-/// StreamingMemoryObjectImpl - an implementation of a StreamingMemoryObject.
-class StreamingMemoryObjectImpl : public StreamingMemoryObject {
 public:
   StreamingMemoryObject(std::unique_ptr<DataStreamer> Streamer);
   uint64_t getExtent() const override;
@@ -60,12 +43,12 @@ public:
   /// remaining bytes down by s. This is used to skip past the bitcode header,
   /// since we don't know a priori if it's present, and we can't put bytes
   /// back into the stream once we've read them.
-  bool dropLeadingBytes(size_t s) override;
+  bool dropLeadingBytes(size_t s);
 
   /// If the data object size is known in advance, many of the operations can
   /// be made more efficient, so this method should be called before reading
   /// starts (although it can be called anytime).
-  void setKnownObjectSize(size_t size) override;
+  void setKnownObjectSize(size_t size);
 
 private:
   const static uint32_t kChunkSize = 4096 * 4;
@@ -99,8 +82,8 @@ private:
     return !ObjectSize || Pos < ObjectSize;
   }
 
-  StreamingMemoryObjectImpl(const StreamingMemoryObjectImpl&) = delete;
-  void operator=(const StreamingMemoryObjectImpl&) = delete;
+  StreamingMemoryObject(const StreamingMemoryObject&) = delete;
+  void operator=(const StreamingMemoryObject&) = delete;
 };
 
 MemoryObject *getNonStreamedMemoryObject(
