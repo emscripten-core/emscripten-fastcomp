@@ -230,7 +230,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
       LandingPadInst *LP = *I;
       unsigned Num = LP->getNumClauses();
       SmallVector<Value*,16> NewLPArgs;
-      NewLPArgs.push_back(LP->getPersonalityFn());
+      NewLPArgs.push_back(F->getPersonalityFn());
       for (unsigned i = 0; i < Num; i++) {
         Value *Arg = LP->getClause(i);
         // As a temporary workaround for the lack of aggregate varargs support
