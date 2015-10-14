@@ -130,7 +130,7 @@ private:
 
   bool
   simplifyFunction(LLVMContext &Ctx, Function *OldFunc,
-                   DenseMap<const Function *, DISubprogram> &DISubprogramMap);
+                   DenseMap<const Function *, DISubprogram *> &DISubprogramMap);
 
   void scheduleInstructionsForCleanup(Function *NewFunc);
 
@@ -461,7 +461,7 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
 // had to be changed.
 bool SimplifyStructRegSignatures::simplifyFunction(
     LLVMContext &Ctx, Function *OldFunc,
-    DenseMap<const Function *, DISubprogram> &DISubprogramMap) {
+    DenseMap<const Function *, DISubprogram *> &DISubprogramMap) {
   auto *OldFT = OldFunc->getFunctionType();
   auto *NewFT = cast<FunctionType>(Mapper.getSimpleType(Ctx, OldFT));
 
