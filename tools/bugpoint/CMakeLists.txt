@@ -12,7 +12,6 @@ set(LLVM_LINK_COMPONENTS
   # @LOCALMOD-BEGIN
   MinSFITransforms
   NaClAnalysis
-  NaClBitReader
   NaClTransforms
   JSBackend
   # @LOCALMOD-END

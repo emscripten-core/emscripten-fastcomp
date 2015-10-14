@@ -31,7 +31,6 @@ required_libraries =
  Linker
  MinSFITransforms
  NaClAnalysis
- NaClBitReader
  NaClTransforms
  ObjCARC
  Scalar

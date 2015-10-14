@@ -19,4 +19,4 @@
 type = Library
 name = IRReader
 parent = Libraries
-required_libraries = AsmParser BitReader NaClBitReader Core Support
+required_libraries = AsmParser BitReader Core Support
