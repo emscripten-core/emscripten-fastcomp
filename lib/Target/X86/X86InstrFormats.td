@@ -55,7 +55,6 @@ def MRM_F6 : Format<86>; def MRM_F7 : Format<87>; def MRM_F8 : Format<88>;
 def MRM_F9 : Format<89>; def MRM_FA : Format<90>; def MRM_FB : Format<91>;
 def MRM_FC : Format<92>; def MRM_FD : Format<93>; def MRM_FE : Format<94>;
 def MRM_FF : Format<95>;
-def CustomFrm : Format<126>; // @LOCALMOD
 
 // ImmType - This specifies the immediate type used by an instruction. This is
 // part of the ad-hoc solution used to emit machine instruction encodings by our

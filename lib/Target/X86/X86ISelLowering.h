@@ -253,16 +253,6 @@ namespace llvm {
       // Thread Local Storage. A call to get the start address
       // of the TLS block for the current module.
       TLSBASEADDR,
-      // @LOCALMOD-BEGIN
-      // TLSADDR_LE - Thread Local Storage. (Local Exec Model)
-      TLSADDR_LE,
-
-      // TLSADDR_IE - Thread Local Storage. (Initial Exec Model)
-      TLSADDR_IE,
-
-      // THREAD_POINTER_FROM_GS - Read thread pointer from %gs:0 on x86-32.
-      THREAD_POINTER_FROM_GS,
-      // @LOCALMOD-END
 
       // Thread Local Storage.  When calling to an OS provided
       // thunk at the address from an earlier relocation.
@@ -922,9 +912,6 @@ namespace llvm {
     /// make the right decision when generating code for different targets.
     const X86Subtarget *Subtarget;
     const DataLayout *TD;
-    // @LOCALMOD - This is essentially a revert of r167104
-    /// X86StackPtr - X86 physical register used as stack ptr.
-    unsigned X86StackPtr;
 
     /// Select between SSE or x87 floating point ops.
     /// When SSE is available, use it for f32 operations.
@@ -1098,12 +1085,6 @@ namespace llvm {
 
     MachineBasicBlock *EmitLoweredSegAlloca(MachineInstr *MI,
                                             MachineBasicBlock *BB) const;
-
-    // @LOCALMOD-BEGIN
-    MachineBasicBlock *EmitLoweredThreadPointerFromGs(
-        MachineInstr *MI,
-        MachineBasicBlock *BB) const;
-    // @LOCALMOD-END
 
     MachineBasicBlock *EmitLoweredTLSCall(MachineInstr *MI,
                                           MachineBasicBlock *BB) const;

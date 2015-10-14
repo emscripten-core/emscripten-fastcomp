@@ -82,24 +82,6 @@ namespace {
              MCSym != nullptr || JT != -1 || BlockAddr != nullptr;
     }
 
-    // @LOCALMOD-BEGIN
-    /// clearSymbolicDisplacement - Remove all sources of symbolic
-    /// constant displacement from the addressing mode.  This is
-    /// needed when the symbolic constant is pulled out of the address
-    /// computation, e.g. when
-    ///   ... DISP(%r15,%rax,1) ...
-    /// is replaced with
-    ///   lea DISP(%rax),%tmp
-    ///   ... (%r15,%tmp,1) ...
-    void clearSymbolicDisplacement() {
-      GV = 0;
-      CP = 0;
-      BlockAddr = 0;
-      ES = 0;
-      JT = -1;
-    }
-    // @LOCALMOD-END
-
     bool hasBaseOrIndexReg() const {
       return BaseType == FrameIndexBase ||
              IndexReg.getNode() != nullptr || Base_Reg.getNode() != nullptr;
@@ -245,10 +227,6 @@ namespace {
                              SDValue &Index, SDValue &Disp,
                              SDValue &Segment,
                              SDValue &NodeWithChain);
-    // @LOCALMOD-BEGIN
-    void LegalizeAddressingModeForNaCl(SDValue N, X86ISelAddressMode &AM);
-    // @LOCALMOD-END
-
 
     bool TryFoldLoad(SDNode *P, SDValue N,
                      SDValue &Base, SDValue &Scale,
@@ -334,20 +312,6 @@ namespace {
     const X86InstrInfo *getInstrInfo() const {
       return Subtarget->getInstrInfo();
     }
-
-    // @LOCALMOD-START
-    // Determine when an addressing mode with a base register and an index
-    // register can be selected (or not). The NaCl 64-bit sandbox could end
-    // up adding an r15 base register for memory accesses late (after register
-    // allocation), so having both a base and index register selected
-    // now will make it hard to modify the address and base off of r15 later.
-    // This only applies to memory accesses and not lea (distinguished by
-    // selectingMemOp).
-    bool selectingMemOp;
-    bool RestrictUseOfBaseReg() {
-      return selectingMemOp && Subtarget->isTargetNaCl64();
-    }
-    // @LOCALMOD-END
 
     /// \brief Address-mode matching performs shift-of-and to and-of-shift
     /// reassociation in order to expose more scaled addressing
@@ -505,7 +469,8 @@ void X86DAGToDAGISel::PreprocessISelDAG() {
     SDNode *N = I++;  // Preincrement iterator to avoid invalidation issues.
 
     if (OptLevel != CodeGenOpt::None &&
-        !Subtarget->isTargetNaCl() &&   // @LOCALMOD: We can't fold load/call
+        // Only does this when target favors doesn't favor register indirect
+        // call.
         ((N->getOpcode() == X86ISD::CALL && !Subtarget->callRegIndirect()) ||
          (N->getOpcode() == X86ISD::TC_RETURN &&
           // Only does this if load can be folded into TC_RETURN.
@@ -663,18 +628,6 @@ bool X86DAGToDAGISel::FoldOffsetIntoAddress(uint64_t Offset,
     if (AM.BaseType == X86ISelAddressMode::FrameIndexBase &&
         !isDispSafeForFrameIndex(Val))
       return true;
-    // LOCALMOD-BEGIN
-    // Do not fold large offsets into displacements.
-    // Various constant folding and address-mode selections can result in
-    // 32-bit operations (e.g. from GEP) getting folded into the displacement
-    // and often results in a negative value in the index register
-    // (see also LegalizeAddressModeForNaCl)
-    else if (Subtarget->isTargetNaCl64() &&
-             (AM.BaseType == X86ISelAddressMode::RegBase ||
-              AM.BaseType == X86ISelAddressMode::FrameIndexBase) &&
-             (Val > 65535 || Val < -65536) && selectingMemOp)
-      return true;
-    // LOCALMOD-END
   }
   AM.Disp = Val;
   return false;
@@ -684,14 +637,6 @@ bool X86DAGToDAGISel::FoldOffsetIntoAddress(uint64_t Offset,
 bool X86DAGToDAGISel::MatchLoadInAddress(LoadSDNode *N, X86ISelAddressMode &AM){
   SDValue Address = N->getOperand(1);
 
-  // @LOCALMOD-START
-  // Disable this tls access optimization in Native Client, since
-  // gs:0 (or fs:0 on X86-64) does not exactly contain its own address.
-  if (Subtarget->isTargetNaCl()) {
-    return true;
-  }
-  // @LOCALMOD-END
-    
   // load gs:0 -> GS segment register.
   // load fs:0 -> FS segment register.
   //
@@ -820,8 +765,6 @@ bool X86DAGToDAGISel::MatchAddress(SDValue N, X86ISelAddressMode &AM) {
   if (MatchAddressRecursively(N, AM, 0))
     return true;
 
-
-  if (!RestrictUseOfBaseReg()) {   // @LOCALMOD
   // Post-processing: Convert lea(,%reg,2) to lea(%reg,%reg), which has
   // a smaller encoding and avoids a scaled-index.
   if (AM.Scale == 2 &&
@@ -830,8 +773,7 @@ bool X86DAGToDAGISel::MatchAddress(SDValue N, X86ISelAddressMode &AM) {
     AM.Base_Reg = AM.IndexReg;
     AM.Scale = 1;
   }
-  } // @LOCALMOD
-  
+
   // Post-processing: Convert foo to foo(%rip), even in non-PIC mode,
   // because it has a smaller encoding.
   // TODO: Which other code models can use this?
@@ -1123,8 +1065,6 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
     break;
 
   case ISD::SHL:
-    if (Subtarget->isTargetNaCl64() && selectingMemOp) // @LOCALMOD
-        break;
     if (AM.IndexReg.getNode() != nullptr || AM.Scale != 1)
       break;
 
@@ -1191,8 +1131,6 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
     // FALL THROUGH
   case ISD::MUL:
   case X86ISD::MUL_IMM:
-    // @LOCALMOD
-    if (!RestrictUseOfBaseReg()) {
     // X*[3,5,9] -> X+X*[2,4,8]
     if (AM.BaseType == X86ISelAddressMode::RegBase &&
         AM.Base_Reg.getNode() == nullptr &&
@@ -1225,7 +1163,6 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
           return false;
         }
     }
-    } // @LOCALMOD
     break;
 
   case ISD::SUB: {
@@ -1312,7 +1249,6 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
       return false;
     AM = Backup;
 
-    if (!RestrictUseOfBaseReg()) { // @LOCALMOD
     // If we couldn't fold both operands into the address at the same time,
     // see if we can just put each operand into a register and fold at least
     // the add.
@@ -1325,7 +1261,6 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
       AM.Scale = 1;
       return false;
     }
-    } // @LOCALMOD
     N = Handle.getValue();
     break;
   }
@@ -1385,15 +1320,7 @@ bool X86DAGToDAGISel::MatchAddressRecursively(SDValue N, X86ISelAddressMode &AM,
 /// MatchAddressBase - Helper for MatchAddress. Add the specified node to the
 /// specified addressing mode without any further recursion.
 bool X86DAGToDAGISel::MatchAddressBase(SDValue N, X86ISelAddressMode &AM) {
-  if (RestrictUseOfBaseReg()) { // @LOCALMOD
-    if (AM.IndexReg.getNode() == 0) {
-      AM.IndexReg = N;
-      AM.Scale = 1;
-      return false;
-    }
-    return true;
-  } // @LOCALMOD
-// Is the base register already occupied?
+  // Is the base register already occupied?
   if (AM.BaseType != X86ISelAddressMode::RegBase || AM.Base_Reg.getNode()) {
     // If so, check to see if the scale index register is set.
     if (!AM.IndexReg.getNode()) {
@@ -1459,8 +1386,6 @@ bool X86DAGToDAGISel::SelectAddr(SDNode *Parent, SDValue N, SDValue &Base,
                                  SDValue &Scale, SDValue &Index,
                                  SDValue &Disp, SDValue &Segment) {
   X86ISelAddressMode AM;
-  // @LOCALMOD
-  selectingMemOp = true;
 
   if (Parent &&
       // This list of opcodes are all the nodes that have an "addr:$ptr" operand
@@ -1482,14 +1407,7 @@ bool X86DAGToDAGISel::SelectAddr(SDNode *Parent, SDValue N, SDValue &Base,
   if (MatchAddress(N, AM))
     return false;
 
-  // @LOCALMOD-START
-  if (Subtarget->isTargetNaCl64()) {
-      LegalizeAddressingModeForNaCl(N, AM);
-  }
-  // @LOCALMOD-END
-
-  MVT VT = Subtarget->is64Bit() ? MVT::i64 : MVT::i32; // @LOCALMOD
-
+  MVT VT = N.getSimpleValueType();
   if (AM.BaseType == X86ISelAddressMode::RegBase) {
     if (!AM.Base_Reg.getNode())
       AM.Base_Reg = CurDAG->getRegister(0, VT);
@@ -1587,13 +1505,7 @@ bool X86DAGToDAGISel::SelectLEA64_32Addr(SDValue N, SDValue &Base,
   RegisterSDNode *RN = dyn_cast<RegisterSDNode>(Base);
   if (RN && RN->getReg() == 0)
     Base = CurDAG->getRegister(0, MVT::i64);
-  // @LOCALMOD-BEGIN: -- the commit in http://reviews.llvm.org/D4929
-  // to address: http://llvm.org/bugs/show_bug.cgi?id=20016
-  // break's NaCl's test/NaCl/X86/nacl64-addrmodes.ll
-  // revert to checking N.
-  //  else if (Base.getValueType() == MVT::i32 && !dyn_cast<FrameIndexSDNode>(Base)) {
-  else if (Base.getValueType() == MVT::i32 && !dyn_cast<FrameIndexSDNode>(N)) {
-    // @LOCALMOD-END
+  else if (Base.getValueType() == MVT::i32 && !dyn_cast<FrameIndexSDNode>(Base)) {
     // Base could already be %rip, particularly in the x32 ABI.
     Base = SDValue(CurDAG->getMachineNode(
                        TargetOpcode::SUBREG_TO_REG, DL, MVT::i64,
@@ -1634,8 +1546,6 @@ bool X86DAGToDAGISel::SelectLEAAddr(SDValue N,
   SDValue Copy = AM.Segment;
   SDValue T = CurDAG->getRegister(0, MVT::i32);
   AM.Segment = T;
-  // @LOCALMOD
-  selectingMemOp = false;
   if (MatchAddress(N, AM))
     return false;
   assert (T == AM.Segment);
@@ -1699,8 +1609,7 @@ bool X86DAGToDAGISel::SelectTLSADDRAddr(SDValue N, SDValue &Base,
   AM.Base_Reg = CurDAG->getRegister(0, N.getValueType());
   AM.SymbolFlags = GA->getTargetFlags();
 
-  if (N.getValueType() == MVT::i32 && 
-      !Subtarget->isTargetNaCl64()) {   // @LOCALMOD
+  if (N.getValueType() == MVT::i32) {
     AM.Scale = 1;
     AM.IndexReg = CurDAG->getRegister(X86::EBX, MVT::i32);
   } else {
@@ -1724,171 +1633,6 @@ bool X86DAGToDAGISel::TryFoldLoad(SDNode *P, SDValue N,
   return SelectAddr(N.getNode(),
                     N.getOperand(1), Base, Scale, Index, Disp, Segment);
 }
-
-// @LOCALMOD-BEGIN
-// LegalizeAddressingModeForNaCl - NaCl specific addressing fixes.  This ensures
-// two addressing mode invariants.
-//
-//   case 1. Addressing using only a displacement (constant address references)
-//   is only legal when the displacement is positive.  This is because, when
-//   later we replace
-//     movl 0xffffffff, %eax
-//   by
-//     movl 0xffffffff(%r15), %eax
-//   the displacement becomes a negative offset from %r15, making this a
-//   reference to the guard region below %r15 rather than to %r15 + 4GB - 1,
-//   as the programmer expected.  To handle these cases we pull negative
-//   displacements out whenever there is no base or index register in the
-//   addressing mode.  I.e., the above becomes
-//     movl $0xffffffff, %ebx
-//     movl %rbx, %rbx
-//     movl (%r15, %rbx, 1), %eax
-//
-//   case 2. Because NaCl needs to zero the top 32-bits of the index, we can't
-//   allow the index register to be negative. However, if we are using a base
-//   frame index, global address or the constant pool, and AM.Disp > 0, then
-//   negative values of "index" may be expected to legally occur.
-//   To avoid this, we fold the displacement (and scale) back into the
-//   index. This results in a LEA before the current instruction.
-//   Unfortunately, this may add a requirement for an additional register.
-//
-//   For example, this sandboxed code is broken if %eax is negative:
-//
-//     movl %eax,%eax
-//     incl -30(%rbp,%rax,4)
-//
-//   Instead, we now generate:
-//     leal -30(%rbp,%rax,4), %tmp
-//     movl %tmp,%tmp
-//     incl (%r15,%tmp,1)
-//
-//  TODO(espindola): This might not be complete since the matcher can select
-//  any dag node to go in the index. This is also not how the rest of the
-//  matcher logic works, if the matcher selects something, it must be
-//  valid and not depend on further patching. A more desirable fix is
-//  probably to update the matching code to avoid assigning a register
-//  to a value that we cannot prove is positive.
-//
-//  Note: Any changes to the testing logic need to be synchronized
-//  with the implementation of isLegalAddressingModeForNaCl() in
-//  X86FastISel.cpp.
-void X86DAGToDAGISel::LegalizeAddressingModeForNaCl(SDValue N,
-                                                    X86ISelAddressMode &AM) {
-
-
-  // RIP-relative addressing is always fine.
-  if (AM.isRIPRelative())
-    return;
-
-  SDLoc dl(N);
-  // Case 1 above:
-  if (!AM.hasBaseOrIndexReg() && !AM.hasSymbolicDisplacement() && AM.Disp < 0) {
-    SDValue Imm = CurDAG->getTargetConstant(AM.Disp, MVT::i32);
-    SDValue MovNode =
-      SDValue(CurDAG->getMachineNode(X86::MOV32ri, dl, MVT::i32, Imm), 0);
-    AM.IndexReg = MovNode;
-    AM.Disp = 0;
-    InsertDAGNode(*CurDAG, N, MovNode);
-    return;
-  }
-
-  // MatchAddress wants to use the base register when there's only
-  // one register and no scale. We need to use the index register instead.
-  if (AM.BaseType == X86ISelAddressMode::RegBase &&
-      AM.Base_Reg.getNode() &&
-      !AM.IndexReg.getNode()) {
-    AM.IndexReg = AM.Base_Reg;
-    AM.setBaseReg(SDValue());
-  }
-
-  // Case 2 above comprises two sub-cases:
-  // sub-case 1: Prevent negative indexes
-
-  // This is relevant only if there is an index register involved.
-  if (!AM.IndexReg.getNode())
-    return;
-
-  // There are two situations to deal with.  The first is as described
-  // above, which is essentially a potentially negative index into an
-  // interior pointer to a stack-allocated structure.  The second is a
-  // potentially negative index into an interior pointer to a global
-  // array.  In this case, the global array will be a symbolic
-  // displacement.  In theory, we could recognize that it is an
-  // interior pointer only when the concrete displacement AM.Disp is
-  // nonzero, but there is at least one test case (aha.c in the LLVM
-  // test suite) that incorrectly uses a negative index to dereference
-  // a global array, so we conservatively apply the translation to all
-  // global dereferences.
-  bool HasSymbolic = AM.hasSymbolicDisplacement();
-  bool NeedsFixing1 = HasSymbolic ||
-    (AM.BaseType == X86ISelAddressMode::FrameIndexBase && AM.Disp > 0);
-
-  // sub-case 2: Both index and base registers are being used.  The
-  // test for index register being used is done above, so we only need
-  // to test for a base register being used.
-  bool NeedsFixing2 =
-    (AM.BaseType == X86ISelAddressMode::RegBase) && AM.Base_Reg.getNode();
-
-  if (!NeedsFixing1 && !NeedsFixing2)
-    return;
-
-  static const unsigned LogTable[] = { ~0u, 0, 1, ~0u, 2, ~0u, ~0u, ~0u, 3 };
-  assert(AM.Scale < sizeof(LogTable)/sizeof(LogTable[0]));
-  unsigned ScaleLog = LogTable[AM.Scale];
-  assert(ScaleLog <= 3);
-  SmallVector<SDNode*, 8> NewNodes;
-
-  SDValue NewIndex = AM.IndexReg;
-  if (ScaleLog > 0) {
-    SDValue ShlCount = CurDAG->getConstant(ScaleLog, MVT::i8);
-    NewNodes.push_back(ShlCount.getNode());
-    SDValue ShlNode = CurDAG->getNode(ISD::SHL, dl, N.getValueType(),
-                                      NewIndex, ShlCount);
-    NewNodes.push_back(ShlNode.getNode());
-    NewIndex = ShlNode;
-  }
-  if (AM.Disp > 0 || HasSymbolic) {
-    // If the addressing mode has a potentially problematic
-    // displacement, we pull it out into a new instruction node.  If
-    // it contains a symbolic displacement, we need to express it as a
-    // Wrapper node to make LLVM work.
-    SDValue Base, Scale, Index, Disp, Segment;
-    getAddressOperands(AM, Base, Scale, Index, Disp, Segment);
-    SDValue DispNode;
-    if (HasSymbolic)
-      DispNode = CurDAG->getNode(X86ISD::Wrapper, dl, N.getValueType(), Disp);
-    else
-      DispNode = CurDAG->getConstant(AM.Disp, N.getValueType());
-    NewNodes.push_back(DispNode.getNode());
-
-    SDValue AddNode = CurDAG->getNode(ISD::ADD, dl, N.getValueType(),
-                                  NewIndex, DispNode);
-    NewNodes.push_back(AddNode.getNode());
-    NewIndex = AddNode;
-  }
-
-  if (NeedsFixing2) {
-    SDValue AddBase = CurDAG->getNode(ISD::ADD, dl, N.getValueType(),
-                                      NewIndex, AM.Base_Reg);
-    NewNodes.push_back(AddBase.getNode());
-    NewIndex = AddBase;
-    AM.setBaseReg(SDValue());
-  }
-  AM.Disp = 0;
-  AM.clearSymbolicDisplacement();
-  AM.Scale = 1;
-  AM.IndexReg = NewIndex;
-
-  // Insert the new nodes into the topological ordering.
-  for (unsigned i=0; i < NewNodes.size(); i++) {
-    if (NewNodes[i]->getNodeId() == -1 ||
-        NewNodes[i]->getNodeId() > N.getNode()->getNodeId()) {
-      CurDAG->RepositionNode(N.getNode(), NewNodes[i]);
-      NewNodes[i]->setNodeId(N.getNode()->getNodeId());
-    }
-  }
-}
-// @LOCALMOD-END
 
 /// getGlobalBaseReg - Return an SDNode that returns the value of
 /// the global base register. Output instructions required to

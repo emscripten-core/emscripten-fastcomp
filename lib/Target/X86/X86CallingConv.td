@@ -804,9 +804,3 @@ def CSR_64_Intel_OCL_BI_AVX    : CalleeSavedRegs<(add CSR_64,
 def CSR_64_Intel_OCL_BI_AVX512 : CalleeSavedRegs<(add RBX, RDI, RSI, R14, R15,
                                                   (sequence "ZMM%u", 16, 31),
                                                   K4, K5, K6, K7)>;
-
-// @LOCALMOD-BEGIN
-// NaCl x86-64 (R15 cannot be modified):
-def CSR_NaCl64 : CalleeSavedRegs<(add RBX, R12, R13, R14, RBP)>;
-def CSR_NaCl64EHRet : CalleeSavedRegs<(add RAX, RDX, CSR_NaCl64)>;
-// @LOCALMOD-END

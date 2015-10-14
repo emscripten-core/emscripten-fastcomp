@@ -8,7 +8,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "X86TargetObjectFile.h"
-#include "X86Subtarget.h"  // @LOCALMOD
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/IR/Operator.h"

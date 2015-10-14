@@ -1233,10 +1233,6 @@ encodeInstruction(const MCInst &MI, raw_ostream &OS,
   switch (TSFlags & X86II::FormMask) {
   default: errs() << "FORM: " << (TSFlags & X86II::FormMask) << "\n";
     llvm_unreachable("Unknown FormMask value in X86MCCodeEmitter!");
-  // @LOCALMOD-BEGIN
-  case X86II::CustomFrm:
-    llvm_unreachable("CustomFrm instruction shouldn't be emitted");
-  // @LOCALMOD-END
   case X86II::Pseudo:
     llvm_unreachable("Pseudo instruction shouldn't be emitted");
   case X86II::RawFrmDstSrc: {

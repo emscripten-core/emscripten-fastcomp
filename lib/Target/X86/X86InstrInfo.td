@@ -104,10 +104,6 @@ def SDT_X86TLSBASEADDR : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
 def SDT_X86TLSCALL : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
-// @LOCALMOD-BEGIN
-def SDT_X86ThreadPointer : SDTypeProfile<1, 0, [SDTCisPtrTy<0>]>;
-// @LOCALMOD-END
-
 def SDT_X86SEG_ALLOCA : SDTypeProfile<1, 1, [SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
 
 def SDT_X86WIN_FTOL : SDTypeProfile<0, 1, [SDTCisFP<0>]>;
@@ -207,17 +203,6 @@ def X86tlsaddr : SDNode<"X86ISD::TLSADDR", SDT_X86TLSADDR,
 
 def X86tlsbaseaddr : SDNode<"X86ISD::TLSBASEADDR", SDT_X86TLSBASEADDR,
                         [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-// @LOCALMOD-BEGIN
-def X86tlsaddr_le : SDNode<"X86ISD::TLSADDR_LE", SDT_X86TLSADDR,
-                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-def X86tlsaddr_ie : SDNode<"X86ISD::TLSADDR_IE", SDT_X86TLSADDR,
-                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-def X86thread_pointer_from_gs :
-  SDNode<"X86ISD::THREAD_POINTER_FROM_GS", SDT_X86ThreadPointer>;
-// @LOCALMOD-END
 
 def X86ehret : SDNode<"X86ISD::EH_RETURN", SDT_X86EHRET,
                         [SDNPHasChain]>;
@@ -832,7 +817,7 @@ def NotWin64     : Predicate<"!Subtarget->isTargetWin64()">;
 def IsPS4        : Predicate<"Subtarget->isTargetPS4()">;
 def NotPS4       : Predicate<"!Subtarget->isTargetPS4()">;
 def IsNaCl       : Predicate<"Subtarget->isTargetNaCl()">;
-def IsNotNaCl    : Predicate<"!Subtarget->isTargetNaCl()">;
+def NotNaCl      : Predicate<"!Subtarget->isTargetNaCl()">;
 def SmallCode    : Predicate<"TM.getCodeModel() == CodeModel::Small">;
 def KernelCode   : Predicate<"TM.getCodeModel() == CodeModel::Kernel">;
 def FarData      : Predicate<"TM.getCodeModel() != CodeModel::Small &&"
@@ -2461,12 +2446,6 @@ def PCOMMIT    : I<0xAE, MRM_F8, (outs), (ins), "pcommit", []>, PD;
 //===----------------------------------------------------------------------===//
 
 include "X86InstrArithmetic.td"
-
-//===----------------------------------------------------------------------===//
-// NaCl support (@LOCALMOD)
-//===----------------------------------------------------------------------===//
-
-include "X86InstrNaCl.td"
 include "X86InstrCMovSetCC.td"
 include "X86InstrExtension.td"
 include "X86InstrControl.td"

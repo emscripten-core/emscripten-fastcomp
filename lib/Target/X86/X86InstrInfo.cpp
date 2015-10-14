@@ -276,16 +276,12 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
                   Entry.Flags | TB_INDEX_0 | TB_FOLDED_LOAD | TB_FOLDED_STORE);
   }
 
-  // @LOCALMOD-BEGIN
-  uint16_t NoForwardForNaCl = STI.isTargetNaCl() ? TB_NO_FORWARD : 0;
-  // @LOCALMOD-END
-
-static const X86MemoryFoldTableEntry MemoryFoldTable0[] = {
+  static const X86MemoryFoldTableEntry MemoryFoldTable0[] = {
     { X86::BT16ri8,     X86::BT16mi8,       TB_FOLDED_LOAD },
     { X86::BT32ri8,     X86::BT32mi8,       TB_FOLDED_LOAD },
     { X86::BT64ri8,     X86::BT64mi8,       TB_FOLDED_LOAD },
-    { X86::CALL32r,     X86::CALL32m,       (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
-    { X86::CALL64r,     X86::CALL64m,       (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
+    { X86::CALL32r,     X86::CALL32m,       TB_FOLDED_LOAD },
+    { X86::CALL64r,     X86::CALL64m,       TB_FOLDED_LOAD },
     { X86::CMP16ri,     X86::CMP16mi,       TB_FOLDED_LOAD },
     { X86::CMP16ri8,    X86::CMP16mi8,      TB_FOLDED_LOAD },
     { X86::CMP16rr,     X86::CMP16mr,       TB_FOLDED_LOAD },
@@ -310,8 +306,8 @@ static const X86MemoryFoldTableEntry MemoryFoldTable0[] = {
     { X86::IMUL32r,     X86::IMUL32m,       TB_FOLDED_LOAD },
     { X86::IMUL64r,     X86::IMUL64m,       TB_FOLDED_LOAD },
     { X86::IMUL8r,      X86::IMUL8m,        TB_FOLDED_LOAD },
-    { X86::JMP32r,      X86::JMP32m,        (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
-    { X86::JMP64r,      X86::JMP64m,        (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
+    { X86::JMP32r,      X86::JMP32m,        TB_FOLDED_LOAD },
+    { X86::JMP64r,      X86::JMP64m,        TB_FOLDED_LOAD },
     { X86::MOV16ri,     X86::MOV16mi,       TB_FOLDED_STORE },
     { X86::MOV16rr,     X86::MOV16mr,       TB_FOLDED_STORE },
     { X86::MOV32ri,     X86::MOV32mi,       TB_FOLDED_STORE },
@@ -355,8 +351,8 @@ static const X86MemoryFoldTableEntry MemoryFoldTable0[] = {
     { X86::SETOr,       X86::SETOm,         TB_FOLDED_STORE },
     { X86::SETPr,       X86::SETPm,         TB_FOLDED_STORE },
     { X86::SETSr,       X86::SETSm,         TB_FOLDED_STORE },
-    { X86::TAILJMPr,    X86::TAILJMPm,      (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
-    { X86::TAILJMPr64,  X86::TAILJMPm64,    (uint16_t)(TB_FOLDED_LOAD | NoForwardForNaCl) },
+    { X86::TAILJMPr,    X86::TAILJMPm,      TB_FOLDED_LOAD },
+    { X86::TAILJMPr64,  X86::TAILJMPm64,    TB_FOLDED_LOAD },
     { X86::TAILJMPr64_REX, X86::TAILJMPm64_REX, TB_FOLDED_LOAD },
     { X86::TEST16ri,    X86::TEST16mi,      TB_FOLDED_LOAD },
     { X86::TEST32ri,    X86::TEST32mi,      TB_FOLDED_LOAD },
@@ -3910,35 +3906,6 @@ void X86InstrInfo::copyPhysReg(MachineBasicBlock &MBB,
   // Moving EFLAGS to / from another register requires a push and a pop.
   // Notice that we have to adjust the stack if we don't want to clobber the
   // first frame index. See X86FrameLowering.cpp - clobbersTheStack.
-
-  // @LOCALMOD-BEGIN
-  //
-  // NaCl's sandbox doesn't allow usage of PUSHF/POPF. Instead use LAHF/SAHF
-  // which write the bottom 8 EFLAGS bits from/to AH.
-  bool FromEFLAGS = SrcReg == X86::EFLAGS;
-  bool ToEFLAGS = DestReg == X86::EFLAGS;
-  int Reg = FromEFLAGS ? DestReg : SrcReg;
-  bool is32 = X86::GR32RegClass.contains(Reg);
-  bool is64 = X86::GR64RegClass.contains(Reg);
-  int Mov = is64 ? X86::MOV64rr : X86::MOV32rr;
-  int Push = is64 ? X86::PUSH64r : X86::PUSH32r;
-  int Pop = is64 ? X86::POP64r : X86::POP32r;
-  int AX = is64 ? X86::RAX : X86::EAX;
-  if ((FromEFLAGS || ToEFLAGS) && (is32 || is64) && Subtarget.isTargetNaCl()) {
-    BuildMI(MBB, MI, DL, get(Push)).addReg(AX);
-    if (FromEFLAGS) {
-      BuildMI(MBB, MI, DL, get(X86::LAHF));
-      BuildMI(MBB, MI, DL, get(Mov), Reg).addReg(AX);
-    }
-    if (ToEFLAGS) {
-      BuildMI(MBB, MI, DL, get(Mov), AX).addReg(Reg, getKillRegState(KillSrc));
-      BuildMI(MBB, MI, DL, get(X86::SAHF));
-    }
-    BuildMI(MBB, MI, DL, get(Pop), AX);
-    return;
-  }
-  // @LOCALMOD-END
-
   if (SrcReg == X86::EFLAGS) {
     if (X86::GR64RegClass.contains(DestReg)) {
       BuildMI(MBB, MI, DL, get(X86::PUSHF64));

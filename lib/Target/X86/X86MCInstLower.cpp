@@ -690,18 +690,6 @@ void X86AsmPrinter::LowerTlsAddr(X86MCInstLower &MCInstLowering,
 
   MCContext &context = OutStreamer->getContext();
 
-  // @LOCALMOD-START
-  // TODO(dschuff): Instead of testing the target OS we should add (upstream) a
-  // method to one of the MC classes to test whether bundle alignment is enabled
-  // (currently only the AsmBackend has this, which can't be used when emitting
-  // asm files). That facility should be used here and in MCAsmStreamer.cpp
-  // (this should be done once we are unblocked from switching to gas by
-  // default, so we know exactly where we need it).
-  Triple TT(getSubtargetInfo().getTargetTriple());
-  const bool needsBundleLock = TT.getOS() == Triple::NaCl;
-  if (needsBundleLock)
-    OutStreamer.EmitBundleLock(false);
-  // @LOCALMOD-END
   if (needsPadding)
     EmitAndCountInstruction(MCInstBuilder(X86::DATA16_PREFIX));
 
@@ -768,10 +756,6 @@ void X86AsmPrinter::LowerTlsAddr(X86MCInstLower &MCInstLowering,
   EmitAndCountInstruction(MCInstBuilder(is64Bits ? X86::CALL64pcrel32
                                                  : X86::CALLpcrel32)
                             .addExpr(tlsRef));
-  // @LOCALMOD-START
-  if (needsBundleLock)
-    OutStreamer.EmitBundleUnlock();
-  // @LOCALMOD-END
 }
 
 /// \brief Emit the optimal amount of multi-byte nops on X86.
@@ -1062,22 +1046,6 @@ static std::string getShuffleComment(const MachineOperand &DstOp,
 void X86AsmPrinter::EmitInstruction(const MachineInstr *MI) {
   X86MCInstLower MCInstLowering(*MF, *this);
   const X86RegisterInfo *RI = MF->getSubtarget<X86Subtarget>().getRegisterInfo();
-
-  // @LOCALMOD-START
-  // MI Bundles are used to represent bundle-locked groups.
-  // MBB iterators skip bundles, so when we reach a bundle head, unpack it here.
-  if (MI->isBundle()) {
-    MachineBasicBlock::const_iterator MBBI(MI);
-    MachineBasicBlock::const_instr_iterator MII (MBBI.getInstrIterator());
-    ++MBBI;
-    OutStreamer.EmitBundleLock(false);
-    while (++MII != MBBI) {
-      EmitInstruction(MII);
-    }
-    OutStreamer.EmitBundleUnlock();
-    return;
-  }
-  // @LOCALMOD-END
 
   switch (MI->getOpcode()) {
   case TargetOpcode::DBG_VALUE:

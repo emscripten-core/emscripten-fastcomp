@@ -24,7 +24,6 @@ set(sources
   X86InstrInfo.cpp
   X86MCInstLower.cpp
   X86MachineFunctionInfo.cpp
-  X86NaClRewritePass.cpp
   X86PadShortFunction.cpp
   X86RegisterInfo.cpp
   X86SelectionDAGInfo.cpp

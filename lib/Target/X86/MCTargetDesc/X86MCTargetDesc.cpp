@@ -15,7 +15,6 @@
 #include "InstPrinter/X86ATTInstPrinter.h"
 #include "InstPrinter/X86IntelInstPrinter.h"
 #include "X86MCAsmInfo.h"
-#include "X86MCNaClExpander.h" // @LOCALMOD
 #include "llvm/ADT/Triple.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/MC/MCInstrAnalysis.h"
@@ -227,16 +226,6 @@ static MCInstrAnalysis *createX86MCInstrAnalysis(const MCInstrInfo *Info) {
   return new MCInstrAnalysis(Info);
 }
 
-// @LOCALMOD-START
-static void createX86MCNaClExpander(MCStreamer &S,
-                                    std::unique_ptr<MCRegisterInfo> &&RegInfo,
-                                    std::unique_ptr<MCInstrInfo> &&InstInfo) {
-  auto *Exp = new X86::X86MCNaClExpander(S.getContext(), std::move(RegInfo),
-                                         std::move(InstInfo));
-  S.setNaClExpander(Exp);
-}
-// @LOCALMOD-END
-
 // Force static initialization.
 extern "C" void LLVMInitializeX86TargetMC() {
   for (Target *T : {&TheX86_32Target, &TheX86_64Target}) {
@@ -261,16 +250,15 @@ extern "C" void LLVMInitializeX86TargetMC() {
 
     // Register the code emitter.
     TargetRegistry::RegisterMCCodeEmitter(*T, createX86MCCodeEmitter);
-#ifndef __native_client__
+
     // Register the object streamer.
     TargetRegistry::RegisterCOFFStreamer(*T, createX86WinCOFFStreamer);
-#endif
+
     // Register the MCInstPrinter.
     TargetRegistry::RegisterMCInstPrinter(*T, createX86MCInstPrinter);
 
     // Register the MC relocation info.
     TargetRegistry::RegisterMCRelocationInfo(*T, createX86MCRelocationInfo);
-
   }
 
   // Register the asm backend.
@@ -278,9 +266,4 @@ extern "C" void LLVMInitializeX86TargetMC() {
                                        createX86_32AsmBackend);
   TargetRegistry::RegisterMCAsmBackend(TheX86_64Target,
                                        createX86_64AsmBackend);
-
-  // @LOCALMOD-START
-  TargetRegistry::RegisterMCNaClExpander(TheX86_32Target,
-                                         createX86MCNaClExpander);
-  // @LOCALMOD-END
 }

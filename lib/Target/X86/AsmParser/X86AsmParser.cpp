@@ -2905,18 +2905,7 @@ bool X86AsmParser::ParseDirective(AsmToken DirectiveID) {
                                            "a '%' prefix in .intel_syntax");
     }
     return false;
-  // @LOCALMOD-START
-  } else if (IDVal.startswith(".dwarf_addr_size")) {
-    // For compatibility with NaCl gas, which needs to override the size of
-    // DWARF address values on x86-64 (normally it assumes that the address size
-    // matches the ELF class, which is not currently true for x86-64 NaCl).
-    // Require the size to be 4, since that matches the module address size.
-    if (Parser.getTok().getString() != "4")
-      return Error(DirectiveID.getLoc(), ".dwarf_addr_size must be 4");
-    Parser.Lex();
-    return false;
   }
-  // @LOCALMOD-END
   return true;
 }
 

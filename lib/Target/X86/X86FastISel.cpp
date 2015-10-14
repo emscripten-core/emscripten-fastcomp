@@ -41,13 +41,7 @@
 #include "llvm/MC/MCSymbol.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Target/TargetOptions.h"
-#include "llvm/ADT/Statistic.h" // @LOCALMOD
 using namespace llvm;
-
-// @LOCALMOD-BEGIN
-#define DEBUG_TYPE "isel"
-STATISTIC(NumFastIselNaClFailures, "Number of instructions fast isel failed on for NaCl illegality");
-// @LOCALMOD-END
 
 namespace {
 
@@ -555,85 +549,6 @@ bool X86FastISel::X86FastEmitExtend(ISD::NodeType Opc, EVT DstVT,
   return true;
 }
 
-/// @LOCALMOD-BEGIN
-/// isLegalAddressingModeForNaCl - Determine if the addressing mode is
-/// legal for NaCl translation.  If not, the caller is expected to
-/// reject the instruction for fast-ISel code generation.
-///
-/// The logic for the test is translated from the corresponding logic
-/// in X86DAGToDAGISel::LegalizeAddressingModeForNaCl().  It can't be
-/// used directly due to the X86AddressMode vs X86ISelAddressMode
-/// types.  As such, any changes to isLegalAddressingModeForNaCl() and
-/// X86DAGToDAGISel::LegalizeAddressingModeForNaCl() need to be
-/// synchronized.  The original conditions are indicated in comments.
-static bool isLegalAddressingModeForNaCl(const X86Subtarget *Subtarget,
-                                         const X86AddressMode &AM) {
-  if (Subtarget->isTargetNaCl64()) {
-    // Return true (i.e., is legal) if the equivalent of
-    // X86ISelAddressMode::isRIPRelative() is true.
-    if (AM.BaseType == X86AddressMode::RegBase &&
-        AM.Base.Reg == X86::RIP)
-      return true;
-
-    // Check for the equivalent of
-    // (!AM.hasBaseOrIndexReg() &&
-    //  !AM.hasSymbolicDisplacement() &&
-    //  AM.Disp < 0)
-    if (!((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-          AM.IndexReg) &&
-        !AM.GV &&
-        AM.Disp < 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // At this point in the LegalizeAddressingModeForNaCl() code, it
-    // normalizes an addressing mode with a base register and no index
-    // register into an equivalent mode with an index register and no
-    // base register.  Since we don't modify AM, we may have to check
-    // both the base and index register fields in the remainder of the
-    // tests.
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::FrameIndexBase || AM.GV || AM.CP) &&
-    //   AM.IndexReg.getNode() &&
-    //   AM.Disp > 0)
-    // Note: X86AddressMode doesn't have a CP analogue
-    if ((AM.BaseType == X86AddressMode::FrameIndexBase || AM.GV) &&
-        ((AM.BaseType == X86AddressMode::RegBase && AM.Base.Reg) ||
-         AM.IndexReg) &&
-        AM.Disp > 0) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::RegBase) &&
-    //  AM.Base_Reg.getNode() &&
-    //  AM.IndexReg.getNode())
-    if ((AM.BaseType == X86AddressMode::RegBase) &&
-        AM.Base.Reg &&
-        AM.IndexReg) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-
-    // See X86DAGToDAGISel::FoldOffsetIntoAddress().
-    // Check for the equivalent of
-    // ((AM.BaseType == X86ISelAddressMode::RegBase ||
-    //   AM.BaseType == X86ISelAddressMode::FrameIndexBase) &&
-    //  (Val > 65535 || Val < -65536))
-    if ((AM.BaseType == X86AddressMode::RegBase ||
-         AM.BaseType == X86AddressMode::FrameIndexBase) &&
-        (AM.Disp > 65535 || AM.Disp < -65536)) {
-      ++NumFastIselNaClFailures;
-      return false;
-    }
-  }
-
-  return true;
-}
-
 bool X86FastISel::handleConstantAddresses(const Value *V, X86AddressMode &AM) {
   // Handle constant address.
   if (const GlobalValue *GV = dyn_cast<GlobalValue>(V)) {
@@ -699,14 +614,6 @@ bool X86FastISel::handleConstantAddresses(const Value *V, X86AddressMode &AM) {
 
           if (Subtarget->isPICStyleRIPRel())
             StubAM.Base.Reg = X86::RIP;
-        // @LOCALMOD-BEGIN
-        } else if (Subtarget->isTargetNaCl64()) {
-          Opc = X86::MOV32rm;
-          RC  = &X86::GR32RegClass;
-
-          if (Subtarget->isPICStyleRIPRel())
-            StubAM.Base.Reg = X86::RIP;
-        // @LOCALMOD-END
         } else {
           Opc = X86::MOV32rm;
           RC  = &X86::GR32RegClass;
@@ -734,21 +641,6 @@ bool X86FastISel::handleConstantAddresses(const Value *V, X86AddressMode &AM) {
 
   // If all else fails, try to materialize the value in a register.
   if (!AM.GV || !Subtarget->isPICStyleRIPRel()) {
-    // @LOCALMOD-START
-    if (Subtarget->isTargetNaCl64()) {
-      // We are about use a register in an addressing mode. However, x86-64
-      // NaCl does not allow arbitrary r+r addressing. One of the regs must
-      // be %r15 (inserted by the NaClRewritePass). Check that we will only
-      // end up with one reg defined after this.
-      if ((AM.Base.Reg == 0) && (AM.IndexReg == 0)) {
-        // Put into index register so that the NaCl rewrite pass will
-        // convert this to a 64-bit address.
-        AM.IndexReg = getRegForValue(V);
-        return AM.IndexReg != 0;
-      }
-      return false;
-    }
-    // @LOCALMOD-END
     if (AM.Base.Reg == 0) {
       AM.Base.Reg = getRegForValue(V);
       return AM.Base.Reg != 0;
@@ -765,16 +657,6 @@ bool X86FastISel::handleConstantAddresses(const Value *V, X86AddressMode &AM) {
 
 /// X86SelectAddress - Attempt to fill in an address from the given value.
 ///
-/// @LOCALMOD-BEGIN
-/// All "return v;" statements must be converted to
-/// "return (v) && isLegalAddressingModeForNaCl(Subtarget, AM);"
-/// except that "return false;" can of course be left unchanged.
-///
-/// Since X86SelectAddress() recursively builds up the AM result
-/// object, there is a risk that an intermediate result could be
-/// rejected in a situation where the final result was in fact legal,
-/// though it is hard to imagine this happening.
-/// @LOCALMOD-END
 bool X86FastISel::X86SelectAddress(const Value *V, X86AddressMode &AM) {
   SmallVector<const Value *, 32> GEPs;
 redo_gep:
@@ -827,7 +709,7 @@ redo_gep:
     if (SI != FuncInfo.StaticAllocaMap.end()) {
       AM.BaseType = X86AddressMode::FrameIndexBase;
       AM.Base.FrameIndex = SI->second;
-      return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
+      return true;
     }
     break;
   }
@@ -913,7 +795,7 @@ redo_gep:
       V = GEP;
       goto redo_gep;
     } else if (X86SelectAddress(U->getOperand(0), AM)) {
-      return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
+      return true;
     }
 
     // If we couldn't merge the gep value into this addr mode, revert back to
@@ -923,7 +805,7 @@ redo_gep:
     for (SmallVectorImpl<const Value *>::reverse_iterator
            I = GEPs.rbegin(), E = GEPs.rend(); I != E; ++I)
       if (handleConstantAddresses(*I, AM))
-        return isLegalAddressingModeForNaCl(Subtarget, AM); // @LOCALMOD
+        return true;
 
     return false;
   unsupported_gep:
@@ -932,11 +814,7 @@ redo_gep:
   }
   }
 
-  // @LOCALMOD-START
-  if (handleConstantAddresses(V, AM))
-    return isLegalAddressingModeForNaCl(Subtarget, AM);
-  return false;
-  // @LOCALMOD-END
+  return handleConstantAddresses(V, AM);
 }
 
 /// X86SelectCallAddress - Attempt to fill in an address from the given value.
@@ -1200,15 +1078,10 @@ bool X86FastISel::X86SelectRet(const Instruction *I) {
     unsigned Reg = X86MFInfo->getSRetReturnReg();
     assert(Reg &&
            "SRetReturnReg should have been set in LowerFormalArguments()!");
-    // @LOCALMOD-BEGIN -- Ensure that the register classes match.
-    // At this point, SRetReturnReg is EDI, because PointerTy() for NaCl
-    // is i32.  We then copy to EAX instead of RAX.  Alternatively, we could
-    // have zero-extended EDI to RDI then copy to RAX, but this has a smaller
-    // encoding (2 bytes vs 3 bytes).
-    unsigned CopyTo = Subtarget->isTarget64BitLP64() ? X86::RAX : X86::EAX;
+    unsigned RetReg = Subtarget->is64Bit() ? X86::RAX : X86::EAX;
     BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-            TII.get(TargetOpcode::COPY), CopyTo).addReg(Reg);
-    // @LOCALMOD-END
+            TII.get(TargetOpcode::COPY), RetReg).addReg(Reg);
+    RetRegs.push_back(RetReg);
   }
 
   // Now emit the RET.
@@ -3216,32 +3089,13 @@ bool X86FastISel::fastLowerCall(CallLoweringInfo &CLI) {
   MachineInstrBuilder MIB;
   if (CalleeOp) {
     // Register-indirect call.
-    unsigned CallOpc;
-    if (Subtarget->is64Bit()) {
-      // @LOCALMOD-BEGIN: zero extend the register like in the non-O0 case:
-      // http://reviews.llvm.org/D5355
-      // TODO: upstream this for x32 also (add a test).
-      if (Subtarget->isTarget64BitILP32()) {
-        unsigned CalleeOp32 = CalleeOp;
-        CalleeOp = createResultReg(&X86::GR64RegClass);
-        BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc,
-                TII.get(TargetOpcode::SUBREG_TO_REG), CalleeOp)
-            .addImm(0).addReg(CalleeOp32).addImm(X86::sub_32bit);
-      }
-      // @LOCALMOD-END
-      CallOpc = X86::CALL64r;
-    } else
-      CallOpc = X86::CALL32r;
+    unsigned CallOpc = Is64Bit ? X86::CALL64r : X86::CALL32r;
     MIB = BuildMI(*FuncInfo.MBB, FuncInfo.InsertPt, DbgLoc, TII.get(CallOpc))
       .addReg(CalleeOp);
   } else {
     // Direct call.
     assert(GV && "Not a direct call");
-    unsigned CallOpc;
-    if (Subtarget->is64Bit())
-      CallOpc = Subtarget->isTargetNaCl() ? X86::NACL_CG_CALL64pcrel32 : X86::CALL64pcrel32; // @LOCALMOD
-    else
-      CallOpc = X86::CALLpcrel32;
+    unsigned CallOpc = Is64Bit ? X86::CALL64pcrel32 : X86::CALLpcrel32;
 
     // See if we need any target-specific flags on the GV operand.
     unsigned char OpFlags = 0;

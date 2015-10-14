@@ -64,8 +64,7 @@ static std::string computeDataLayout(const Triple &TT) {
     Ret += "-p:32:32";
 
   // Some ABIs align 64 bit integers and doubles to 64 bits, others to 32.
-  if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl() ||
-      MalignDouble) //@LOCALMOD
+  if (TT.isArch64Bit() || TT.isOSWindows() || TT.isOSNaCl())
     Ret += "-i64:64";
   else
     Ret += "-f64:32:64";
@@ -267,9 +266,4 @@ void X86PassConfig::addPreEmitPass() {
     addPass(createX86PadShortFunctions());
     addPass(createX86FixupLEAs());
   }
-  // @LOCALMOD-START
-  if (Triple(TM->getTargetTriple()).isOSNaCl()) {
-    addPass(createX86NaClRewritePass());
-  }
-  // @LOCALMOD-END
 }

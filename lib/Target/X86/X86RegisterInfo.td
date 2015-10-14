@@ -262,8 +262,6 @@ def ES : X86Reg<"es", 0>;
 def FS : X86Reg<"fs", 4>;
 def GS : X86Reg<"gs", 5>;
 
-def PSEUDO_NACL_SEG : X86Reg<"nacl", 6>; // @LOCALMOD
-
 // Debug registers
 def DR0  : X86Reg<"dr0",   0>;
 def DR1  : X86Reg<"dr1",   1>;
@@ -354,9 +352,7 @@ def GR64 : RegisterClass<"X86", [i64], 64,
 // Segment registers for use by MOV instructions (and others) that have a
 //   segment register as one operand.  Always contain a 16-bit segment
 //   descriptor.
-def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS,
-                                                   // @LOCALMOD
-                                                   PSEUDO_NACL_SEG)>;
+def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS)>;
 
 // Debug registers.
 def DEBUG_REG : RegisterClass<"X86", [i32], 32, (sequence "DR%u", 0, 7)>;

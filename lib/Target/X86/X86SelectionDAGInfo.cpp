@@ -55,13 +55,6 @@ X86SelectionDAGInfo::EmitTargetCodeForMemset(SelectionDAG &DAG, SDLoc dl,
   const X86Subtarget &Subtarget =
       DAG.getMachineFunction().getSubtarget<X86Subtarget>();
 
-  // @LOCALMOD-BEGIN
-  if (Subtarget.isTargetNaCl()) {
-    // TODO: Can we allow this optimization for Native Client?
-    // At the very least, pointer size needs to be fixed below.
-    return SDValue();
-  }
-  // @LOCALMOD-END
 #ifndef NDEBUG
   // If the base register might conflict with our physical registers, bail out.
   const unsigned ClobberSet[] = {X86::RCX, X86::RAX, X86::RDI,
@@ -219,13 +212,6 @@ SDValue X86SelectionDAGInfo::EmitTargetCodeForMemcpy(
   uint64_t SizeVal = ConstantSize->getZExtValue();
   if (!AlwaysInline && SizeVal > Subtarget.getMaxInlineSizeThreshold())
     return SDValue();
-
-  // @LOCALMOD-BEGIN
-  if (Subtarget.isTargetNaCl()) {
-    // TODO(pdox): Allow use of the NaCl pseudo-instruction for REP MOV
-    return SDValue();
-  }
-  // @LOCALMOD-END
 
   /// If not DWORD aligned, it is more efficient to call the library.  However
   /// if calling the library is not allowed (AlwaysInline), then soldier on as

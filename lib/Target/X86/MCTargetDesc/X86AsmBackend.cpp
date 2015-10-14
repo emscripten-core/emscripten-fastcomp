@@ -9,7 +9,6 @@
 
 #include "MCTargetDesc/X86BaseInfo.h"
 #include "MCTargetDesc/X86FixupKinds.h"
-#include "MCTargetDesc/X86MCNaCl.h" // @LOCALMOD
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCELFObjectWriter.h"
@@ -108,19 +107,12 @@ public:
     assert(Fixup.getOffset() + Size <= DataSize &&
            "Invalid fixup offset!");
 
-    // @LOCALMOD-BEGIN
-    // This check breaks negative addends on x86-32.  It makes x86-32
-    // behaviour inconsistent with x86-64 and ARM.
-    // See: https://code.google.com/p/nativeclient/issues/detail?id=3548
-#if 0
     // Check that uppper bits are either all zeros or all ones.
     // Specifically ignore overflow/underflow as long as the leakage is
     // limited to the lower bits. This is to remain compatible with
     // other assemblers.
     assert(isIntN(Size * 8 + 1, Value) &&
            "Value does not fit in the Fixup field");
-#endif
-    // @LOCALMOD-END
 
     for (unsigned i = 0; i != Size; ++i)
       Data[Fixup.getOffset() + i] = uint8_t(Value >> (i * 8));
@@ -376,46 +368,6 @@ public:
     return createX86ELFObjectWriter(OS, /*IsELF64*/ true, OSABI, ELF::EM_X86_64);
   }
 };
-
-// @LOCALMOD-BEGIN
-class NaClX86_32AsmBackend : public ELFX86_32AsmBackend {
-public:
-  NaClX86_32AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
-      : ELFX86_32AsmBackend(T, OSABI, CPU),
-        STI(X86_MC::createX86MCSubtargetInfo("i386-unknown-nacl", CPU, "")) {
-    State.PrefixSaved = 0;
-    State.EmitRaw = false;
-  }
-  ~NaClX86_32AsmBackend() override {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) override {
-    return CustomExpandInstNaClX86(*STI, Inst, Out, State);
-  }
-
-private:
-  std::unique_ptr<MCSubtargetInfo> STI;
-  X86MCNaClSFIState State;
-};
-
-class NaClX86_64AsmBackend : public ELFX86_64AsmBackend {
-public:
-  NaClX86_64AsmBackend(const Target &T, uint8_t OSABI, StringRef CPU)
-      : ELFX86_64AsmBackend(T, OSABI, CPU),
-        STI(X86_MC::createX86MCSubtargetInfo("x86_64-unknown-nacl", CPU, "")) {
-    State.PrefixSaved = 0;
-    State.EmitRaw = false;
-  }
-  ~NaClX86_64AsmBackend() override {}
-
-  bool CustomExpandInst(const MCInst &Inst, MCStreamer &Out) override {
-    return CustomExpandInstNaClX86(*STI, Inst, Out, State);
-  }
-
-private:
-  std::unique_ptr<MCSubtargetInfo> STI;
-  X86MCNaClSFIState State;
-};
-// @LOCALMOD-END
 
 class WindowsX86AsmBackend : public X86AsmBackend {
   bool Is64Bit;
@@ -828,10 +780,6 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T,
     return new WindowsX86AsmBackend(T, false, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
-  // @LOCALMOD-BEGIN
-  if (TheTriple.isOSNaCl())
-    return new NaClX86_32AsmBackend(T, OSABI, CPU);
-  // @LOCALMOD-END
   return new ELFX86_32AsmBackend(T, OSABI, CPU);
 }
 
@@ -852,10 +800,6 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T,
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
 
-  // @LOCALMOD-BEGIN
-  if (TheTriple.isOSNaCl())
-    return new NaClX86_64AsmBackend(T, OSABI, CPU);
-  // @LOCALMOD-END
   if (TheTriple.getEnvironment() == Triple::GNUX32)
     return new ELFX86_X32AsmBackend(T, OSABI, CPU);
   return new ELFX86_64AsmBackend(T, OSABI, CPU);

@@ -14,7 +14,6 @@
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/FaultMaps.h"
 #include "llvm/CodeGen/StackMaps.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 
 // Implemented in X86MCInstLower.cpp
@@ -106,13 +105,6 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
 
   void EmitInstruction(const MachineInstr *MI) override;
 
-  bool UseReadOnlyJumpTables() const override; // @LOCALMOD
-
-  unsigned GetTargetBasicBlockAlign() const override; // @LOCLAMOD
-
-  unsigned
-  GetTargetLabelAlign(const MachineInstr *MI) const override; //@LOCALMOD
-
   void EmitBasicBlockEnd(const MachineBasicBlock &MBB) override {
     SMShadowTracker.emitShadowPadding(*OutStreamer, getSubtargetInfo());
   }
@@ -128,14 +120,7 @@ class LLVM_LIBRARY_VISIBILITY X86AsmPrinter : public AsmPrinter {
   MCSymbol *GetCPISymbol(unsigned CPID) const override;
 
   bool doInitialization(Module &M) override {
-    // @LOCALMOD-BEGIN -- disable ShadowMapShadowTracker for NaCl for now.
-    // This requires knowing the size of instructions, and with NaCl pseudos
-    // being expanded late by the streamer, it isn't going to be counting
-    // the expanded instruction. It might not be counting the bundle padding
-    // correctly either.
-    if (!Triple(M.getTargetTriple()).isOSNaCl())
-      SMShadowTracker.reset(0);
-    // @LOCALMOD-END
+    SMShadowTracker.reset(0);
     SM.reset();
     return AsmPrinter::doInitialization(M);
   }
