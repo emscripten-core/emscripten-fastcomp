@@ -159,7 +159,26 @@ bool StripDanglingDISubprograms::runOnModule(Module &M) {
   if (!CU_Nodes)
     return false;
 
-  llvm_unreachable("pass no longer maintained");
+  bool Changed = false;
+  for (MDNode *N : CU_Nodes->operands()) {
+    auto *CUNode = cast<MDCompileUnit>(N);
+    for (auto *SP : CUNode->getSubprograms()) {
+      // For each subprogram in the debug info, check its function for dbg
+      // attachments. The allocas and some other stuff in the entry block
+      // typically do not have attachments but everything else usually does.
+      // In the worst case this walks the whole function (if there are no
+      // attachments) but this only happens in the (uncommon) bad case that
+      // we want to fix; i.e. there is a DISubprogram but no attachments).
+      // Usually either there will be no DISubprograms or we will have to
+      // check just a few instructions per function.
+      Function *F = SP->getFunction();
+      if (F && !functionHasDbgAttachment(*F)) {
+        // Can't really delete it, just remove the reference to the Function.
+        SP->replaceFunction(nullptr);
+        Changed = true;
+      }
+    }
+  }
 
-  return false;
+  return Changed;
 }
