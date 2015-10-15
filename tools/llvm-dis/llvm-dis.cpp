@@ -18,7 +18,6 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/Bitcode/ReaderWriter.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"  // @LOCALMOD
 #include "llvm/IR/AssemblyAnnotationWriter.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DiagnosticInfo.h"
@@ -26,7 +25,6 @@
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Type.h"
-#include "llvm/IRReader/IRReader.h"  // @LOCALMOD
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataStream.h"
 #include "llvm/Support/FileSystem.h"
@@ -35,7 +33,6 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Signals.h"
-#include "llvm/Support/StreamingMemoryObject.h" // @LOCALMOD
 #include "llvm/Support/ToolOutputFile.h"
 #include <system_error>
 using namespace llvm;
@@ -61,18 +58,6 @@ static cl::opt<bool> PreserveAssemblyUseListOrder(
     "preserve-ll-uselistorder",
     cl::desc("Preserve use-list order when writing LLVM assembly."),
     cl::init(false), cl::Hidden);
-
-// @LOCALMOD-BEGIN
-static cl::opt<NaClFileFormat>
-InputFileFormat(
-    "bitcode-format",
-    cl::desc("Define format of input bitcode file:"),
-    cl::values(
-        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode file (default)"),
-        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
-        clEnumValEnd),
-    cl::init(LLVMFormat));
-// @LOCALMOD-END
 
 namespace {
 
@@ -166,8 +151,6 @@ int main(int argc, char **argv) {
   std::unique_ptr<DataStreamer> Streamer =
       getDataFileStreamer(InputFilename, &ErrorMessage);
   if (Streamer) {
-    std::unique_ptr<StreamingMemoryObject> Buffer(
-        new StreamingMemoryObjectImpl(Streamer));  // @LOCALMOD
     std::string DisplayFilename;
     if (InputFilename == "-")
       DisplayFilename = "<stdin>";
