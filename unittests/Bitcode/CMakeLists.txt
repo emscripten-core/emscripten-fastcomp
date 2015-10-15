@@ -4,8 +4,6 @@ set(LLVM_LINK_COMPONENTS
   BitWriter
   NaClBitAnalysis
   NaClBitTestUtils
-  NaClBitReader
-  NaClBitWriter
   Core
   Support
   )
@@ -14,8 +12,6 @@ add_llvm_unittest(BitcodeTests
   BitReaderTest.cpp
   BitstreamReaderTest.cpp
   NaClAbbrevTrieTest.cpp
-  NaClBitReaderTest.cpp
-  NaClBitstreamReaderTest.cpp
   NaClCompressTests.cpp
   NaClMungedBitcodeTest.cpp
   NaClMungedIoTest.cpp
