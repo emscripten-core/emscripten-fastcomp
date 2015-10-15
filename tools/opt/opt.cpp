@@ -755,20 +755,6 @@ int main(int argc, char **argv) {
     if (OutputAssembly)
       Passes.add(
           createPrintModulePass(Out->os(), "", PreserveAssemblyUseListOrder));
-    else
-      // @LOCALMOD-START
-      switch (OutputFileFormat) {
-      case LLVMFormat:
-        Passes.add(createBitcodeWriterPass(Out->os(), PreserveBitcodeUseListOrder));
-        break;
-      case PNaClFormat:
-        Passes.add(createNaClBitcodeWriterPass(Out->os()));
-        break;
-      case AutodetectFileFormat:
-        report_fatal_error("Command can't autodetect file format!");
-        break;
-      }
-      // @LOCALMOD-END
   }
 
   // Before executing passes, print the final values of the LLVM options.
