@@ -35,6 +35,12 @@ void JSTTIImpl::getUnrollingPreferences(Loop *L,
   UP.Runtime = false;
 }
 
+unsigned JSTTIImpl::getNumberOfRegisters(bool Vector) {
+  if (Vector) return 16; // like NEON, x86_64, etc.
+
+  return 8; // like x86, thumb, etc.
+}
+
 unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) {
   if (Vector) {
     return 128;

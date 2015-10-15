@@ -72,6 +72,8 @@ public:
     return TargetTransformInfo::PSK_Software;
   }
 
+  unsigned getNumberOfRegisters(bool Vector);
+
   unsigned getRegisterBitWidth(bool Vector);
 
   unsigned getArithmeticInstrCost(
