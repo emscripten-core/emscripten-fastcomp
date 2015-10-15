@@ -17,20 +17,25 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-JSTargetMachine::JSTargetMachine(const Target &T, StringRef Triple,
+JSSubtarget::JSSubtarget(const TargetMachine& TM, const Triple &TT) :
+  TargetSubtargetInfo(TT, "asmjs", "FS?", None, None, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+  TL(TM)
+ {}
+
+
+JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
                                  StringRef CPU, StringRef FS, const TargetOptions &Options,
                                  Reloc::Model RM, CodeModel::Model CM,
                                  CodeGenOpt::Level OL)
-    : TargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", Triple, CPU,
+    : TargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", TT, CPU,
                     FS, Options),
-      ST(*this) {
-  CodeGenInfo = T.createMCCodeGenInfo(Triple, RM, CM, OL);
+      ST(*this, TT) {
+  CodeGenInfo = T.createMCCodeGenInfo("asmjs", RM, CM, OL);
 }
 
 
 TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis([this](Function &F) {
-    return TargetTransformInfo(JSTTIImpl(this));
-  });
+  return TargetIRAnalysis(
+      [this](Function &F) { return TargetTransformInfo(JSTTIImpl(this, F)); });
 }
 
