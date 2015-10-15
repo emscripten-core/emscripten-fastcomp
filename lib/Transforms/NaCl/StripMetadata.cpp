@@ -161,7 +161,7 @@ bool StripDanglingDISubprograms::runOnModule(Module &M) {
 
   bool Changed = false;
   for (MDNode *N : CU_Nodes->operands()) {
-    auto *CUNode = cast<MDCompileUnit>(N);
+    auto *CUNode = cast<DICompileUnit>(N);
     for (auto *SP : CUNode->getSubprograms()) {
       // For each subprogram in the debug info, check its function for dbg
       // attachments. The allocas and some other stuff in the entry block
