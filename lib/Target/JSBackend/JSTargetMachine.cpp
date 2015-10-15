@@ -17,8 +17,16 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
+extern const llvm::SubtargetFeatureKV JSSubTypeKV[] = {
+  { "asmjs", "Select the asmjs processor", { }, { } }
+};
+
+static const llvm::SubtargetInfoKV JSProcSchedModels[] = {
+  { "asmjs", &MCSchedModel::GetDefaultSchedModel() }
+};
+
 JSSubtarget::JSSubtarget(const TargetMachine& TM, const Triple &TT) :
-  TargetSubtargetInfo(TT, "asmjs", "FS?", None, None, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
+  TargetSubtargetInfo(TT, "asmjs", "asmjs", None, makeArrayRef(JSSubTypeKV, 1), JSProcSchedModels, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr),
   TL(TM)
  {}
 
