@@ -60,6 +60,10 @@ public:
   const TargetSubtargetInfo *getJSSubtargetImpl() const {
     return &ST;
   }
+
+  const JSSubtarget *getSubtargetImpl(const Function &F) const override {
+    return &ST;
+  }
 };
 
 } // End llvm namespace

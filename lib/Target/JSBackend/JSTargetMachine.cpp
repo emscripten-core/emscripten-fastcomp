@@ -41,9 +41,9 @@ JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
   CodeGenInfo = T.createMCCodeGenInfo("asmjs", RM, CM, OL);
 }
 
-
 TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis(
-      [this](Function &F) { return TargetTransformInfo(JSTTIImpl(this, F)); });
+  return TargetIRAnalysis([this](Function &F) {
+    return TargetTransformInfo(JSTTIImpl(this, F));
+  });
 }
 
