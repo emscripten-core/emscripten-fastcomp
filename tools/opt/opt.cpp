@@ -755,6 +755,9 @@ int main(int argc, char **argv) {
     if (OutputAssembly)
       Passes.add(
           createPrintModulePass(Out->os(), "", PreserveAssemblyUseListOrder));
+    else
+      Passes.add(
+          createBitcodeWriterPass(Out->os(), PreserveBitcodeUseListOrder));
   }
 
   // Before executing passes, print the final values of the LLVM options.
