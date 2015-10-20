@@ -1,5 +1,0 @@
-RUN: pnacl-bcfuzz -bitcode-as-text %p/Inputs/bad-zext-cast.tbc -output - \
-RUN:   | not pnacl-bcdis | FileCheck --check-prefix=BAD-ZEXT-CAST %s
-
-BAD-ZEXT-CAST:      %v1 = zext i32 %p0 to i32 (i32);
-BAD-ZEXT-CAST-NEXT: Invalid cast 'zext'. Not defined on i32 to i32 (i32)

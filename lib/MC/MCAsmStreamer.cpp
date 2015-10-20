@@ -14,7 +14,6 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAsmInfo.h"
-#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCCodeEmitter.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
@@ -51,9 +50,6 @@ class MCAsmStreamer final : public MCStreamer {
   unsigned IsVerboseAsm : 1;
   unsigned ShowInst : 1;
   unsigned UseDwarfDirectory : 1;
-  // @LOCALMOD: we don't have an MCAssembler object here, so we can't ask it
-  // if bundle alignment is enabled. Instead, just track the alignment here.
-  unsigned BundleAlignmentEnabled : 1;
 
   void EmitRegisterName(int64_t Register);
   void EmitCFIStartProcImpl(MCDwarfFrameInfo &Frame) override;
@@ -1314,15 +1310,6 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
   assert(getCurrentSection().first &&
          "Cannot emit contents before setting section!");
 
-  // @LOCALMOD-START
-  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
-    return;
-
-  if (BundleAlignmentEnabled && AsmBackend &&
-      AsmBackend->CustomExpandInst(Inst, *this)) {
-    return;
-  }
-  // @LOCALMOD-END
   // Show the encoding in a comment if we have a code emitter.
   if (Emitter)
     AddEncodingComment(Inst, STI);
@@ -1343,7 +1330,6 @@ void MCAsmStreamer::EmitInstruction(const MCInst &Inst, const MCSubtargetInfo &S
 
 void MCAsmStreamer::EmitBundleAlignMode(unsigned AlignPow2) {
   OS << "\t.bundle_align_mode " << AlignPow2;
-  BundleAlignmentEnabled = AlignPow2 > 0; // @LOCALMOD
   EmitEOL();
 }
 

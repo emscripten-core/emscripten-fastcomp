@@ -286,18 +286,6 @@ public:
   // Targets can, or in the case of EmitInstruction, must implement these to
   // customize output.
 
-  // @LOCALMOD-START
-  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
-  virtual bool UseReadOnlyJumpTables() const { return false; }
-  /// GetTargetBasicBlockAlign - the target alignment for basic blocks.
-  virtual unsigned GetTargetBasicBlockAlign() const { return 0; }
-  /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
-  /// labels E.g., EH_LABEL.
-  virtual unsigned GetTargetLabelAlign(const MachineInstr *MI) const {
-    return 0;
-  }
-  // @LOCALMOD-END
-
   /// This virtual method can be overridden by targets that want to emit
   /// something at the start of their file.
   virtual void EmitStartOfAsmFile(Module &) {}
@@ -312,12 +300,7 @@ public:
 
   /// Targets can override this to emit stuff after the last basic block in the
   /// function.
-  virtual void EmitFunctionBodyEnd() {
-    // @LOCALMOD-START
-    unsigned NextFunctionAlignment = GetTargetBasicBlockAlign();
-    if (NextFunctionAlignment) EmitAlignment(NextFunctionAlignment);
-    // @LOCALMOD-END
-  }
+  virtual void EmitFunctionBodyEnd() {}
 
   /// Targets can override this to emit stuff at the start of a basic block.
   /// By default, this method prints the label for the specified

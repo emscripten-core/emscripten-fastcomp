@@ -90,7 +90,6 @@ static struct {
 
 
 static void RegisterHandler(int Signal) {
-#if !defined(__native_client__)
   assert(NumRegisteredSignals <
          sizeof(RegisteredSignalInfo)/sizeof(RegisteredSignalInfo[0]) &&
          "Out of space for signal handlers!");
@@ -106,7 +105,6 @@ static void RegisterHandler(int Signal) {
             &RegisteredSignalInfo[NumRegisteredSignals].SA);
   RegisteredSignalInfo[NumRegisteredSignals].SigNo = Signal;
   ++NumRegisteredSignals;
-#endif // (__native_client__)
 }
 
 static void RegisterHandlers() {
@@ -124,13 +122,11 @@ static void RegisterHandlers() {
 }
 
 static void UnregisterHandlers() {
-#if !defined(__native_client__)
   // Restore all of the signal handlers to how they were before we showed up.
   for (unsigned i = 0, e = NumRegisteredSignals; i != e; ++i)
     sigaction(RegisteredSignalInfo[i].SigNo,
               &RegisteredSignalInfo[i].SA, nullptr);
   NumRegisteredSignals = 0;
-#endif // (__native_client__)
 }
 
 
@@ -176,12 +172,10 @@ static RETSIGTYPE SignalHandler(int Sig) {
   // instead of recursing in the signal handler.
   UnregisterHandlers();
 
-#if !defined(__native_client__)
   // Unmask all potentially blocked kill signals.
   sigset_t SigMask;
   sigfillset(&SigMask);
   sigprocmask(SIG_UNBLOCK, &SigMask, nullptr);
-#endif
 
   {
     unique_lock<SmartMutex<true>> Guard(*SignalsMutex);

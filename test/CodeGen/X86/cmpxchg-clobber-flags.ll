@@ -2,10 +2,6 @@
 ; RUN: llc -verify-machineinstrs -mtriple=i386-linux-gnu -pre-RA-sched=fast %s -o - | FileCheck %s
 ; RUN: llc -verify-machineinstrs -mtriple=x86_64-linux-gnu %s -o - | FileCheck %s
 ; RUN: llc -verify-machineinstrs -mtriple=x86_64-linux-gnu -pre-RA-sched=fast %s -o - | FileCheck %s
-; RUN: llc -mtriple=i386-unknown-nacl %s -o - | FileCheck %s -check-prefix=NACL
-; RUN: llc -mtriple=i386-unknown-nacl -pre-RA-sched=fast %s -o - | FileCheck %s -check-prefix=NACL
-; RUN: llc -mtriple=x86_64-unknown-nacl %s -o - | FileCheck %s -check-prefix=NACL
-; RUN: llc -mtriple=x86_64-unknown-nacl -pre-RA-sched=fast %s -o - | FileCheck %s -check-prefix=NACL
 
 declare i32 @bar()
 
@@ -20,23 +16,6 @@ define i64 @test_intervening_call(i64* %foo, i64 %bar, i64 %baz) {
 ; CHECK-NEXT: push[[LQ]] [[FLAGS]]
 ; CHECK-NEXT: popf[[LQ]]
 ; CHECK-NEXT: jne
-
-
-; NACL-LABEL: test_intervening_call:
-; NACL: cmpxchg
-; NACL: push[[LQ:[lq]]] [[AX:%.*]]
-; NACL-NEXT: lahf
-; NACL-NEXT: mov[[LQ]] [[AX]], [[FLAGS:%.*]]
-; NACL-NEXT: pop[[LQ]] [[AX]]
-
-; NACL-NEXT: call[[LQ]] bar
-
-; NACL-NEXT: push[[LQ]] [[AX]]
-; NACL-NEXT: mov[[LQ]] [[FLAGS]], [[AX]]
-; NACL-NEXT: sahf
-; NACL-NEXT: pop[[LQ]] [[AX]]
-; NACL-NEXT: jne
-
   %cx = cmpxchg i64* %foo, i64 %bar, i64 %baz seq_cst seq_cst
   %p = extractvalue { i64, i1 } %cx, 1
   call i32 @bar()
@@ -52,13 +31,9 @@ f:
 ; Interesting in producing a clobber without any function calls.
 define i32 @test_control_flow(i32* %p, i32 %i, i32 %j) {
 ; CHECK-LABEL: test_control_flow:
+
 ; CHECK: cmpxchg
 ; CHECK-NEXT: jne
-
-; NACL-LABEL: test_control_flow:
-; NACL: cmpxchg
-; NACL-NEXT: jne
-
 entry:
   %cmp = icmp sgt i32 %i, %j
   br i1 %cmp, label %loop_start, label %cond.end
@@ -93,6 +68,7 @@ cond.end:
 ; operand. Naive attempts to limit cmpxchg EFLAGS use are likely to fail here.
 define i32 @test_feed_cmov(i32* %addr, i32 %desired, i32 %new) {
 ; CHECK-LABEL: test_feed_cmov:
+
 ; CHECK: cmpxchg
 ; CHECK: pushf[[LQ:[lq]]]
 ; CHECK-NEXT: pop[[LQ]] [[FLAGS:%.*]]
@@ -101,21 +77,6 @@ define i32 @test_feed_cmov(i32* %addr, i32 %desired, i32 %new) {
 
 ; CHECK-NEXT: push[[LQ]] [[FLAGS]]
 ; CHECK-NEXT: popf[[LQ]]
-
-
-; NACL-LABEL: test_feed_cmov:
-; NACL: cmpxchg
-; NACL: push[[LQ:[lq]]] [[AX:%.*]]
-; NACL-NEXT: lahf
-; NACL-NEXT: mov[[LQ]] [[AX]], [[FLAGS:%.*]]
-; NACL-NEXT: pop[[LQ]] [[AX]]
-
-; NACL-NEXT: call[[LQ]] bar
-
-; NACL-NEXT: push[[LQ]] [[AX]]
-; NACL-NEXT: mov[[LQ]] [[FLAGS]], [[AX]]
-; NACL-NEXT: sahf
-; NACL-NEXT: pop[[LQ]] [[AX]]
   %res = cmpxchg i32* %addr, i32 %desired, i32 %new seq_cst seq_cst
   %success = extractvalue { i32, i1 } %res, 1
 

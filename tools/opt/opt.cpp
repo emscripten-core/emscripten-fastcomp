@@ -204,18 +204,6 @@ static cl::opt<bool> PreserveBitcodeUseListOrder(
     "preserve-bc-uselistorder",
     cl::desc("Preserve use-list order when writing LLVM bitcode."),
     cl::init(true), cl::Hidden);
-// @LOCALMOD-BEGIN
-static cl::opt<NaClFileFormat>
-OutputFileFormat(
-    "bitcode-format",
-    cl::desc("Define format of generated bitcode file:"),
-    cl::values(
-        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode file (default)"),
-        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
-        clEnumValEnd),
-    cl::init(LLVMFormat));
-extern bool OutputFileFormatIsPNaCl;
-// @LOCALMOD-END
 
 static cl::opt<bool> PreserveAssemblyUseListOrder(
     "preserve-ll-uselistorder",

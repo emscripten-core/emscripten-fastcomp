@@ -1,8 +1,4 @@
 ; RUN: llc -mtriple=x86_64-apple-macosx -mcpu=core2 < %s | FileCheck %s
-; @LOCALMOD
-; TODO: NaCl tailcall "support" is a mess and has no tests. This only tests for
-; Bug https://code.google.com/p/nativeclient/issues/detail?id=4123
-; RUN: llc -mtriple=x86_64-unknown-nacl -mcpu=core2 < %s | FileCheck %s --check-prefix=NACL
 
 declare i64 @testi()
 
@@ -212,10 +208,6 @@ entry:
 ;
 ; CHECK-LABEL: rdar12282281
 ; CHECK: jmpq *%r11 ## TAILCALL
-
-; For NaCl, ensure we do not tail-call-optimize 6-arg functions
-; NACL-LABEL: rdar12282281
-; NACL: naclcall
 @funcs = external constant [0 x i32 (i8*, ...)*]
 
 define i32 @rdar12282281(i32 %n) nounwind uwtable ssp {
@@ -231,7 +223,6 @@ define x86_fp80 @fp80_call(x86_fp80 %x) nounwind  {
 entry:
 ; CHECK-LABEL: fp80_call:
 ; CHECK: jmp _fp80_callee
-; NACL-LABEL: fp80_call
   %call = tail call x86_fp80 @fp80_callee(x86_fp80 %x) nounwind
   ret x86_fp80 %call
 }

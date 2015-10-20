@@ -406,28 +406,6 @@ void AtomicVisitor::visitAtomicCmpXchgInst(AtomicCmpXchgInst &I) {
 /// Note that the assembly gets eliminated by the -remove-asm-memory pass.
 void AtomicVisitor::visitFenceInst(FenceInst &I) {
   return; // XXX EMSCRIPTEN
-  Type *T = Type::getInt32Ty(C); // Fences aren't overloaded on type.
-  BasicBlock::InstListType &IL(I.getParent()->getInstList());
-  bool isFirst = IL.empty() || &*I.getParent()->getInstList().begin() == &I;
-  bool isLast = IL.empty() || &*I.getParent()->getInstList().rbegin() == &I;
-  CallInst *PrevC = isFirst ? 0 : dyn_cast<CallInst>(I.getPrevNode());
-  CallInst *NextC = isLast ? 0 : dyn_cast<CallInst>(I.getNextNode());
-
-  if ((PrevC && PrevC->isInlineAsm() &&
-       cast<InlineAsm>(PrevC->getCalledValue())->isAsmMemory()) &&
-      (NextC && NextC->isInlineAsm() &&
-       cast<InlineAsm>(NextC->getCalledValue())->isAsmMemory()) &&
-      I.getOrdering() == SequentiallyConsistent) {
-    const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
-        findAtomicIntrinsic(I, Intrinsic::nacl_atomic_fence_all, T);
-    replaceInstructionWithIntrinsicCall(I, Intrinsic, T, T,
-                                        ArrayRef<Value *>());
-  } else {
-    const NaCl::AtomicIntrinsics::AtomicIntrinsic *Intrinsic =
-        findAtomicIntrinsic(I, Intrinsic::nacl_atomic_fence, T);
-    Value *Args[] = {freezeMemoryOrder(I, I.getOrdering())};
-    replaceInstructionWithIntrinsicCall(I, Intrinsic, T, T, Args);
-  }
 }
 
 ModulePass *llvm::createRewriteAtomicsPass() { return new RewriteAtomics(); }

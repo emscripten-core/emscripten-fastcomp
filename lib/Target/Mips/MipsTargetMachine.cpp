@@ -32,27 +32,9 @@
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
 
-// @LOCALMOD-START
-#if !defined(PNACL_BROWSER_TRANSLATOR)
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Transforms/IPO.h"
-#include "llvm/Transforms/NaCl.h"
-#endif
-// @LOCALMOD-END
-
 using namespace llvm;
 
 #define DEBUG_TYPE "mips"
-
-// @LOCALMOD-START
-#if !defined(PNACL_BROWSER_TRANSLATOR)
-static cl::opt<bool>
-DirectToNaCl("direct-to-nacl",
-    cl::init(false),
-    cl::desc("MIPS-D2N: add passes required for direct-to-nacl."),
-    cl::Hidden);
-#endif
-// @LOCALMOD-END
 
 extern "C" void LLVMInitializeMipsTarget() {
   // Register the target.
@@ -230,17 +212,6 @@ void MipsPassConfig::addIRPasses() {
     addPass(createMipsOs16Pass(getMipsTargetMachine()));
   if (getMipsSubtarget().inMips16HardFloat())
     addPass(createMips16HardFloatPass(getMipsTargetMachine()));
-
-  // @LOCALMOD-START
-#if !defined(PNACL_BROWSER_TRANSLATOR)
-  if (DirectToNaCl) {
-    addPass(createExpandByValPass());
-
-    addPass(createAddPNaClExternalDeclsPass());
-    addPass(createResolvePNaClIntrinsicsPass());
-  }
-#endif
-  // @LOCALMOD-END
 }
 // Install an instruction selector pass using
 // the ISelDag to gen Mips code.

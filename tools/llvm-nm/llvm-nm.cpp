@@ -20,8 +20,6 @@
 #include "llvm/IR/GlobalAlias.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h" // @LOCALMOD
-#include "llvm/IRReader/IRReader.h"             // @LOCALMOD
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/ELFObjectFile.h"
@@ -161,21 +159,6 @@ bool MultipleFiles = false;
 bool HadError = false;
 
 std::string ToolName;
-
-// @LOCALMOD-BEGIN
-cl::opt<NaClFileFormat> InputFileFormat(
-    "bitcode-format", cl::desc("Define format of input file:"),
-    cl::values(clEnumValN(LLVMFormat, "llvm", "LLVM file (default)"),
-               clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
-               clEnumValEnd),
-    cl::init(LLVMFormat));
-
-static cl::opt<bool>
-VerboseErrors(
-    "verbose-parse-errors",
-    cl::desc("Print out more descriptive PNaCl bitcode parse errors"),
-    cl::init(false));
-// @LOCALMOD-END
 }
 
 static void error(Twine Message, Twine Path = Twine()) {
@@ -947,35 +930,6 @@ static void dumpSymbolNamesFromFile(std::string &Filename) {
     return;
 
   LLVMContext &Context = getGlobalContext();
-
-  // @LOCALMOD-BEGIN
-  // Support parsing PNaCl bitcode files
-  switch (InputFileFormat) {
-  case LLVMFormat:
-    break;
-  case PNaClFormat:
-  case AutodetectFileFormat:
-    report_fatal_error("command only supports LLVM file format!");
-  }
-  /* TODO(jfb) This is currently broken: the code base now requires an Object.
-  if (InputFileFormat == PNaClFormat) {
-    std::string VerboseBuffer;
-    raw_string_ostream VerboseStrm(VerboseBuffer);
-    raw_ostream *Verbose = VerboseErrors ? &VerboseStrm : nullptr;
-    ErrorOr<Module *> Result =
-        NaClParseBitcodeFile(BufferOrErr.get().release(), Verbose,
-        Context);
-    if (Result) {
-      DumpSymbolNamesFromModule(Result.get());
-      delete Result;
-    } else {
-      error(VerboseStrm.str() + Result.message()), Filename);
-      return;
-    }
-  }
-  */
-  // @LOCALMOD-END
-
   ErrorOr<std::unique_ptr<Binary>> BinaryOrErr = createBinary(
       BufferOrErr.get()->getMemBufferRef(), NoLLVMBitcode ? nullptr : &Context);
   if (error(BinaryOrErr.getError(), Filename))

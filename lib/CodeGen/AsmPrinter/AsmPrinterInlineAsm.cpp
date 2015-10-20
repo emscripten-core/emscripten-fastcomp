@@ -77,11 +77,6 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MCSubtargetInfo &STI,
                                const MCTargetOptions &MCOptions,
                                const MDNode *LocMDNode,
                                InlineAsm::AsmDialect Dialect) const {
-#if defined(__native_client__)
-  // Prune the generic AsmParser bits from the in-browser translator.
-  // This is normally used to parse inline asm (see createMCAsmParser below).
-  return;
-#else
   assert(!Str.empty() && "Can't emit empty inline asm block");
 
   // Remember if the buffer is nul terminated or not so we can avoid a copy.
@@ -162,7 +157,6 @@ void AsmPrinter::EmitInlineAsm(StringRef Str, const MCSubtargetInfo &STI,
   emitInlineAsmEnd(STI, &TmpSTI);
   if (Res && !HasDiagHandler)
     report_fatal_error("Error parsing inline asm\n");
-#endif  // defined(__native_client__)
 }
 
 static void EmitMSInlineAsmStr(const char *AsmStr, const MachineInstr *MI,
@@ -440,10 +434,6 @@ static void EmitGCCInlineAsmStr(const char *AsmStr, const MachineInstr *MI,
 /// EmitInlineAsm - This method formats and emits the specified machine
 /// instruction that is an inline asm.
 void AsmPrinter::EmitInlineAsm(const MachineInstr *MI) const {
-#if defined(__native__client__)
-  // See above LOCALMOD for pruning generic AsmParsing.
-  return;
-#endif
   assert(MI->isInlineAsm() && "printInlineAsm only works on inline asms");
 
   // Count the number of register definitions to find the asm string.

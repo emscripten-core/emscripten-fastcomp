@@ -241,8 +241,4 @@ def CSR_GenericInt : CalleeSavedRegs<(add LR, (sequence "R%u", 12, 0))>;
 // registers.
 def CSR_FIQ : CalleeSavedRegs<(add LR, R11, (sequence "R%u", 7, 0))>;
 
-// @LOCALMOD-START
-// NaCl does not save R9, but otherwise uses the same order as AAPCS
-def CSR_NaCl : CalleeSavedRegs<(add LR, R11, R10, R8, R7, R6, R5, R4,
-                                     (sequence "D%u", 15, 8))>;
-// @LOCALMOD-END
+

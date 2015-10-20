@@ -82,14 +82,6 @@ static std::list<claimed_file> Modules;
 static std::vector<std::string> Cleanup;
 static llvm::TargetOptions TargetOpts;
 
-// @LOCALMOD-BEGIN
-// Callback for getting the number of --wrap'd symbols.
-static ld_plugin_get_num_wrapped get_num_wrapped = NULL;
-
-// Callback for getting the name of a wrapped symbol.
-static ld_plugin_get_wrapped get_wrapped = NULL;
-// @LOCALMOD-END
-
 namespace options {
   enum OutputType {
     OT_NORMAL,
@@ -240,14 +232,6 @@ ld_plugin_status onload(ld_plugin_tv *tv) {
       case LDPT_GET_VIEW:
         get_view = tv->tv_u.tv_get_view;
         break;
-      // @LOCALMOD-BEGIN
-      case LDPT_GET_WRAPPED:
-        get_wrapped = tv->tv_u.tv_get_wrapped;
-        break;
-      case LDPT_GET_NUM_WRAPPED:
-        get_num_wrapped = tv->tv_u.tv_get_num_wrapped;
-        break;
-      // @LOCALMOD-END
       case LDPT_MESSAGE:
         message = tv->tv_u.tv_message;
         break;
@@ -840,34 +824,6 @@ static void codegen(Module &M) {
     Cleanup.push_back(Filename.c_str());
 }
 
-// @LOCALMOD-BEGIN
-static void wrapSymbol(Module *M, const char *sym) {
-  std::string wrapSymName("__wrap_");
-  wrapSymName += sym;
-  std::string realSymName("__real_");
-  realSymName += sym;
-
-  Constant *SymGV = M->getNamedValue(sym);
-
-  // Replace uses of "sym" with "__wrap_sym".
-  if (SymGV) {
-    Constant *WrapGV = M->getNamedValue(wrapSymName);
-    if (!WrapGV)
-      WrapGV = M->getOrInsertGlobal(wrapSymName, SymGV->getType());
-    SymGV->replaceAllUsesWith(
-        ConstantExpr::getBitCast(WrapGV, SymGV->getType()));
-  }
-
-  // Replace uses of "__real_sym" with "sym".
-  if (Constant *RealGV = M->getNamedValue(realSymName)) {
-    if (!SymGV)
-      SymGV = M->getOrInsertGlobal(sym, RealGV->getType());
-    RealGV->replaceAllUsesWith(
-        ConstantExpr::getBitCast(SymGV, RealGV->getType()));
-  }
-}
-// @LOCALMOD-END
-
 /// gold informs us that all symbols have been read. At this point, we use
 /// get_symbols to see if any of our definitions have been overridden by a
 /// native object file. Then, perform optimization and codegen.
@@ -917,23 +873,6 @@ static ld_plugin_status allSymbolsReadHook(raw_fd_ostream *ApiFile) {
     if (canBeOmittedFromSymbolTable(GV))
       internalize(*GV);
   }
-
-  // @LOCALMOD-BEGIN
-  // Perform symbol wrapping.
-  unsigned num_wrapped;
-  if ((*get_num_wrapped)(&num_wrapped) != LDPS_OK) {
-    (*message)(LDPL_ERROR, "Unable to get the number of wrapped symbols.");
-    return LDPS_ERR;
-  }
-  for (unsigned i = 0; i < num_wrapped; ++i) {
-    const char *sym;
-    if ((*get_wrapped)(i, &sym) != LDPS_OK) {
-      (*message)(LDPL_ERROR, "Unable to wrap symbol %u/%u.", i, num_wrapped);
-      return LDPS_ERR;
-    }
-    wrapSymbol(Combined.get(), sym);
-  }
-  // @LOCALMOD-END
 
   if (options::TheOutputType == options::OT_DISABLE)
     return LDPS_OK;

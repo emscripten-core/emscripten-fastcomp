@@ -323,9 +323,7 @@ namespace llvm {
 
 ProcessInfo sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
                       bool WaitUntilTerminates, std::string *ErrMsg) {
-  // @LOCALMOD-BEGIN
-#if defined(HAVE_SYS_WAIT_H) && !defined(PNACL_BROWSER_TRANSLATOR)
-  // @LOCALMOD-END
+#ifdef HAVE_SYS_WAIT_H
   struct sigaction Act, Old;
   assert(PI.Pid && "invalid pid to wait on, process not started?");
 
@@ -456,11 +454,7 @@ llvm::sys::writeFileWithEncoding(StringRef FileName, StringRef Contents,
 }
 
 bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {
-#if defined(__native_client__)
-  static long ArgMax = -1;
-#else // !__native_client__
   static long ArgMax = sysconf(_SC_ARG_MAX);
-#endif // __native_client__
 
   // System says no practical limit.
   if (ArgMax == -1)

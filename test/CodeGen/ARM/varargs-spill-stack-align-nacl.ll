@@ -1,6 +1,4 @@
-; RUN: llc < %s -mtriple=armv7-nacl-gnueabi | FileCheck %s
-; @LOCALMOD: change to armv7, (or alternatively +v6t2) since NaCl needs
-; movw/movt to materialize the @va_list global address.
+; RUN: llc < %s -mtriple=arm-nacl-gnueabi | FileCheck %s
 
 declare void @llvm.va_start(i8*)
 declare void @external_func(i8*)
@@ -29,8 +27,5 @@ define void @varargs_func(i32 %arg1, ...) {
 ; CHECK: sub sp, sp, #12
 ; Calculate the address of the varargs save area and save varargs
 ; arguments into it.
-; @LOCALMOD: Adjust test expectation, removing NEXT to allow CFI
-; directive to intervene in the output.
-; CHECK: add r0, sp, #20
-; @LOCALMOD: Adjust test expectation, removing NEXT to allow sandboxing.
-; CHECK: stm r0, {r1, r2, r3}
+; CHECK-NEXT: add r0, sp, #20
+; CHECK-NEXT: stm r0, {r1, r2, r3}

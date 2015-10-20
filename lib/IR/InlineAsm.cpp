@@ -291,18 +291,3 @@ bool InlineAsm::Verify(FunctionType *Ty, StringRef ConstStr) {
   return true;
 }
 
-// @LOCALMOD-START
-bool InlineAsm::isAsmMemory() const {
-  bool retVoid = getFunctionType()->getReturnType()->isVoidTy();
-  bool noArgs = getFunctionType()->getNumParams() == 0 &&
-      !getFunctionType()->isVarArg();
-  bool isEmptyAsm = AsmString.empty();
-  // Different triples will encode "touch everything" differently, e.g.:
-  //  - le32-unknown-nacl has "~{memory}".
-  //  - x86 "~{memory},~{dirflag},~{fpsr},~{flags}".
-  // The following code therefore only searches for memory.
-  bool touchesMemory = Constraints.find("~{memory}") != std::string::npos;
-
-  return retVoid && noArgs && hasSideEffects() && isEmptyAsm && touchesMemory;
-}
-// @LOCALMOD-END

@@ -4,9 +4,7 @@
 
 ; RUN: llc < %s -mtriple=x86_64-linux -O2        | FileCheck %s
 ; RUN: llc < %s -mtriple=x86_64-linux-gnux32 -O2 | FileCheck %s -check-prefix=X32
-; @LOCALMOD -- one of the leal below are left as an add for NACL64
-; TODO -- investigate why.
-; RUN: llc < %s -mtriple=x86_64-nacl -O2 | FileCheck %s -check-prefix=NACL64
+; RUN: llc < %s -mtriple=x86_64-nacl -O2 | FileCheck %s -check-prefix=X32
 
 ; Function Attrs: nounwind readnone uwtable
 define void @foo(i32 %x, i32 %d) #0 {
@@ -20,14 +18,12 @@ while.cond:                                       ; preds = %while.cond, %entry
 
 ; CHECK: leaq	-40(%rsp,%r{{[^,]*}},4), %rax
 ; X32:   leal	-40(%rsp,%r{{[^,]*}},4), %eax
-; NACL64: leal	-40(%rsp,%r{{[^,]*}},4), %eax
   %0 = load i32, i32* %arrayidx, align 4
   %cmp1 = icmp eq i32 %0, 0
   %inc = add nsw i32 %d.addr.0, 1
 
 ; CHECK: leaq	4(%r{{[^,]*}}), %r{{[^,]*}}
 ; X32:   leal	4(%r{{[^,]*}}), %e{{[^,]*}}
-; NACL64: addl $4, %e{{[^,]*}}
   br i1 %cmp1, label %while.end, label %while.cond
 
 while.end:                                        ; preds = %while.cond
@@ -49,14 +45,12 @@ while.cond:                                       ; preds = %while.cond, %entry
 
 ; CHECK: leaq	(%rsp,%r{{[^,]*}},4), %rax
 ; X32:   leal	(%rsp,%r{{[^,]*}},4), %eax
-; NACL64: leal (%rsp,%r{{[^,]*}},4), %eax
   %0 = load i32, i32* %arrayidx, align 4
   %cmp1 = icmp eq i32 %0, 0
   %inc = add nsw i32 %d.addr.0, 1
 
 ; CHECK: leaq	4(%r{{[^,]*}}), %r{{[^,]*}}
 ; X32:   leal	4(%r{{[^,]*}}), %e{{[^,]*}}
-; NACL64: addl $4, %e{{[^,]*}}
   br i1 %cmp1, label %while.end, label %while.cond
 
 while.end:                                        ; preds = %while.cond

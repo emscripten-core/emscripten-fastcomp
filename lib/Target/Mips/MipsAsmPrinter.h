@@ -144,12 +144,6 @@ public:
   void EmitStartOfAsmFile(Module &M) override;
   void EmitEndOfAsmFile(Module &M) override;
   void PrintDebugValueComment(const MachineInstr *MI, raw_ostream &OS);
-
-  // @LOCALMOD-START
-  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
-  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
-  bool UseReadOnlyJumpTables() const override;
-  // @LOCALMOD-END
 };
 }
 

@@ -397,10 +397,8 @@ extern "C" void LLVMInitializeARMTargetMC() {
     TargetRegistry::RegisterMCInstrAnalysis(*T, createARMMCInstrAnalysis);
 
     TargetRegistry::RegisterELFStreamer(*T, createELFStreamer);
-#ifndef __native_client__
     TargetRegistry::RegisterCOFFStreamer(*T, createARMWinCOFFStreamer);
     TargetRegistry::RegisterMachOStreamer(*T, createARMMachOStreamer);
-#endif
 
     // Register the obj target streamer.
     TargetRegistry::RegisterObjectTargetStreamer(*T,

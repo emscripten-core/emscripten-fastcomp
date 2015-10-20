@@ -11,14 +11,4 @@ set(LLVM_LINK_COMPONENTS
 add_llvm_unittest(BitcodeTests
   BitReaderTest.cpp
   BitstreamReaderTest.cpp
-  NaClAbbrevTrieTest.cpp
-  NaClCompressTests.cpp
-  NaClMungedBitcodeTest.cpp
-  NaClMungedIoTest.cpp
-  NaClMungeWriteErrorTests.cpp
-  NaClObjDumpTest.cpp
-  NaClObjDumpTypesTest.cpp
-  NaClParseTypesTest.cpp
-  NaClParseInstsTest.cpp
-  NaClTextFormatterTest.cpp
   )

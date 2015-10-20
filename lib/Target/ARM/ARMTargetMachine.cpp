@@ -23,9 +23,6 @@
 #include "llvm/Support/FormattedStream.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Target/TargetOptions.h"
-// @LOCALMOD-START
-#include "llvm/Transforms/NaCl.h"
-// @LOCALMOD-END
 #include "llvm/Transforms/Scalar.h"
 using namespace llvm;
 
@@ -319,11 +316,6 @@ TargetPassConfig *ARMBaseTargetMachine::createPassConfig(PassManagerBase &PM) {
 }
 
 void ARMPassConfig::addIRPasses() {
-  // @LOCALMOD-START
-  if (getARMSubtarget().isTargetNaCl())
-    addPass(createInsertDivideCheckPass());
-  // @LOCALMOD-END
-
   if (TM->Options.ThreadModel == ThreadModel::Single)
     addPass(createLowerAtomicPass());
   else
@@ -358,7 +350,6 @@ bool ARMPassConfig::addPreISel() {
                                (EnableGlobalMerge == cl::BOU_UNSET);
     addPass(createGlobalMergePass(TM, 127, OnlyOptimizeForSize));
   }
-
 
   return false;
 }

@@ -63,8 +63,6 @@ static unsigned getFramePointerReg(const ARMSubtarget &STI) {
 const MCPhysReg*
 ARMBaseRegisterInfo::getCalleeSavedRegs(const MachineFunction *MF) const {
   const ARMSubtarget &STI = MF->getSubtarget<ARMSubtarget>();
-  if (STI.isTargetNaCl()) return CSR_NaCl_SaveList; // @LOCALMOD
-
   const MCPhysReg *RegList =
       STI.isTargetDarwin() ? CSR_iOS_SaveList : CSR_AAPCS_SaveList;
 
@@ -96,7 +94,6 @@ const uint32_t *
 ARMBaseRegisterInfo::getCallPreservedMask(const MachineFunction &MF,
                                           CallingConv::ID CC) const {
   const ARMSubtarget &STI = MF.getSubtarget<ARMSubtarget>();
-  if (STI.isTargetNaCl()) return CSR_NaCl_RegMask; // @LOCALMOD
   if (CC == CallingConv::GHC)
     // This is academic becase all GHC calls are (supposed to be) tail calls
     return CSR_NoRegs_RegMask;

@@ -39,7 +39,6 @@
 #include "llvm/MC/MCELFStreamer.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
-#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCSection.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSymbolELF.h"
@@ -340,12 +339,6 @@ void MipsAsmPrinter::EmitFunctionEntryLabel() {
   TS.emitDirectiveEnt(*CurrentFnSym);
   OutStreamer->EmitLabel(CurrentFnSym);
 }
-
-// @LOCALMOD-START
-bool MipsAsmPrinter::UseReadOnlyJumpTables() const {
-  return Subtarget->isTargetNaCl();
-}
-// @LOCALMOD-END
 
 /// EmitFunctionBodyStart - Targets can override this to emit stuff before
 /// the first basic block in the function.
@@ -755,7 +748,6 @@ void MipsAsmPrinter::EmitStartOfAsmFile(Module &M) {
   if (ABI.IsO32() && (!STI.useOddSPReg() || STI.isABI_FPXX()))
     getTargetStreamer().emitDirectiveModuleOddSPReg();
 }
-// @LOCALMOD-END
 
 void MipsAsmPrinter::emitInlineAsmStart() const {
   MipsTargetStreamer &TS = getTargetStreamer();

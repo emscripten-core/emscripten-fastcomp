@@ -327,11 +327,6 @@ AC_CACHE_CHECK([type of operating system we're going to host on],
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
     llvm_cv_os_type="Freestanding"
     llvm_cv_platform_type="Unix" ;;
-  *-*-nacl*)
-    llvm_cv_link_all_option="-Wl,--whole-archive"
-    llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
-    llvm_cv_os_type="NativeClient"
-    llvm_cv_platform_type="Unix" ;;
   *)
     llvm_cv_link_all_option=""
     llvm_cv_no_link_all_option=""
@@ -1227,34 +1222,6 @@ AC_SUBST(LLVM_ENUM_TARGETS)
 AC_SUBST(LLVM_ENUM_ASM_PRINTERS)
 AC_SUBST(LLVM_ENUM_ASM_PARSERS)
 AC_SUBST(LLVM_ENUM_DISASSEMBLERS)
-
-
-dnl Allow specific Subzero targets to be specified for building (or not)
-SUBZERO_TARGETS_TO_BUILD=""
-AC_ARG_ENABLE([subzero_targets],AS_HELP_STRING([--enable-subzero-targets],
-    [Build specific subzero targets: target1,target2,...(default=none)]),,
-    enableval=none)
-case "$enableval" in
-  none) ;;
-  *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
-      case "$a_target" in
-        X8632)  SUBZERO_TARGETS_TO_BUILD="X8632 $SUBZERO_TARGETS_TO_BUILD" ;;
-        X8664)  SUBZERO_TARGETS_TO_BUILD="X8664 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM32)  SUBZERO_TARGETS_TO_BUILD="ARM32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM64)  SUBZERO_TARGETS_TO_BUILD="ARM64 $SUBZERO_TARGETS_TO_BUILD" ;;
-        MIPS32) SUBZERO_TARGETS_TO_BUILD="MIPS32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        *) AC_MSG_ERROR([Unrecognized subzero target $a_target]) ;;
-      esac
-  done
-  ;;
-esac
-
-dnl Build the SUBZERO_ENUM_TARGETS macro for SZTargets.def.
-SUBZERO_ENUM_TARGETS=""
-for target_to_build in $SUBZERO_TARGETS_TO_BUILD; do
-  SUBZERO_ENUM_TARGETS="SUBZERO_TARGET($target_to_build) $SUBZERO_ENUM_TARGETS"
-done
-AC_SUBST(SUBZERO_ENUM_TARGETS)
 
 dnl Override the option to use for optimized builds.
 AC_ARG_WITH(optimize-option,
@@ -2209,7 +2176,6 @@ AH_TOP([#ifndef CONFIG_H
 #include "llvm/Config/llvm-config.h"])
 AH_BOTTOM([#endif])
 
-AC_CONFIG_FILES([include/llvm/Config/SZTargets.def])
 AC_CONFIG_FILES([include/llvm/Config/Targets.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmPrinters.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmParsers.def])

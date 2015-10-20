@@ -71,8 +71,6 @@ add_llvm_library(LLVMSupport
   Options.cpp
   PluginLoader.cpp
   PrettyStackTrace.cpp
-  # @LOCALMOD
-  QueueStreamer.cpp
   RandomNumberGenerator.cpp
   Regex.cpp
   ScaledNumber.cpp

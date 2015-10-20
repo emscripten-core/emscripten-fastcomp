@@ -13,7 +13,6 @@
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCCodeEmitter.h"
-#include "llvm/MC/MCNaClExpander.h" // @LOCALMOD
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCDwarf.h"
 #include "llvm/MC/MCExpr.h"
@@ -228,17 +227,6 @@ bool MCObjectStreamer::mayHaveInstructions(MCSection &Sec) const {
 
 void MCObjectStreamer::EmitInstruction(const MCInst &Inst,
                                        const MCSubtargetInfo &STI) {
-
-  // @LOCALMOD-START
-  if (NaClExpander && NaClExpander->expandInst(Inst, *this, STI))
-    return;
-
-  if (getAssembler().isBundlingEnabled() &&
-      getAssembler().getBackend().CustomExpandInst(Inst, *this)) {
-    return;
-  }
-  // @LOCALMOD-END
-
   MCStreamer::EmitInstruction(Inst, STI);
 
   MCSection *Sec = getCurrentSectionOnly();

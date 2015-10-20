@@ -369,10 +369,6 @@ namespace llvm {
     // Cache the ABI from the TargetMachine, we use it everywhere.
     const MipsABIInfo &ABI;
 
-    // @LOCALMOD-BEGIN
-    SDValue GetNaClThreadPointer(SelectionDAG &DAG, SDLoc DL) const;
-    // @LOCALMOD-END
-
   private:
     // Create a TargetGlobalAddress node.
     SDValue getTargetNode(GlobalAddressSDNode *N, EVT Ty, SelectionDAG &DAG,

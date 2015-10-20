@@ -8,7 +8,6 @@
 ##===----------------------------------------------------------------------===##
 
 LEVEL := ../..
-
 TOOLNAME := bugpoint
 LINK_COMPONENTS := asmparser instrumentation scalaropts ipo linker bitreader \
                    bitwriter irreader vectorize objcarcopts codegen          \

@@ -18,7 +18,6 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -476,9 +475,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<MCSubtargetInfo> STI(
       TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  Triple T(TripleName); // @LOCALMOD
-
-  MCInstPrinter *IP = NULL;
+  MCInstPrinter *IP = nullptr;
   if (FileType == OFT_AssemblyFile) {
     IP = TheTarget->createMCInstPrinter(Triple(TripleName), OutputAsmVariant,
                                         *MAI, *MCII, *MRI);
@@ -489,7 +486,7 @@ int main(int argc, char **argv) {
     // Set up the AsmStreamer.
     MCCodeEmitter *CE = nullptr;
     MCAsmBackend *MAB = nullptr;
-    if (ShowEncoding || T.isOSNaCl()) { // @LOCALMOD
+    if (ShowEncoding) {
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
@@ -497,13 +494,6 @@ int main(int argc, char **argv) {
     Str.reset(TheTarget->createAsmStreamer(
         Ctx, std::move(FOut), /*asmverbose*/ true,
         /*useDwarfDirectory*/ true, IP, CE, MAB, ShowInst));
-
-    // @LOCALMOD-START
-    if (T.isOSNaCl()) {
-      Str->InitSections(NoExecStack);
-      initializeNaClMCStreamer(*Str.get(), Ctx, T);
-    }
-    // @LOCALMOD-END
 
   } else if (FileType == OFT_Null) {
     Str.reset(TheTarget->createNullStreamer(Ctx));
@@ -525,14 +515,6 @@ int main(int argc, char **argv) {
                                                 /*DWARFMustBeAtTheEnd*/ false));
     if (NoExecStack)
       Str->InitSections(true);
-    // @LOCALMOD-BEGIN
-    if (T.isOSNaCl()) {
-      // If the above non-localmod does InitSections unconditionally,
-      // we can use that.
-      Str->InitSections(NoExecStack);
-      initializeNaClMCStreamer(*Str.get(), Ctx, T);
-    }
-    // @LOCALMOD-END
   }
 
   int Res = 1;

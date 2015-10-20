@@ -34,10 +34,7 @@ namespace {
       (void) llvm::createFastRegisterAllocator();
       (void) llvm::createBasicRegisterAllocator();
       (void) llvm::createGreedyRegisterAllocator();
-#if !defined(__native_client__)
-      // Not needed by sandboxed translator.
       (void) llvm::createDefaultPBQPRegisterAllocator();
-#endif
 
       llvm::linkCoreCLRGC();
       llvm::linkOcamlGC();

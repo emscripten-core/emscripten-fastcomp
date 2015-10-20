@@ -322,9 +322,9 @@ endif
 ifeq ($(ENABLE_CXX1Y),1)
   CXX.Flags += -std=c++1y
 else
-  ifeq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW NativeClient))
-    # MinGW, Cygwin, and NativeClient+newlib are a bit stricter and
-    # lack things like 'strdup', 'stricmp', etc in c++11 mode.
+  ifeq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
+    # MinGW and Cygwin are a bit stricter and lack things like
+    # 'strdup', 'stricmp', etc in c++11 mode.
     CXX.Flags += -std=gnu++11
  else
     CXX.Flags += -std=c++11
@@ -671,11 +671,6 @@ ifneq ($(HOST_OS), $(filter $(HOST_OS), Cygwin MingW))
   endif
 endif
 
-#@LOCALMOD-BEGIN
-ifeq ($(PNACL_BROWSER_TRANSLATOR),1)
-  CPP.Flags += -DPNACL_BROWSER_TRANSLATOR
-endif
-# @LOCALMOD-END
 
 #----------------------------------------------------------
 # Options To Invoke Tools

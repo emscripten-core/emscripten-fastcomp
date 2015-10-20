@@ -272,7 +272,7 @@ getFileAux(const Twine &Filename, int64_t FileSize, uint64_t MapSize,
 static bool shouldUseMmap(int FD,
                           size_t FileSize,
                           size_t MapSize,
-                          int64_t Offset,   // @LOCALMOD (?)
+                          off_t Offset,
                           bool RequiresNullTerminator,
                           int PageSize,
                           bool IsVolatileSize) {

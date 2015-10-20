@@ -33,10 +33,6 @@
 #endif
 using namespace llvm;
 
-// @LOCALMOD-BEGIN
-#if !defined(PNACL_BROWSER_TRANSLATOR)
-// @LOCALMOD-END
-
 /// \brief Attempt to read the lock file with the given name, if it exists.
 ///
 /// \param LockFileName The name of the lock file to read.
@@ -321,5 +317,3 @@ LockFileManager::WaitForUnlockResult LockFileManager::waitForUnlock() {
 std::error_code LockFileManager::unsafeRemoveLockFile() {
   return sys::fs::remove(LockFileName);
 }
-
-#endif // __native_client__ @LOCALMOD

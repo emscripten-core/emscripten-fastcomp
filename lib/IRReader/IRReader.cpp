@@ -11,7 +11,6 @@
 #include "llvm-c/Core.h"
 #include "llvm-c/IRReader.h"
 #include "llvm/AsmParser/Parser.h"
-#include "llvm/Bitcode/NaCl/NaClReaderWriter.h"
 #include "llvm/Bitcode/ReaderWriter.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -93,7 +92,6 @@ std::unique_ptr<Module> llvm::parseIRFile(StringRef Filename, SMDiagnostic &Err,
 
   return parseIR(FileOrErr.get()->getMemBufferRef(), Err, Context);
 }
-
 
 //===----------------------------------------------------------------------===//
 // C API.

@@ -470,8 +470,7 @@ TLI_DEFINE_STRING_INTERNAL("fscanf")
 TLI_DEFINE_ENUM_INTERNAL(fseek)
 TLI_DEFINE_STRING_INTERNAL("fseek")
 /// int fseeko(FILE *stream, off_t offset, int whence);
-// LOCALMOD ftello->Ftello
-TLI_DEFINE_ENUM_INTERNAL(Fseeko)
+TLI_DEFINE_ENUM_INTERNAL(fseeko)
 TLI_DEFINE_STRING_INTERNAL("fseeko")
 /// int fseeko64(FILE *stream, off64_t offset, int whence)
 TLI_DEFINE_ENUM_INTERNAL(fseeko64)
@@ -495,8 +494,7 @@ TLI_DEFINE_STRING_INTERNAL("fstatvfs64")
 TLI_DEFINE_ENUM_INTERNAL(ftell)
 TLI_DEFINE_STRING_INTERNAL("ftell")
 /// off_t ftello(FILE *stream);
-// LOCALMOD ftello->Ftello
-TLI_DEFINE_ENUM_INTERNAL(Ftello)
+TLI_DEFINE_ENUM_INTERNAL(ftello)
 TLI_DEFINE_STRING_INTERNAL("ftello")
 /// off64_t ftello64(FILE *stream)
 TLI_DEFINE_ENUM_INTERNAL(ftello64)

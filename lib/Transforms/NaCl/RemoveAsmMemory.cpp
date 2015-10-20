@@ -62,16 +62,7 @@ bool RemoveAsmMemory::runOnFunction(Function &F) {
 }
 
 void AsmDirectivesVisitor::visitCallInst(CallInst &CI) {
-  if (!CI.isInlineAsm() ||
-      !cast<InlineAsm>(CI.getCalledValue())->isAsmMemory())
-    return;
-
-  // In NaCl ``asm("":::"memory")`` always comes in pairs, straddling a
-  // sequentially consistent fence. Other passes rewrite this fence to
-  // an equivalent stable NaCl intrinsic, meaning that this assembly can
-  // be removed.
-  CI.eraseFromParent();
-  ModifiedFunction = true;
+  llvm_unreachable("no longer maintained");
 }
 
 namespace llvm {

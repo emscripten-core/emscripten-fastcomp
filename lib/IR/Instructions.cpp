@@ -2987,9 +2987,11 @@ CastInst::getCastOpcode(
 /// it in one place and to eliminate the redundant code for getting the sizes
 /// of the types involved.
 bool 
-// @LOCALMOD-BEGIN
-CastInst::castIsValid(Instruction::CastOps op, Type *SrcTy, Type *DstTy) {
-// @LOCALMOD-END
+CastInst::castIsValid(Instruction::CastOps op, Value *S, Type *DstTy) {
+
+  // Check for type sanity on the arguments
+  Type *SrcTy = S->getType();
+
   if (!SrcTy->isFirstClassType() || !DstTy->isFirstClassType() ||
       SrcTy->isAggregateType() || DstTy->isAggregateType())
     return false;

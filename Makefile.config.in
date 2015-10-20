@@ -68,10 +68,6 @@ ifneq ($(CLANG_SRC_ROOT),)
   PROJ_SRC_DIR  := $(patsubst $(LLVM_SRC_ROOT)/tools/clang%,$(CLANG_SRC_ROOT)%,$(PROJ_SRC_DIR))
 endif
 
-ifneq ($(SUBZERO_SRC_ROOT),)
-  PROJ_SRC_DIR  := $(patsubst $(LLVM_SRC_ROOT)/tools/subzero%,$(SUBZERO_SRC_ROOT)%,$(PROJ_SRC_DIR))
-endif
-
 prefix          := @prefix@
 PROJ_prefix     := $(prefix)
 program_prefix  := @program_prefix@

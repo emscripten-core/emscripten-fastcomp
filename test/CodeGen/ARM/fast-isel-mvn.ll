@@ -7,8 +7,7 @@
 
 define void @t1() nounwind {
 entry:
-; @LOCALMOD
-; CHECK-LABEL: t1:
+; CHECK-LABEL: t1
 ; CHECK:       mvn r0, #0
   call void @foo(i32 -1)
   ret void
@@ -88,9 +87,6 @@ entry:
 define i32 @t10(i32 %a) {
 ; MOVT-LABEL: t10
 ; MOVT:       ldr
-; NACL-LABEL:  t10
-; NACL:        movw [[REG:r.*]],  #52257
-; NACL:        movt [[REG]],  #35037
   %1 = xor i32 -1998730207, %a
   ret i32 %1
 }

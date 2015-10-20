@@ -34,7 +34,6 @@
 #include "llvm/Object/IRObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ErrorHandling.h" // @LOCALMOD
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/MemoryBuffer.h"
@@ -207,13 +206,6 @@ LTOModule *LTOModule::makeLTOModule(MemoryBufferRef Buffer,
     return nullptr;
 
   std::string TripleStr = M->getTargetTriple();
-  // @LOCALMOD-BEGIN
-  // Pretend that we are ARM for name mangling and assembly conventions.
-  // https://code.google.com/p/nativeclient/issues/detail?id=2554
-  if (TripleStr == "le32-unknown-nacl") {
-    TripleStr = "armv7a-none-nacl-gnueabi";
-  }
-  // @LOCALMOD-END
   if (TripleStr.empty())
     TripleStr = sys::getDefaultTargetTriple();
   llvm::Triple Triple(TripleStr);
@@ -621,14 +613,6 @@ bool LTOModule::parseSymbols(std::string &errMsg) {
 
     auto *F = dyn_cast<Function>(GV);
     if (IsUndefined) {
-      // @LOCALMOD-BEGIN
-      // Bitcode modules may have declarations for functions or globals
-      // which are unused. Ignore them here so that gold does not mistake
-      // them for undefined symbols.
-      if (GV->use_empty())
-        continue;
-      // @LOCALMOD-END
-
       addPotentialUndefinedSymbol(Sym, F != nullptr);
       continue;
     }

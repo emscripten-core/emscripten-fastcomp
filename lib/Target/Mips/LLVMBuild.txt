@@ -40,7 +40,6 @@ required_libraries =
  MipsAsmPrinter
  MipsDesc
  MipsInfo
- NaClTransforms
  SelectionDAG
  Support
  Target

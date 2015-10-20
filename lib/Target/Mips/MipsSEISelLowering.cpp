@@ -1518,10 +1518,6 @@ SDValue MipsSETargetLowering::lowerINTRINSIC_WO_CHAIN(SDValue Op,
   switch (cast<ConstantSDNode>(Op->getOperand(0))->getZExtValue()) {
   default:
     return SDValue();
-  // @LOCALMOD-BEGIN
-  case Intrinsic::nacl_read_tp:
-    return GetNaClThreadPointer(DAG, SDLoc(Op));
-  // @LOCALMOD-END
   case Intrinsic::mips_shilo:
     return lowerDSPIntr(Op, DAG, MipsISD::SHILO);
   case Intrinsic::mips_dpau_h_qbl:

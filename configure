@@ -737,7 +737,6 @@ LLVM_ENUM_TARGETS
 LLVM_ENUM_ASM_PRINTERS
 LLVM_ENUM_ASM_PARSERS
 LLVM_ENUM_DISASSEMBLERS
-SUBZERO_ENUM_TARGETS
 OPTIMIZE_OPTION
 EXTRA_OPTIONS
 EXTRA_LD_OPTIONS
@@ -1468,9 +1467,6 @@ Optional Features:
   --enable-experimental-targets
                           Build experimental host targets: disable or
                           target1,target2,... (default=disable)
-  --enable-subzero-targets
-                          Build specific subzero targets:
-                          target1,target2,...(default=none)
   --enable-bindings       Build specific language bindings:
                           all,auto,none,{binding-name} (default=auto)
   --enable-terminfo       Query the terminfo database if available (default is
@@ -4064,11 +4060,6 @@ else
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
     llvm_cv_os_type="Freestanding"
     llvm_cv_platform_type="Unix" ;;
-  *-*-nacl*)
-    llvm_cv_link_all_option="-Wl,--whole-archive"
-    llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
-    llvm_cv_os_type="NativeClient"
-    llvm_cv_platform_type="Unix" ;;
   *)
     llvm_cv_link_all_option=""
     llvm_cv_no_link_all_option=""
@@ -5782,38 +5773,6 @@ done
 
 
 
-
-
-
-SUBZERO_TARGETS_TO_BUILD=""
-# Check whether --enable-subzero_targets was given.
-if test "${enable_subzero_targets+set}" = set; then
-  enableval=$enable_subzero_targets;
-else
-  enableval=none
-fi
-
-case "$enableval" in
-  none) ;;
-  *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
-      case "$a_target" in
-        X8632)  SUBZERO_TARGETS_TO_BUILD="X8632 $SUBZERO_TARGETS_TO_BUILD" ;;
-        X8664)  SUBZERO_TARGETS_TO_BUILD="X8664 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM32)  SUBZERO_TARGETS_TO_BUILD="ARM32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM64)  SUBZERO_TARGETS_TO_BUILD="ARM64 $SUBZERO_TARGETS_TO_BUILD" ;;
-        MIPS32) SUBZERO_TARGETS_TO_BUILD="MIPS32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        *) { { echo "$as_me:$LINENO: error: Unrecognized subzero target $a_target" >&5
-echo "$as_me: error: Unrecognized subzero target $a_target" >&2;}
-   { (exit 1); exit 1; }; } ;;
-      esac
-  done
-  ;;
-esac
-
-SUBZERO_ENUM_TARGETS=""
-for target_to_build in $SUBZERO_TARGETS_TO_BUILD; do
-  SUBZERO_ENUM_TARGETS="SUBZERO_TARGET($target_to_build) $SUBZERO_ENUM_TARGETS"
-done
 
 
 
@@ -18185,8 +18144,6 @@ ac_config_headers="$ac_config_headers include/llvm/Config/config.h include/llvm/
 
 
 
-ac_config_files="$ac_config_files include/llvm/Config/SZTargets.def"
-
 ac_config_files="$ac_config_files include/llvm/Config/Targets.def"
 
 ac_config_files="$ac_config_files include/llvm/Config/AsmPrinters.def"
@@ -18822,7 +18779,6 @@ do
   case $ac_config_target in
     "include/llvm/Config/config.h") CONFIG_HEADERS="$CONFIG_HEADERS include/llvm/Config/config.h" ;;
     "include/llvm/Config/llvm-config.h") CONFIG_HEADERS="$CONFIG_HEADERS include/llvm/Config/llvm-config.h" ;;
-    "include/llvm/Config/SZTargets.def") CONFIG_FILES="$CONFIG_FILES include/llvm/Config/SZTargets.def" ;;
     "include/llvm/Config/Targets.def") CONFIG_FILES="$CONFIG_FILES include/llvm/Config/Targets.def" ;;
     "include/llvm/Config/AsmPrinters.def") CONFIG_FILES="$CONFIG_FILES include/llvm/Config/AsmPrinters.def" ;;
     "include/llvm/Config/AsmParsers.def") CONFIG_FILES="$CONFIG_FILES include/llvm/Config/AsmParsers.def" ;;
@@ -19085,7 +19041,6 @@ LLVM_ENUM_TARGETS!$LLVM_ENUM_TARGETS$ac_delim
 LLVM_ENUM_ASM_PRINTERS!$LLVM_ENUM_ASM_PRINTERS$ac_delim
 LLVM_ENUM_ASM_PARSERS!$LLVM_ENUM_ASM_PARSERS$ac_delim
 LLVM_ENUM_DISASSEMBLERS!$LLVM_ENUM_DISASSEMBLERS$ac_delim
-SUBZERO_ENUM_TARGETS!$SUBZERO_ENUM_TARGETS$ac_delim
 OPTIMIZE_OPTION!$OPTIMIZE_OPTION$ac_delim
 EXTRA_OPTIONS!$EXTRA_OPTIONS$ac_delim
 EXTRA_LD_OPTIONS!$EXTRA_LD_OPTIONS$ac_delim
@@ -19144,6 +19099,7 @@ HAVE_LIBZ!$HAVE_LIBZ$ac_delim
 HUGE_VAL_SANITY!$HUGE_VAL_SANITY$ac_delim
 MMAP_FILE!$MMAP_FILE$ac_delim
 SHLIBEXT!$SHLIBEXT$ac_delim
+LLVM_PREFIX!$LLVM_PREFIX$ac_delim
 _ACEOF
 
   if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 97; then
@@ -19185,7 +19141,6 @@ _ACEOF
 ac_delim='%!_!# '
 for ac_last_try in false false false false false :; do
   cat >conf$$subs.sed <<_ACEOF
-LLVM_PREFIX!$LLVM_PREFIX$ac_delim
 LLVM_BINDIR!$LLVM_BINDIR$ac_delim
 LLVM_DATADIR!$LLVM_DATADIR$ac_delim
 LLVM_DOCSDIR!$LLVM_DOCSDIR$ac_delim
@@ -19206,7 +19161,7 @@ LIBOBJS!$LIBOBJS$ac_delim
 LTLIBOBJS!$LTLIBOBJS$ac_delim
 _ACEOF
 
-  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 19; then
+  if test `sed -n "s/.*$ac_delim\$/X/p" conf$$subs.sed | grep -c X` = 18; then
     break
   elif $ac_last_try; then
     { { echo "$as_me:$LINENO: error: could not make $CONFIG_STATUS" >&5

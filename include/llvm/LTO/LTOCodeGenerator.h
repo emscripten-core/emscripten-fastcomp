@@ -99,10 +99,6 @@ struct LTOCodeGenerator {
   // Return true on success.
   bool writeMergedModules(const char *path, std::string &errMsg);
 
-  // @LOCALMOD-BEGIN
-  void wrapSymbol(const char *sym);
-  // @LOCALMOD-END
-
   // Compile the merged module into a *single* object file; the path to object
   // file is returned to the caller via argument "name". Return true on
   // success.

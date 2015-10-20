@@ -43,42 +43,6 @@ std::unique_ptr<Module> parseIR(MemoryBufferRef Buffer, SMDiagnostic &Err,
 /// for it.
 std::unique_ptr<Module> parseIRFile(StringRef Filename, SMDiagnostic &Err,
                                     LLVMContext &Context);
-
-// @LOCALMOD-BEGIN
-class raw_ostream;
-
-// \brief Define the expected format of the file.
-enum NaClFileFormat {
-  // LLVM IR source or bitcode file (as appropriate).
-  LLVMFormat,
-  // PNaCl bitcode file.
-  PNaClFormat,
-  // Autodetect if PNaCl or LLVM format.
-  AutodetectFileFormat
-};
-
-// \brief If the given MemoryBuffer holds a bitcode image, return a
-// Module for it.  Otherwise, attempt to parse it as LLVM Assembly and
-// return a Module for it. When Format=PNaClFormat and Verbose
-// is non-null, more descriptive error messages are also written to
-// Verbose.
-std::unique_ptr<Module> NaClParseIR(MemoryBufferRef Buffer,
-                                    NaClFileFormat Format,
-                                    SMDiagnostic &Err,
-                                    raw_ostream *Verbose,
-                                    LLVMContext &Context);
-
-/// \brief If the given file holds a Bitcode image, read the file.
-/// Otherwise, attempt to parse it as LLVM assembly and return a
-/// Module for it. When Format=PNaClFormat and Verbose
-// is non-null, more descriptive error messages are also written to
-// Verbose.
-std::unique_ptr<Module> NaClParseIRFile(StringRef Filename,
-                                        NaClFileFormat Format,
-                                        SMDiagnostic &Err,
-                                        raw_ostream *Verbose,
-                                        LLVMContext &Context);
-// @LOCALMOD-END
 }
 
 #endif

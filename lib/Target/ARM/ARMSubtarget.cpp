@@ -111,10 +111,6 @@ void ARMSubtarget::initializeEnvironment() {
   HasFPARMv8 = false;
   HasNEON = false;
   UseNEONForSinglePrecisionFP = false;
-  // @LOCALMOD-START
-  UseInlineJumpTables = !NoInlineJumpTables;
-  UseConstIslands = true;
-  // @LOCALMOD-END
   UseMulOps = UseFusedMulOps;
   SlowFPVMLx = false;
   HasVMLxForwarding = false;

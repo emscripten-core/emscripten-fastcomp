@@ -12,7 +12,6 @@
 #include "MCTargetDesc/ARMAsmBackend.h"
 #include "MCTargetDesc/ARMAsmBackendDarwin.h"
 #include "MCTargetDesc/ARMAsmBackendELF.h"
-#include "MCTargetDesc/ARMAsmBackendNaClELF.h" // @LOCALMOD
 #include "MCTargetDesc/ARMAsmBackendWinCOFF.h"
 #include "MCTargetDesc/ARMBaseInfo.h"
 #include "MCTargetDesc/ARMFixupKinds.h"
