@@ -9,9 +9,7 @@ set(LLVM_LINK_COMPONENTS
   IRReader
   Linker
   # @LOCALMOD-BEGIN
-  NaClAnalysis
   NaClTransforms
-  MinSFITransforms
   JSBackend
   # @LOCALMOD-END
   InstCombine

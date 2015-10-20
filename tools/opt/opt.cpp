@@ -23,7 +23,6 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeWriterPass.h" // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
@@ -53,7 +52,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/MinSFI.h"  // @LOCALMOD
 #include "llvm/Transforms/NaCl.h"  // @LOCALMOD
 #include <algorithm>
 #include <memory>
@@ -149,10 +147,6 @@ static cl::opt<bool>
 PNaClABISimplifyPostOpt(
     "pnacl-abi-simplify-postopt",
     cl::desc("PNaCl ABI simplifications for after optimizations"));
-
-static cl::opt<bool>
-MinSFI("minsfi",
-       cl::desc("MinSFI sandboxing"));
 // @LOCALMOD-END
 
 static cl::opt<std::string>
@@ -360,12 +354,10 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
-  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
-  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
@@ -386,28 +378,21 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
   initializeNormalizeAlignmentPass(Registry);
-  initializePNaClABIVerifyFunctionsPass(Registry);
-  initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
-  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
-  initializeSandboxIndirectCallsPass(Registry);
-  initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
   initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
-  initializeStripTlsPass(Registry);
-  initializeSubstituteUndefsPass(Registry);
   // Emscripten passes:
   initializeExpandI64Pass(Registry);
   initializeExpandInsertExtractElementPass(Registry);
@@ -645,11 +630,6 @@ int main(int argc, char **argv) {
       PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
       PNaClABISimplifyPostOpt = false;
     }
-
-    if (MinSFI && MinSFI.getPosition() < PassList.getPosition(i)) {
-      MinSFIPasses(Passes);
-      MinSFI = false;
-    }
     // @LOCALMOD-END
 
     const PassInfo *PassInf = PassList[i];
@@ -729,9 +709,6 @@ int main(int argc, char **argv) {
   // @LOCALMOD-BEGIN
   if (PNaClABISimplifyPostOpt)
     PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
-
-  if (MinSFI)
-     MinSFIPasses(Passes);
   // @LOCALMOD-END
 
   // Check that the module is well formed on completion of optimization

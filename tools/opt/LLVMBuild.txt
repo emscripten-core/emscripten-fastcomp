@@ -21,8 +21,6 @@ name = opt
 parent = Tools
 required_libraries =
  NaClTransforms
- NaClAnalysis
- MinSFITransforms
  AsmParser
  BitReader
  BitWriter

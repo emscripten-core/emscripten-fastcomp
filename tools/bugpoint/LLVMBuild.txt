@@ -29,8 +29,6 @@ required_libraries =
  Instrumentation
  JSBackend
  Linker
- MinSFITransforms
- NaClAnalysis
  NaClTransforms
  ObjCARC
  Scalar

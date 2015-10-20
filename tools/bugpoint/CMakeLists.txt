@@ -10,8 +10,6 @@ set(LLVM_LINK_COMPONENTS
   Instrumentation
   Linker
   # @LOCALMOD-BEGIN
-  MinSFITransforms
-  NaClAnalysis
   NaClTransforms
   JSBackend
   # @LOCALMOD-END

@@ -138,12 +138,10 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
-  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
-  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
@@ -164,28 +162,21 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
   initializeNormalizeAlignmentPass(Registry);
-  initializePNaClABIVerifyFunctionsPass(Registry);
-  initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
-  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
-  initializeSandboxIndirectCallsPass(Registry);
-  initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
   initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
-  initializeStripTlsPass(Registry);
-  initializeSubstituteUndefsPass(Registry);
   // Emscripten passes:
   initializeExpandI64Pass(Registry);
   initializeExpandInsertExtractElementPass(Registry);
