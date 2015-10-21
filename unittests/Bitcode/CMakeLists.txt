@@ -2,8 +2,6 @@ set(LLVM_LINK_COMPONENTS
   AsmParser
   BitReader
   BitWriter
-  NaClBitAnalysis
-  NaClBitTestUtils
   Core
   Support
   )
