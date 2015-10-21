@@ -245,16 +245,6 @@ std::error_code Process::FixupStandardFileDescriptors() {
 }
 
 std::error_code Process::SafelyCloseFileDescriptor(int FD) {
-  // @LOCALMOD-BEGIN: For NaCl, don't use pthread_sigmask, etc.
-  // They are stubs and fail with ENOSYS, which make this return
-  // an error.
-#ifdef __native_client__
-  int ErrnoFromClose = 0;
-  if (::close(FD) < 0)
-    ErrnoFromClose = errno;
-  return std::error_code(ErrnoFromClose, std::generic_category());
-#else
-
   // Create a signal set filled with *all* signals.
   sigset_t FullSet;
   if (sigfillset(&FullSet) < 0)
@@ -287,7 +277,6 @@ std::error_code Process::SafelyCloseFileDescriptor(int FD) {
   if (ErrnoFromClose)
     return std::error_code(ErrnoFromClose, std::generic_category());
   return std::error_code(EC, std::generic_category());
-#endif  // @LOCALMOD-END
 }
 
 bool Process::StandardInIsUserInput() {

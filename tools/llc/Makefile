@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := llc
-LINK_COMPONENTS := nacltransforms all-targets bitreader asmparser irreader nacltransforms
+LINK_COMPONENTS := nacltransforms all-targets bitreader asmparser irreader mirparser nacltransforms
 
 # Support plugins.
 NO_DEAD_STRIP := 1

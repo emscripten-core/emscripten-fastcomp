@@ -22,35 +22,19 @@ namespace llvm {
 /// Interface to data which is actually streamed from a DataStreamer. In
 /// addition to inherited members, it has the dropLeadingBytes and
 /// setKnownObjectSize methods which are not applicable to non-streamed objects.
-/// @LOCALMOD -- Made dropLeadingBytes/setKnownObjectSize virtual.
 class StreamingMemoryObject : public MemoryObject {
- public:
-  /// Drop s bytes from the front of the stream, pushing the positions of the
-  /// remaining bytes down by s. This is used to skip past the bitcode header,
-  /// since we don't know a priori if it's present, and we can't put bytes
-  /// back into the stream once we've read them.
-  virtual bool dropLeadingBytes(size_t s) = 0;
-
-  /// If the data object size is known in advance, many of the operations can
-  /// be made more efficient, so this method should be called before reading
-  /// starts (although it can be called anytime).
-  virtual void setKnownObjectSize(size_t size) = 0;
-};
-
-/// @LOCALMOD -- split out StreamingMemoryObjectImpl from StreamingMemoryObject.
-/// StreamingMemoryObjectImpl - an implementation of a StreamingMemoryObject.
-class StreamingMemoryObjectImpl : public StreamingMemoryObject {
 public:
-  StreamingMemoryObjectImpl(DataStreamer *streamer);
+  StreamingMemoryObject(std::unique_ptr<DataStreamer> Streamer);
   uint64_t getExtent() const override;
   uint64_t readBytes(uint8_t *Buf, uint64_t Size,
                      uint64_t Address) const override;
   const uint8_t *getPointer(uint64_t address, uint64_t size) const override {
-    // This could be fixed by ensuring the bytes are fetched and making a copy,
-    // requiring that the bitcode size be known, or otherwise ensuring that
-    // the memory doesn't go away/get reallocated, but it's
-    // not currently necessary. Users that need the pointer don't stream.
-    llvm_unreachable("getPointer in streaming memory objects not allowed");
+    // FIXME: This could be fixed by ensuring the bytes are fetched and
+    // making a copy, requiring that the bitcode size be known, or
+    // otherwise ensuring that the memory doesn't go away/get reallocated,
+    // but it's not currently necessary. Users that need the pointer (any
+    // that need Blobs) don't stream.
+    report_fatal_error("getPointer in streaming memory objects not allowed");
     return nullptr;
   }
   bool isValidAddress(uint64_t address) const override;
@@ -59,12 +43,12 @@ public:
   /// remaining bytes down by s. This is used to skip past the bitcode header,
   /// since we don't know a priori if it's present, and we can't put bytes
   /// back into the stream once we've read them.
-  bool dropLeadingBytes(size_t s) override;
+  bool dropLeadingBytes(size_t s);
 
   /// If the data object size is known in advance, many of the operations can
   /// be made more efficient, so this method should be called before reading
   /// starts (although it can be called anytime).
-  void setKnownObjectSize(size_t size) override;
+  void setKnownObjectSize(size_t size);
 
 private:
   const static uint32_t kChunkSize = 4096 * 4;
@@ -75,30 +59,31 @@ private:
   mutable size_t ObjectSize; // 0 if unknown, set if wrapper seen or EOF reached
   mutable bool EOFReached;
 
-  // Fetch enough bytes such that Pos can be read or EOF is reached
-  // (i.e. BytesRead > Pos). Return true if Pos can be read.
-  // Unlike most of the functions in BitcodeReader, returns true on success.
-  // Most of the requests will be small, but we fetch at kChunkSize bytes
-  // at a time to avoid making too many potentially expensive GetBytes calls
+  // Fetch enough bytes such that Pos can be read (i.e. BytesRead >
+  // Pos). Returns true if Pos can be read.  Unlike most of the
+  // functions in BitcodeReader, returns true on success.  Most of the
+  // requests will be small, but we fetch at kChunkSize bytes at a
+  // time to avoid making too many potentially expensive GetBytes
+  // calls.
   bool fetchToPos(size_t Pos) const {
-    if (EOFReached)
-      return Pos < ObjectSize;
     while (Pos >= BytesRead) {
+      if (EOFReached)
+        return false;
       Bytes.resize(BytesRead + BytesSkipped + kChunkSize);
       size_t bytes = Streamer->GetBytes(&Bytes[BytesRead + BytesSkipped],
                                         kChunkSize);
       BytesRead += bytes;
-      if (bytes != kChunkSize) { // reached EOF/ran out of bytes
-        ObjectSize = BytesRead;
+      if (bytes == 0) { // reached EOF/ran out of bytes
+        if (ObjectSize == 0)
+          ObjectSize = BytesRead;
         EOFReached = true;
-        break;
       }
     }
-    return Pos < BytesRead;
+    return !ObjectSize || Pos < ObjectSize;
   }
 
-  StreamingMemoryObjectImpl(const StreamingMemoryObjectImpl&) = delete;
-  void operator=(const StreamingMemoryObjectImpl&) = delete;
+  StreamingMemoryObject(const StreamingMemoryObject&) = delete;
+  void operator=(const StreamingMemoryObject&) = delete;
 };
 
 MemoryObject *getNonStreamedMemoryObject(

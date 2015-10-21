@@ -33,13 +33,12 @@ def SDT_ARMCMov    : SDTypeProfile<1, 3,
 def SDT_ARMBrcond  : SDTypeProfile<0, 2,
                                    [SDTCisVT<0, OtherVT>, SDTCisVT<1, i32>]>;
 
-def SDT_ARMBrJT    : SDTypeProfile<0, 3,
+def SDT_ARMBrJT    : SDTypeProfile<0, 2,
+                                  [SDTCisPtrTy<0>, SDTCisVT<1, i32>]>;
+
+def SDT_ARMBr2JT   : SDTypeProfile<0, 3,
                                   [SDTCisPtrTy<0>, SDTCisVT<1, i32>,
                                    SDTCisVT<2, i32>]>;
-
-def SDT_ARMBr2JT   : SDTypeProfile<0, 4,
-                                  [SDTCisPtrTy<0>, SDTCisVT<1, i32>,
-                                   SDTCisVT<2, i32>, SDTCisVT<3, i32>]>;
 
 def SDT_ARMBCC_i64 : SDTypeProfile<0, 6,
                                   [SDTCisVT<0, i32>,
@@ -60,6 +59,7 @@ def SDT_ARMThreadPointer : SDTypeProfile<1, 0, [SDTCisPtrTy<0>]>;
 def SDT_ARMEH_SJLJ_Setjmp : SDTypeProfile<1, 2, [SDTCisInt<0>, SDTCisPtrTy<1>,
                                                  SDTCisInt<2>]>;
 def SDT_ARMEH_SJLJ_Longjmp: SDTypeProfile<0, 2, [SDTCisPtrTy<0>, SDTCisInt<1>]>;
+def SDT_ARMEH_SJLJ_SetupDispatch: SDTypeProfile<0, 0, []>;
 
 def SDT_ARMMEMBARRIER     : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
@@ -96,15 +96,7 @@ def ARMSmlal         : SDNode<"ARMISD::SMLAL", SDT_ARM64bitmlal>;
 // Node definitions.
 def ARMWrapper       : SDNode<"ARMISD::Wrapper",     SDTIntUnaryOp>;
 def ARMWrapperPIC    : SDNode<"ARMISD::WrapperPIC",  SDTIntUnaryOp>;
-def ARMWrapperJT     : SDNode<"ARMISD::WrapperJT",   SDTIntBinOp>;
-// @LOCALMOD-START
-// support non-inline jumptables
-// we do not use the extre uid immediate that comes with ARMWrapperJT
-// TODO(robertm): figure out what it is used for
-def ARMWrapperJT2    : SDNode<"ARMISD::WrapperJT2",  SDTIntUnaryOp>;
-// Support for MOVW/MOVT'ing the GOT address directly into a register.
-def ARMWrapperGOT       : SDNode<"ARMISD::WrapperGOT",  SDTPtrLeaf>;
-// @LOCALMOD-END
+def ARMWrapperJT     : SDNode<"ARMISD::WrapperJT",   SDTIntUnaryOp>;
 
 def ARMcallseq_start : SDNode<"ISD::CALLSEQ_START", SDT_ARMCallSeqStart,
                               [SDNPHasChain, SDNPSideEffect, SDNPOutGlue]>;
@@ -172,6 +164,9 @@ def ARMeh_sjlj_setjmp: SDNode<"ARMISD::EH_SJLJ_SETJMP",
 def ARMeh_sjlj_longjmp: SDNode<"ARMISD::EH_SJLJ_LONGJMP",
                                SDT_ARMEH_SJLJ_Longjmp,
                                [SDNPHasChain, SDNPSideEffect]>;
+def ARMeh_sjlj_setup_dispatch: SDNode<"ARMISD::EH_SJLJ_SETUP_DISPATCH",
+                                      SDT_ARMEH_SJLJ_SetupDispatch,
+                                      [SDNPHasChain, SDNPSideEffect]>;
 
 def ARMMemBarrierMCR  : SDNode<"ARMISD::MEMBARRIER_MCR", SDT_ARMMEMBARRIER,
                                [SDNPHasChain, SDNPSideEffect]>;
@@ -279,7 +274,6 @@ def IsARM            : Predicate<"!Subtarget->isThumb()">,
 def IsMachO          : Predicate<"Subtarget->isTargetMachO()">;
 def IsNotMachO       : Predicate<"!Subtarget->isTargetMachO()">;
 def IsNaCl           : Predicate<"Subtarget->isTargetNaCl()">;
-def IsNotNaCl        : Predicate<"!Subtarget->isTargetNaCl()">; // @LOCALMOD
 def UseNaClTrap      : Predicate<"Subtarget->useNaClTrap()">,
                                  AssemblerPredicate<"FeatureNaClTrap", "NaCl">;
 def DontUseNaClTrap  : Predicate<"!Subtarget->useNaClTrap()">;
@@ -316,13 +310,8 @@ def HasSlowVDUP32 : Predicate<"Subtarget->isSwift()">;
 def UseVMOVSR : Predicate<"Subtarget->isCortexA9() || !Subtarget->useNEONForSinglePrecisionFP()">;
 def DontUseVMOVSR : Predicate<"!Subtarget->isCortexA9() && Subtarget->useNEONForSinglePrecisionFP()">;
 
-def IsLE             : Predicate<"getTargetLowering()->isLittleEndian()">;
-def IsBE             : Predicate<"getTargetLowering()->isBigEndian()">;
-
-// @LOCALMOD-BEGIN
-def UseConstIslands : Predicate<"Subtarget->useConstIslands()">;
-def DontUseConstIslands : Predicate<"!Subtarget->useConstIslands()">;
-// @LOCALMOD-END
+def IsLE             : Predicate<"MF->getDataLayout().isLittleEndian()">;
+def IsBE             : Predicate<"MF->getDataLayout().isBigEndian()">;
 
 //===----------------------------------------------------------------------===//
 // ARM Flag Definitions.
@@ -337,12 +326,12 @@ class RegConstraint<string C> {
 
 // imm_neg_XFORM - Return the negation of an i32 immediate value.
 def imm_neg_XFORM : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant(-(int)N->getZExtValue(), MVT::i32);
+  return CurDAG->getTargetConstant(-(int)N->getZExtValue(), SDLoc(N), MVT::i32);
 }]>;
 
 // imm_not_XFORM - Return the complement of a i32 immediate value.
 def imm_not_XFORM : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant(~(int)N->getZExtValue(), MVT::i32);
+  return CurDAG->getTargetConstant(~(int)N->getZExtValue(), SDLoc(N), MVT::i32);
 }]>;
 
 /// imm16_31 predicate - True if the 32-bit immediate is in the range [16,31].
@@ -357,7 +346,8 @@ def sext_16_node : PatLeaf<(i32 GPR:$a), [{
 
 /// Split a 32-bit immediate into two 16 bit parts.
 def hi16 : SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant((uint32_t)N->getZExtValue() >> 16, MVT::i32);
+  return CurDAG->getTargetConstant((uint32_t)N->getZExtValue() >> 16, SDLoc(N),
+                                   MVT::i32);
 }]>;
 
 def lo16AllZero : PatLeaf<(i32 imm), [{
@@ -499,10 +489,10 @@ def neon_vcvt_imm32 : Operand<i32> {
 def rot_imm_XFORM: SDNodeXForm<imm, [{
   switch (N->getZExtValue()){
   default: llvm_unreachable(nullptr);
-  case 0:  return CurDAG->getTargetConstant(0, MVT::i32);
-  case 8:  return CurDAG->getTargetConstant(1, MVT::i32);
-  case 16: return CurDAG->getTargetConstant(2, MVT::i32);
-  case 24: return CurDAG->getTargetConstant(3, MVT::i32);
+  case 0:  return CurDAG->getTargetConstant(0, SDLoc(N), MVT::i32);
+  case 8:  return CurDAG->getTargetConstant(1, SDLoc(N), MVT::i32);
+  case 16: return CurDAG->getTargetConstant(2, SDLoc(N), MVT::i32);
+  case 24: return CurDAG->getTargetConstant(3, SDLoc(N), MVT::i32);
   }
 }]>;
 def RotImmAsmOperand : AsmOperandClass {
@@ -781,7 +771,8 @@ def bf_inv_mask_imm : Operand<i32>,
 }
 
 def imm1_32_XFORM: SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant((int)N->getZExtValue() - 1, MVT::i32);
+  return CurDAG->getTargetConstant((int)N->getZExtValue() - 1, SDLoc(N),
+                                   MVT::i32);
 }]>;
 def Imm1_32AsmOperand: AsmOperandClass { let Name = "Imm1_32"; }
 def imm1_32 : Operand<i32>, PatLeaf<(imm), [{
@@ -794,7 +785,8 @@ def imm1_32 : Operand<i32>, PatLeaf<(imm), [{
 }
 
 def imm1_16_XFORM: SDNodeXForm<imm, [{
-  return CurDAG->getTargetConstant((int)N->getZExtValue() - 1, MVT::i32);
+  return CurDAG->getTargetConstant((int)N->getZExtValue() - 1, SDLoc(N),
+                                   MVT::i32);
 }]>;
 def Imm1_16AsmOperand: AsmOperandClass { let Name = "Imm1_16"; }
 def imm1_16 : Operand<i32>, PatLeaf<(imm), [{ return Imm > 0 && Imm <= 16; }],
@@ -887,8 +879,7 @@ def postidx_reg : MemOperand {
 // use explicit imm vs. reg versions above (addrmode_imm12 and ldst_so_reg).
 def AddrMode2AsmOperand : AsmOperandClass { let Name = "AddrMode2"; }
 def addrmode2 : MemOperand,
-                ComplexPattern<i32, 3, "SelectAddrMode2", [],
-                               [SDNPWantRoot]> { // @LOCALMOD
+                ComplexPattern<i32, 3, "SelectAddrMode2", []> {
   let EncoderMethod = "getAddrMode2OpValue";
   let PrintMethod = "printAddrMode2Operand";
   let ParserMatchClass = AddrMode2AsmOperand;
@@ -928,8 +919,7 @@ def am2offset_imm : MemOperand,
 // FIXME: split into imm vs. reg versions.
 def AddrMode3AsmOperand : AsmOperandClass { let Name = "AddrMode3"; }
 class AddrMode3 : MemOperand,
-                ComplexPattern<i32, 3, "SelectAddrMode3", [],
-                               [SDNPWantRoot]> { // @LOCALMOD
+                  ComplexPattern<i32, 3, "SelectAddrMode3", []> {
   let EncoderMethod = "getAddrMode3OpValue";
   let ParserMatchClass = AddrMode3AsmOperand;
   let MIOperandInfo = (ops GPR:$base, GPR:$offsreg, i32imm:$offsimm);
@@ -1827,41 +1817,6 @@ multiclass AI_str1nopc<bit isByte, string opc, InstrItinClass iii,
 // Instructions
 //===----------------------------------------------------------------------===//
 
-// @LOCALMOD-START
-
-def SFI_GUARD_LOADSTORE :
-PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
-
-let Defs = [CPSR] in
-def SFI_GUARD_LOADSTORE_TST :
-PseudoInst<(outs), (ins GPR:$a), NoItinerary, []>;
-
-// Like SFI_GUARD_LOADSTORE, but reserved for loads into SP.
-def SFI_GUARD_SP_LOAD :
-PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
-
-def SFI_GUARD_INDIRECT_CALL :
-PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
-
-def SFI_GUARD_INDIRECT_JMP :
-PseudoInst<(outs GPR:$dst), (ins GPR:$a, pred:$p), NoItinerary, []>;
-
-def SFI_GUARD_CALL :
-PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
-
-// NOTE: the BX_RET instruction hardcodes lr as well
-def SFI_GUARD_RETURN :
-PseudoInst<(outs), (ins pred:$p), NoItinerary, []>;
-
-def SFI_NOP_IF_AT_BUNDLE_END :
-PseudoInst<(outs), (ins), NoItinerary, []>;
-
-// Note: intention is that $src and $dst are the same register.
-def SFI_DATA_MASK :
-PseudoInst<(outs GPR:$dst), (ins GPR:$src, pred:$p), NoItinerary, []>;
-
-// @LOCALMOD-END
-
 //===----------------------------------------------------------------------===//
 //  Miscellaneous Instructions.
 //
@@ -1874,6 +1829,32 @@ let hasSideEffects = 0, isNotDuplicable = 1 in
 def CONSTPOOL_ENTRY :
 PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
                     i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of direct 32-bit addresses of the destination basic
+/// blocks (either absolute, or relative to the start of the jump-table in PIC
+/// mode). Used mostly in ARM and Thumb-1 modes.
+def JUMPTABLE_ADDRS :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 32-bit jump instructions. Used for Thumb-2 tables
+/// that cannot be optimised to use TBB or TBH.
+def JUMPTABLE_INSTS :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 8-bit unsigned integers representing offsets from
+/// a TBB instruction.
+def JUMPTABLE_TBB :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
+/// A jumptable consisting of 16-bit unsigned integers representing offsets from
+/// a TBH instruction.
+def JUMPTABLE_TBH :
+PseudoInst<(outs), (ins cpinst_operand:$instid, cpinst_operand:$cpidx,
+                        i32imm:$size), NoItinerary, []>;
+
 
 // FIXME: Marking these as hasSideEffects is necessary to prevent machine DCE
 // from removing one half of the matched pairs. That breaks PEI, which assumes
@@ -2138,7 +2119,7 @@ def LEApcrel : ARMPseudoInst<(outs GPR:$Rd), (ins i32imm:$label, pred:$p),
                     4, IIC_iALUi, []>, Sched<[WriteALU, ReadALU]>;
 
 def LEApcrelJT : ARMPseudoInst<(outs GPR:$Rd),
-                      (ins i32imm:$label, nohash_imm:$id, pred:$p),
+                      (ins i32imm:$label, pred:$p),
                       4, IIC_iALUi, []>, Sched<[WriteALU, ReadALU]>;
 }
 
@@ -2190,33 +2171,6 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 
 // SP is marked as a use to prevent stack-pointer assignments that appear
 // immediately before calls from potentially appearing dead.
-
-// @LOCALMOD-START
-// Exception handling related Node and Instructions.
-// The conversion sequence is:
-// ISD::EH_RETURN -> ARMISD::EH_RETURN ->  
-// ARMeh_return -> (stack change + indirect branch)
-// 
-// ARMeh_return takes the place of regular return instruction
-// but takes two arguments.
-// R2, R3 are used for storing the offset and return address respectively.
-def SDT_ARMEHRET : SDTypeProfile<0, 2, [SDTCisInt<0>, SDTCisPtrTy<1>]>;
-
-def ARMehret : SDNode<"ARMISD::EH_RETURN", SDT_ARMEHRET,
-                      [SDNPHasChain, SDNPOptInGlue]>;
-
-
-let isTerminator = 1, isReturn = 1, isBarrier = 1,
-  Defs = [SP],
-  Uses = [SP] in {
-    def ARMeh_return : PseudoInst<(outs), 
-                               (ins GPR:$spadj, GPR:$dst),
-                               IIC_Br,
-                               [(ARMehret GPR:$spadj, GPR:$dst)]>,
-                    Requires<[IsARM]>; 
-}
-// @LOCALMOD-END
-
 let isCall = 1,
   // FIXME:  Do we really need a non-predicated version? If so, it should
   // at least be a pseudo instruction expanding to the predicated version
@@ -2300,24 +2254,24 @@ let isBranch = 1, isTerminator = 1 in {
                 [(br bb:$target)], (Bcc br_target:$target, (ops 14, zero_reg))>,
                 Sched<[WriteBr]>;
 
-    let isNotDuplicable = 1, isIndirectBranch = 1 in {
+    let Size = 4, isNotDuplicable = 1, isIndirectBranch = 1 in {
     def BR_JTr : ARMPseudoInst<(outs),
-                      (ins GPR:$target, i32imm:$jt, i32imm:$id),
+                      (ins GPR:$target, i32imm:$jt),
                       0, IIC_Br,
-                      [(ARMbrjt GPR:$target, tjumptable:$jt, imm:$id)]>,
+                      [(ARMbrjt GPR:$target, tjumptable:$jt)]>,
                       Sched<[WriteBr]>;
     // FIXME: This shouldn't use the generic "addrmode2," but rather be split
     // into i12 and rs suffixed versions.
     def BR_JTm : ARMPseudoInst<(outs),
-                     (ins addrmode2:$target, i32imm:$jt, i32imm:$id),
+                     (ins addrmode2:$target, i32imm:$jt),
                      0, IIC_Br,
-                     [(ARMbrjt (i32 (load addrmode2:$target)), tjumptable:$jt,
-                       imm:$id)]>, Sched<[WriteBrTbl]>;
+                     [(ARMbrjt (i32 (load addrmode2:$target)),
+                               tjumptable:$jt)]>, Sched<[WriteBrTbl]>;
     def BR_JTadd : ARMPseudoInst<(outs),
-                   (ins GPR:$target, GPR:$idx, i32imm:$jt, i32imm:$id),
+                   (ins GPR:$target, GPR:$idx, i32imm:$jt),
                    0, IIC_Br,
-                   [(ARMbrjt (add GPR:$target, GPR:$idx), tjumptable:$jt,
-                     imm:$id)]>, Sched<[WriteBrTbl]>;
+                   [(ARMbrjt (add GPR:$target, GPR:$idx), tjumptable:$jt)]>,
+                   Sched<[WriteBrTbl]>;
     } // isNotDuplicable = 1, isIndirectBranch = 1
   } // isBarrier = 1
 
@@ -2331,6 +2285,7 @@ def BLXi : AXI<(outs), (ins blx_target:$target), BrMiscFrm, NoItinerary,
   bits<25> target;
   let Inst{23-0} = target{24-1};
   let Inst{24} = target{0};
+  let isCall = 1;
 }
 
 // Branch and Exchange Jazelle
@@ -2341,6 +2296,7 @@ def BXJ : ABI<0b0001, (outs), (ins GPR:$func), NoItinerary, "bxj", "\t$func",
   let Inst{19-8} = 0xfff;
   let Inst{7-4} = 0b0010;
   let Inst{3-0} = func;
+  let isBranch = 1;
 }
 
 // Tail calls.
@@ -3369,69 +3325,6 @@ def MOVTi16_ga_pcrel : PseudoInst<(outs GPR:$Rd),
 
 } // Constraints
 
-// @LOCALMOD-BEGIN
-// PIC / PC-relative versions of MOVi16/MOVTi16, which have an extra 
-// operand representing the ID of the PICADD instruction that corrects
-// for relativity. This is used to materialize addresses into
-// a register in a PC-relative manner.
-// 
-// E.g. Rather than have an absolute address in $imm, and transferred to 
-// a register with:
-//    movw $Rd, :lower16:$imm
-//    movt $Rd, :upper16:$imm
-//
-// we will instead have a relative offset:
-//    movw $Rd, :lower16:$imm - ($pic_add_id + 8)
-//    ...
-//    movt $Rd, :upper16:$imm - ($pic_add_id + 8)
-//    ...
-// $pic_add_id:
-//    add  $Rd, pc, $Rd
-//
-// One way these pseudo instructions (and the corresponding PICADD) 
-// come about is during expansion of the MOVi32imm pseudo instruction
-// (see ARMExpandPseudo::ExpandMBB).
-// These pseudo instructions become real instructions when they are
-// finally lowered to MCInsts (e.g., at ARMAsmPrinter::EmitInstruction),
-// and the extra pclabel ID becomes part of the appropriate operand.
-//
-// NOTE: aside from adding the pclabel operand, all other operands should
-// be the same as the non-PIC versions to simplify conversion to the 
-// non-pseudo instructions.
-let isReMaterializable = 1, isAsCheapAsAMove = 1, isMoveImm = 1,
-    hasSideEffects = 0 in
-def MOVi16PIC : PseudoInst<(outs GPR:$Rd), (ins imm0_65535_expr:$imm,
-                                                pclabel:$pic_add_id,
-                                                pred:$p),
-                           IIC_iMOVi,
-                           []>,
-                 Requires<[IsARM, HasV6T2]>, UnaryDP;
-
-let Constraints = "$src = $Rd" in
-def MOVTi16PIC : PseudoInst<(outs GPR:$Rd), (ins GPR:$src,
-                                                 imm0_65535_expr:$imm,
-                                                 pclabel:$pic_add_id,
-                                                 pred:$p),
-                            IIC_iMOVi,
-                            []>,
-                 UnaryDP, Requires<[IsARM, HasV6T2]>;
-// @LOCALMOD-END
-
-// @LOCALMOD-BEGIN
-// Pseudo-instruction that will be expanded into MOVW / MOVT (PIC versions) w/
-// GOT as the operand. 
-// The alternative is to create a constant pool entry with the (relative)
-// GOT address and load from the constant pool. This is currently used
-// when constant islands are turned off, since MOVW / MOVT will be faster.
-let isReMaterializable = 1, isMoveImm = 1, hasSideEffects = 0 in
-def MOVGOTAddr : PseudoInst<(outs GPR:$dst), (ins),
-                           IIC_iMOVix2, // will expand to two MOVi's
-                           []>,
-                           Requires<[IsARM, UseMovt]>;
-
-def : ARMPat<(ARMWrapperGOT), (MOVGOTAddr)>;
-// @LOCALMOD-END
-
 def : ARMPat<(or GPR:$src, 0xffff0000), (MOVTi16 GPR:$src, 0xffff)>,
       Requires<[IsARM, HasV6T2]>;
 
@@ -4314,11 +4207,9 @@ def REV16 : AMiscA1I<0b01101011, 0b1011, (outs GPR:$Rd), (ins GPR:$Rm),
            Sched<[WriteALU]>;
 
 def : ARMV6Pat<(srl (bswap (extloadi16 addrmode3:$addr)), (i32 16)),
-              (REV16 (LDRH addrmode3:$addr))>,
-              Requires<[IsARM, HasV6, IsNotNaCl]>; // @LOCALMOD
+              (REV16 (LDRH addrmode3:$addr))>;
 def : ARMV6Pat<(truncstorei16 (srl (bswap GPR:$Rn), (i32 16)), addrmode3:$addr),
-               (STRH (REV16 GPR:$Rn), addrmode3:$addr)>,
-               Requires<[IsARM, HasV6, IsNotNaCl]>; // @LOCALMOD
+               (STRH (REV16 GPR:$Rn), addrmode3:$addr)>;
 
 let AddedComplexity = 5 in
 def REVSH : AMiscA1I<0b01101111, 0b1011, (outs GPR:$Rd), (ins GPR:$Rm),
@@ -5178,10 +5069,11 @@ def : ARMV5TPat<(int_arm_mrc2 imm:$cop, imm:$opc1, imm:$CRn,
                               imm:$CRm, imm:$opc2),
                 (MRC2 imm:$cop, imm:$opc1, imm:$CRn, imm:$CRm, imm:$opc2)>;
 
-class MovRRCopro<string opc, bit direction, list<dag> pattern = []>
-  : ABI<0b1100, (outs), (ins p_imm:$cop, imm0_15:$opc1,
-        GPRnopc:$Rt, GPRnopc:$Rt2, c_imm:$CRm),
-        NoItinerary, opc, "\t$cop, $opc1, $Rt, $Rt2, $CRm", pattern> {
+class MovRRCopro<string opc, bit direction, dag oops, dag iops, list<dag>
+                 pattern = []>
+  : ABI<0b1100, oops, iops, NoItinerary, opc, "\t$cop, $opc1, $Rt, $Rt2, $CRm",
+        pattern> {
+
   let Inst{23-21} = 0b010;
   let Inst{20} = direction;
 
@@ -5199,9 +5091,13 @@ class MovRRCopro<string opc, bit direction, list<dag> pattern = []>
 }
 
 def MCRR : MovRRCopro<"mcrr", 0 /* from ARM core register to coprocessor */,
+                      (outs), (ins p_imm:$cop, imm0_15:$opc1, GPRnopc:$Rt,
+                      GPRnopc:$Rt2, c_imm:$CRm),
                       [(int_arm_mcrr imm:$cop, imm:$opc1, GPRnopc:$Rt,
                                      GPRnopc:$Rt2, imm:$CRm)]>;
-def MRRC : MovRRCopro<"mrrc", 1 /* from coprocessor to ARM core register */>;
+def MRRC : MovRRCopro<"mrrc", 1 /* from coprocessor to ARM core register */,
+                      (outs GPRnopc:$Rt, GPRnopc:$Rt2),
+                      (ins p_imm:$cop, imm0_15:$opc1, c_imm:$CRm), []>;
 
 class MovRRCopro2<string opc, bit direction, list<dag> pattern = []>
   : ABXI<0b1100, (outs), (ins p_imm:$cop, imm0_15:$opc1,
@@ -5409,6 +5305,10 @@ def Int_eh_sjlj_longjmp : PseudoInst<(outs), (ins GPR:$src, GPR:$scratch),
                                 Requires<[IsARM]>;
 }
 
+let isBarrier = 1, hasSideEffects = 1, usesCustomInserter = 1 in
+def Int_eh_sjlj_setup_dispatch : PseudoInst<(outs), (ins), NoItinerary,
+            [(ARMeh_sjlj_setup_dispatch)]>;
+
 // eh.sjlj.dispatchsetup pseudo-instruction.
 // This pseudo is used for both ARM and Thumb. Any differences are handled when
 // the pseudo is expanded (which happens before any passes that need the
@@ -5438,19 +5338,6 @@ let isReMaterializable = 1, isMoveImm = 1 in
 def MOVi32imm : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iMOVix2,
                            [(set GPR:$dst, (arm_i32imm:$src))]>,
                            Requires<[IsARM]>;
-
-// @LOCALMOD-START
-// MOVi32imm doesn't get a fast-isel because it's not a leaf pattern (it uses
-// arm_i32imm which differs based on whether UseMovt is true.) This means
-// ARMFastISel::ARMMaterializeInt fails when useConstIslands is disabled, and
-// ARMFastISel::ARMSimplifyAddress can't bail out of fast isel. For upstreaming
-// we could probably just split MOVi32imm directly instead of duplicating it,
-// but this is cleaner as a localmod.
-let isReMaterializable = 1, isMoveImm = 1 in
-def MOVti32imm : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iMOVix2,
-                           [(set GPR:$dst, (i32 imm:$src))]>,
-                           Requires<[IsARM, DontUseConstIslands]>;
-// @LOCALMOD-END
 
 def LDRLIT_ga_abs : PseudoInst<(outs GPR:$dst), (ins i32imm:$src), IIC_iLoad_i,
                                [(set GPR:$dst, (ARMWrapper tglobaladdr:$src))]>,
@@ -5487,19 +5374,11 @@ def MOV_ga_pcrel_ldr : PseudoInst<(outs GPR:$dst), (ins i32imm:$addr),
 } // isReMaterializable
 
 // ConstantPool, GlobalAddress, and JumpTable
-def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>,
-            Requires<[IsARM, UseConstIslands]>; // @LOCALMOD see tconstpool
-                                                // with DontUseConstIslands.
+def : ARMPat<(ARMWrapper  tconstpool  :$dst), (LEApcrel tconstpool  :$dst)>;
 def : ARMPat<(ARMWrapper  tglobaladdr :$dst), (MOVi32imm tglobaladdr :$dst)>,
             Requires<[IsARM, UseMovt]>;
-// @LOCALMOD-START
-def : ARMPat<(ARMWrapper  tconstpool :$dst), (MOVi32imm tconstpool :$dst)>,
-            Requires<[IsARM, UseMovt, DontUseConstIslands]>;
-def : ARMPat<(ARMWrapperJT2  tjumptable :$dst), (MOVi32imm tjumptable :$dst)>,
-            Requires<[IsARM, UseMovt]>;
-// @LOCALMOD-END
-def : ARMPat<(ARMWrapperJT tjumptable:$dst, imm:$id),
-             (LEApcrelJT tjumptable:$dst, imm:$id)>;
+def : ARMPat<(ARMWrapperJT tjumptable:$dst),
+             (LEApcrelJT tjumptable:$dst)>;
 
 // TODO: add,sub,and, 3-instr forms?
 

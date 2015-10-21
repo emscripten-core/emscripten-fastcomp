@@ -1,6 +1,4 @@
 ; RUN: llc < %s | FileCheck %s
-; @LOCALMOD
-; RUN: llc -mtriple=x86_64-nacl < %s | FileCheck %s --check-prefix=NACL
 
 ; This testcase used to hit an assert during ISel.  For details, see the big
 ; comment inside the function.
@@ -11,17 +9,6 @@
 ; The shift (leal) should be folded into the scale of the address in the load.
 ; CHECK-NOT: leal
 ; CHECK: movl {{.*}},4),
-
-; NACL-LABEL: foo:
-; The AND should be turned into a subreg access.
-; NACL-NOT: and
-; The shift should not be folded into the scale of the address in the load.
-; It could in principle be:
-; leal (%rXX, 4), %eXX
-; movl nacl:%(%r15,%rXX), %eXX
-; But it is actually:
-; NACL: shll $2,
-; NACL: movl %nacl:(%r15,%{{...}}),
 
 target datalayout = "e-m:o-p:32:32-f64:32:64-f80:128-n8:16:32-S128"
 target triple = "i386-apple-macosx10.6.0"

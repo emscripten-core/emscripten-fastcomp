@@ -32,10 +32,10 @@ dnl===-----------------------------------------------------------------------===
 dnl Initialize autoconf and define the package name, version number and
 dnl address for reporting bugs.
 
-AC_INIT([LLVM],[3.7.0svn],[http://llvm.org/bugs/])
+AC_INIT([LLVM],[3.8.0svn],[http://llvm.org/bugs/])
 
 LLVM_VERSION_MAJOR=3
-LLVM_VERSION_MINOR=7
+LLVM_VERSION_MINOR=8
 LLVM_VERSION_PATCH=0
 LLVM_VERSION_SUFFIX=svn
 
@@ -73,6 +73,11 @@ if test ${srcdir} != "." ; then
   fi
 fi
 
+dnl Quit if it is an in-source build
+if test ${srcdir} == "." ; then
+  AC_MSG_ERROR([In-source builds are not allowed. Please configure from a separate build directory!])
+fi
+
 dnl Default to empty (i.e. assigning the null string to) CFLAGS and CXXFLAGS,
 dnl instead of the autoconf default (for example, '-g -O2' for CC=gcc).
 : ${CFLAGS=}
@@ -105,7 +110,7 @@ if test "$CXX" = "clang++" ; then
 ],
 [
   AC_MSG_RESULT([no])
-  AC_MSG_ERROR([Selected compiler could not find or parse C++ standard library headers.  Rerun with CC=c-compiler CXX=c++-compiler ./configure ...])
+  AC_MSG_ERROR([Selected compiler could not find or parse C++ standard library headers.  Rerun with CC=c-compiler CXX=c++-compiler LLVM_SRC_DIR/configure ...])
 ])
   AC_LANG_POP([C++])
 fi
@@ -322,11 +327,6 @@ AC_CACHE_CHECK([type of operating system we're going to host on],
     llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
     llvm_cv_os_type="Freestanding"
     llvm_cv_platform_type="Unix" ;;
-  *-*-nacl*)
-    llvm_cv_link_all_option="-Wl,--whole-archive"
-    llvm_cv_no_link_all_option="-Wl,--no-whole-archive"
-    llvm_cv_os_type="NativeClient"
-    llvm_cv_platform_type="Unix" ;;
   *)
     llvm_cv_link_all_option=""
     llvm_cv_no_link_all_option=""
@@ -437,6 +437,7 @@ AC_CACHE_CHECK([target architecture],[llvm_cv_target_arch],
   hexagon-*)              llvm_cv_target_arch="Hexagon" ;;
   nvptx-*)                llvm_cv_target_arch="NVPTX" ;;
   s390x-*)                llvm_cv_target_arch="SystemZ" ;;
+  wasm*-*)                llvm_cv_target_arch="WebAssembly" ;;
   *)                      llvm_cv_target_arch="Unknown" ;;
 esac])
 
@@ -472,6 +473,7 @@ case $host in
   msp430-*)               host_arch="MSP430" ;;
   hexagon-*)              host_arch="Hexagon" ;;
   s390x-*)                host_arch="SystemZ" ;;
+  wasm*-*)                host_arch="WebAssembly" ;;
   *)                      host_arch="Unknown" ;;
 esac
 
@@ -804,6 +806,7 @@ else
     Hexagon)     AC_SUBST(TARGET_HAS_JIT,0) ;;
     NVPTX)       AC_SUBST(TARGET_HAS_JIT,0) ;;
     SystemZ)     AC_SUBST(TARGET_HAS_JIT,1) ;;
+    WebAssembly) AC_SUBST(TARGET_HAS_JIT,0) ;;
     *)           AC_SUBST(TARGET_HAS_JIT,0) ;;
   esac
 fi
@@ -1089,7 +1092,7 @@ if test "$llvm_cv_enable_crash_overrides" = "yes" ; then
 fi
 
 dnl List all possible targets
-ALL_TARGETS="X86 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend JSBackend NVPTX Hexagon SystemZ R600"
+ALL_TARGETS="X86 Sparc PowerPC ARM AArch64 Mips XCore MSP430 CppBackend NVPTX Hexagon SystemZ AMDGPU BPF JSBackend"
 AC_SUBST(ALL_TARGETS,$ALL_TARGETS)
 
 dnl Allow specific targets to be specified for building (or not)
@@ -1097,7 +1100,7 @@ TARGETS_TO_BUILD=""
 AC_ARG_ENABLE([targets],AS_HELP_STRING([--enable-targets],
     [Build specific host targets: all or target1,target2,... Valid targets are:
      host, x86, x86_64, sparc, powerpc, arm64, arm, aarch64, mips, hexagon,
-     xcore, msp430, nvptx, systemz, r600, js, and cpp (default=all)]),,
+     xcore, msp430, nvptx, systemz, r600, bpf, wasm, js, and cpp (default=all)]),,
     enableval=all)
 if test "$enableval" = host-only ; then
   enableval=host
@@ -1113,6 +1116,7 @@ case "$enableval" in
         aarch64)  TARGETS_TO_BUILD="AArch64 $TARGETS_TO_BUILD" ;;
         arm64)    TARGETS_TO_BUILD="AArch64 $TARGETS_TO_BUILD" ;;
         arm)      TARGETS_TO_BUILD="ARM $TARGETS_TO_BUILD" ;;
+        bpf)      TARGETS_TO_BUILD="BPF $TARGETS_TO_BUILD" ;;
         mips)     TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
         mipsel)   TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
         mips64)   TARGETS_TO_BUILD="Mips $TARGETS_TO_BUILD" ;;
@@ -1124,7 +1128,9 @@ case "$enableval" in
         hexagon)  TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
         nvptx)    TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
         systemz)  TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
-        r600)     TARGETS_TO_BUILD="R600 $TARGETS_TO_BUILD" ;;
+        amdgpu)   TARGETS_TO_BUILD="AMDGPU $TARGETS_TO_BUILD" ;;
+        r600)     TARGETS_TO_BUILD="AMDGPU $TARGETS_TO_BUILD" ;;
+        wasm)     TARGETS_TO_BUILD="WebAssembly $TARGETS_TO_BUILD" ;;
         host) case "$llvm_cv_target_arch" in
             x86)         TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
             x86_64)      TARGETS_TO_BUILD="X86 $TARGETS_TO_BUILD" ;;
@@ -1138,6 +1144,7 @@ case "$enableval" in
             Hexagon)     TARGETS_TO_BUILD="Hexagon $TARGETS_TO_BUILD" ;;
             NVPTX)       TARGETS_TO_BUILD="NVPTX $TARGETS_TO_BUILD" ;;
             SystemZ)     TARGETS_TO_BUILD="SystemZ $TARGETS_TO_BUILD" ;;
+            WebAssembly) TARGETS_TO_BUILD="WebAssembly $TARGETS_TO_BUILD" ;;
             *)       AC_MSG_ERROR([Can not set target to build]) ;;
           esac ;;
         *) AC_MSG_ERROR([Unrecognized target $a_target]) ;;
@@ -1215,34 +1222,6 @@ AC_SUBST(LLVM_ENUM_TARGETS)
 AC_SUBST(LLVM_ENUM_ASM_PRINTERS)
 AC_SUBST(LLVM_ENUM_ASM_PARSERS)
 AC_SUBST(LLVM_ENUM_DISASSEMBLERS)
-
-
-dnl Allow specific Subzero targets to be specified for building (or not)
-SUBZERO_TARGETS_TO_BUILD=""
-AC_ARG_ENABLE([subzero_targets],AS_HELP_STRING([--enable-subzero-targets],
-    [Build specific subzero targets: target1,target2,...(default=none)]),,
-    enableval=none)
-case "$enableval" in
-  none) ;;
-  *)for a_target in `echo $enableval|sed -e 's/,/ /g' ` ; do
-      case "$a_target" in
-        X8632)  SUBZERO_TARGETS_TO_BUILD="X8632 $SUBZERO_TARGETS_TO_BUILD" ;;
-        X8664)  SUBZERO_TARGETS_TO_BUILD="X8664 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM32)  SUBZERO_TARGETS_TO_BUILD="ARM32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        ARM64)  SUBZERO_TARGETS_TO_BUILD="ARM64 $SUBZERO_TARGETS_TO_BUILD" ;;
-        MIPS32) SUBZERO_TARGETS_TO_BUILD="MIPS32 $SUBZERO_TARGETS_TO_BUILD" ;;
-        *) AC_MSG_ERROR([Unrecognized subzero target $a_target]) ;;
-      esac
-  done
-  ;;
-esac
-
-dnl Build the SUBZERO_ENUM_TARGETS macro for SZTargets.def.
-SUBZERO_ENUM_TARGETS=""
-for target_to_build in $SUBZERO_TARGETS_TO_BUILD; do
-  SUBZERO_ENUM_TARGETS="SUBZERO_TARGET($target_to_build) $SUBZERO_ENUM_TARGETS"
-done
-AC_SUBST(SUBZERO_ENUM_TARGETS)
 
 dnl Override the option to use for optimized builds.
 AC_ARG_WITH(optimize-option,
@@ -1357,6 +1336,13 @@ AC_ARG_WITH(default-sysroot,
     withval="")
 AC_DEFINE_UNQUOTED(DEFAULT_SYSROOT,"$withval",
                    [Default <path> to all compiler invocations for --sysroot=<path>.])
+
+AC_ARG_WITH(clang-default-openmp-runtime,
+  AS_HELP_STRING([--with-clang-default-openmp-runtime],
+    [The default OpenMP runtime for Clang.]),,
+    withval="libgomp")
+AC_DEFINE_UNQUOTED(CLANG_DEFAULT_OPENMP_RUNTIME,"$withval",
+                   [Default OpenMP runtime used by -fopenmp.])
 
 dnl Allow linking of LLVM with GPLv3 binutils code.
 AC_ARG_WITH(binutils-include,
@@ -1643,7 +1629,7 @@ dnl===-----------------------------------------------------------------------===
 
 AC_CHECK_LIB(m,sin)
 if test "$llvm_cv_os_type" = "MingW" ; then
-  AC_CHECK_LIB(imagehlp, main)
+  AC_CHECK_LIB(ole32, main)
   AC_CHECK_LIB(psapi, main)
   AC_CHECK_LIB(shell32, main)
 fi
@@ -2184,10 +2170,12 @@ dnl contains the same list of files as AC_CONFIG_HEADERS below. This ensures the
 dnl files can be updated automatically when their *.in sources change.
 AC_CONFIG_HEADERS([include/llvm/Config/config.h include/llvm/Config/llvm-config.h])
 AH_TOP([#ifndef CONFIG_H
-#define CONFIG_H])
+#define CONFIG_H
+
+/* Exported configuration */
+#include "llvm/Config/llvm-config.h"])
 AH_BOTTOM([#endif])
 
-AC_CONFIG_FILES([include/llvm/Config/SZTargets.def])
 AC_CONFIG_FILES([include/llvm/Config/Targets.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmPrinters.def])
 AC_CONFIG_FILES([include/llvm/Config/AsmParsers.def])

@@ -90,15 +90,10 @@ X86ELFMCAsmInfo::X86ELFMCAsmInfo(const Triple &T) {
   bool is64Bit = T.getArch() == Triple::x86_64;
   bool isX32 = T.getEnvironment() == Triple::GNUX32;
 
-  // @LOCALMOD-BEGIN(eliben)
-  // Until Nacl implies x32, we add &&!isNaCl in the PointerSize condition
-  bool isNaCl = T.isOSNaCl();
-
   // For ELF, x86-64 pointer size depends on the ABI.
   // For x86-64 without the x32 ABI, pointer size is 8. For x86 and for x86-64
   // with the x32 ABI, pointer size remains the default 4.
-  PointerSize = (is64Bit && !isX32 && !isNaCl) ? 8 : 4;
-  // @LOCALMOD-END
+  PointerSize = (is64Bit && !isX32) ? 8 : 4;
 
   // OTOH, stack slot size is always 8 for x86-64, even with the x32 ABI.
   CalleeSaveStackSlotSize = is64Bit ? 8 : 4;
@@ -124,9 +119,9 @@ X86_64MCAsmInfoDarwin::getExprForPersonalitySymbol(const MCSymbol *Sym,
                                                    MCStreamer &Streamer) const {
   MCContext &Context = Streamer.getContext();
   const MCExpr *Res =
-    MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_GOTPCREL, Context);
-  const MCExpr *Four = MCConstantExpr::Create(4, Context);
-  return MCBinaryExpr::CreateAdd(Res, Four, Context);
+    MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_GOTPCREL, Context);
+  const MCExpr *Four = MCConstantExpr::create(4, Context);
+  return MCBinaryExpr::createAdd(Res, Four, Context);
 }
 
 void X86MCAsmInfoMicrosoft::anchor() { }
@@ -137,8 +132,14 @@ X86MCAsmInfoMicrosoft::X86MCAsmInfoMicrosoft(const Triple &Triple) {
     PrivateLabelPrefix = ".L";
     PointerSize = 8;
     WinEHEncodingType = WinEH::EncodingType::Itanium;
-    ExceptionsType = ExceptionHandling::WinEH;
+  } else {
+    // 32-bit X86 doesn't use CFI, so this isn't a real encoding type. It's just
+    // a place holder that the Windows EHStreamer looks for to suppress CFI
+    // output. In particular, usesWindowsCFI() returns false.
+    WinEHEncodingType = WinEH::EncodingType::X86;
   }
+
+  ExceptionsType = ExceptionHandling::WinEH;
 
   AssemblerDialect = AsmWriterFlavor;
 

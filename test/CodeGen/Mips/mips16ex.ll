@@ -9,7 +9,7 @@
 @_ZTIi = external constant i8*
 @.str1 = private unnamed_addr constant [15 x i8] c"exception %i \0A\00", align 1
 
-define i32 @main() {
+define i32 @main() personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
 entry:
   %retval = alloca i32, align 4
   %exn.slot = alloca i8*
@@ -24,7 +24,7 @@ entry:
           to label %unreachable unwind label %lpad
 
 lpad:                                             ; preds = %entry
-  %1 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %1 = landingpad { i8*, i32 }
           catch i8* bitcast (i8** @_ZTIi to i8*)
   %2 = extractvalue { i8*, i32 } %1, 0
   store i8* %2, i8** %exn.slot
@@ -45,7 +45,7 @@ catch:                                            ; preds = %catch.dispatch
   %exn.scalar = load i32, i32* %6
   store i32 %exn.scalar, i32* %e, align 4
   %7 = load i32, i32* %e, align 4
-  %call2 = invoke i32 (i8*, ...)* @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str1, i32 0, i32 0), i32 %7)
+  %call2 = invoke i32 (i8*, ...) @printf(i8* getelementptr inbounds ([15 x i8], [15 x i8]* @.str1, i32 0, i32 0), i32 %7)
           to label %invoke.cont unwind label %lpad1
 
 invoke.cont:                                      ; preds = %catch
@@ -56,7 +56,7 @@ try.cont:                                         ; preds = %invoke.cont
   ret i32 0
 
 lpad1:                                            ; preds = %catch
-  %8 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %8 = landingpad { i8*, i32 }
           cleanup
   %9 = extractvalue { i8*, i32 } %8, 0
   store i8* %9, i8** %exn.slot

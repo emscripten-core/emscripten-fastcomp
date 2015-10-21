@@ -13,7 +13,7 @@
 @7 = external unnamed_addr constant [27 x i8], align 1
 @8 = external unnamed_addr constant [63 x i8], align 1
 
-define void @main() uwtable ssp {
+define void @main() uwtable ssp personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*) {
 bb:
   br i1 undef, label %bb1, label %bb2
 
@@ -25313,7 +25313,7 @@ bb25275:                                          ; preds = %bb25274
   br label %bb25272
 
 bb25276:                                          ; preds = %bb25283, %bb25274, %bb25273
-  %tmp25277 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %tmp25277 = landingpad { i8*, i32 }
           cleanup
   br label %bb25361
 
@@ -25383,7 +25383,7 @@ bb25297:                                          ; preds = %bb25296
   br label %bb25300
 
 bb25298:                                          ; preds = %bb25296, %bb25295, %bb25290, %bb25287
-  %tmp25299 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %tmp25299 = landingpad { i8*, i32 }
           cleanup
   br label %bb25360
 
@@ -25461,7 +25461,7 @@ bb25323:                                          ; preds = %bb25319
           to label %bb25326 unwind label %bb25324
 
 bb25324:                                          ; preds = %bb25357, %bb25344, %bb25343, %bb25342, %bb25337, %bb25334, %bb25333, %bb25323, %bb25313, %bb25307, %bb25306
-  %tmp25325 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %tmp25325 = landingpad { i8*, i32 }
           cleanup
   br label %bb25359
 
@@ -25487,11 +25487,11 @@ bb25332:                                          ; preds = %bb25330, %bb25305
   br i1 undef, label %bb25333, label %bb25357
 
 bb25333:                                          ; preds = %bb25332
-  invoke void (...)* @printf()
+  invoke void (...) @printf()
           to label %bb25334 unwind label %bb25324
 
 bb25334:                                          ; preds = %bb25333
-  invoke void (...)* @printf(i32 undef)
+  invoke void (...) @printf(i32 undef)
           to label %bb25335 unwind label %bb25324
 
 bb25335:                                          ; preds = %bb25334
@@ -25501,7 +25501,7 @@ bb25336:                                          ; preds = %bb25338, %bb25335
   br i1 undef, label %bb25337, label %bb25339
 
 bb25337:                                          ; preds = %bb25336
-  invoke void (...)* @printf(i32 undef, double undef)
+  invoke void (...) @printf(i32 undef, double undef)
           to label %bb25338 unwind label %bb25324
 
 bb25338:                                          ; preds = %bb25337
@@ -25517,11 +25517,11 @@ bb25341:                                          ; preds = %bb25340
   br label %bb25340
 
 bb25342:                                          ; preds = %bb25340
-  invoke void (...)* @printf()
+  invoke void (...) @printf()
           to label %bb25343 unwind label %bb25324
 
 bb25343:                                          ; preds = %bb25342
-  invoke void (...)* @printf(double undef, double undef)
+  invoke void (...) @printf(double undef, double undef)
           to label %bb25344 unwind label %bb25324
 
 bb25344:                                          ; preds = %bb25343
@@ -25547,27 +25547,27 @@ bb25350:                                          ; preds = %bb25349
   br label %bb25349
 
 bb25351:                                          ; preds = %bb25349
-  invoke void (...)* @printf()
+  invoke void (...) @printf()
           to label %bb25352 unwind label %bb25355
 
 bb25352:                                          ; preds = %bb25351
-  invoke void (...)* @printf(double undef)
+  invoke void (...) @printf(double undef)
           to label %bb25353 unwind label %bb25355
 
 bb25353:                                          ; preds = %bb25352
-  invoke void (...)* @printf()
+  invoke void (...) @printf()
           to label %bb25354 unwind label %bb25355
 
 bb25354:                                          ; preds = %bb25353
   br label %bb25358
 
 bb25355:                                          ; preds = %bb25353, %bb25352, %bb25351
-  %tmp25356 = landingpad { i8*, i32 } personality i8* bitcast (i32 (...)* @__gxx_personality_v0 to i8*)
+  %tmp25356 = landingpad { i8*, i32 }
           cleanup
   br label %bb25359
 
 bb25357:                                          ; preds = %bb25332
-  invoke void (...)* @printf()
+  invoke void (...) @printf()
           to label %bb25358 unwind label %bb25324
 
 bb25358:                                          ; preds = %bb25357, %bb25354

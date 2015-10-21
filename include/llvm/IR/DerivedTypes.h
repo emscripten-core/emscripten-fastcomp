@@ -140,7 +140,8 @@ public:
     return T->getTypeID() == FunctionTyID;
   }
 };
-
+static_assert(AlignOf<FunctionType>::Alignment >= AlignOf<Type *>::Alignment,
+              "Alignment sufficient for objects appended to FunctionType");
 
 /// CompositeType - Common super class of ArrayType, StructType, PointerType
 /// and VectorType.
@@ -463,6 +464,9 @@ public:
   /// isValidElementType - Return true if the specified type is valid as a
   /// element type.
   static bool isValidElementType(Type *ElemTy);
+
+  /// Return true if we can load or store from a pointer to this type.
+  static bool isLoadableOrStorableType(Type *ElemTy);
 
   /// @brief Return the address space of the Pointer type.
   inline unsigned getAddressSpace() const { return getSubclassData(); }

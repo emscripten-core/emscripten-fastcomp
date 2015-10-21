@@ -168,10 +168,6 @@ std::string getMainExecutable(const char *argv0, void *MainAddr) {
   char link_path[MAXPATHLEN];
   if (realpath(DLInfo.dli_fname, link_path))
     return link_path;
-  // @LOCALMOD-BEGIN
-#elif defined(__native_client__)
-  // Nothing.
-  // @LOCALMOD-END
 #else
 #error GetMainExecutable is not implemented on this host yet.
 #endif
@@ -190,16 +186,7 @@ UniqueID file_status::getUniqueID() const {
 
 std::error_code current_path(SmallVectorImpl<char> &result) {
   result.clear();
-  // @LOCALMOD-START NaCl doesn't have paths, and the translator returns an
-  //                 error for getcwd below. Return a dummy path instead.
-#if defined(__native_client__)
-  result.reserve(2);
-  result.set_size(2);
-  result[0] = '/';
-  result[1] = '\0';
-  return std::error_code();
-#else // !defined(__native_client__)
-  // @LOCALMOD-END
+
   const char *pwd = ::getenv("PWD");
   llvm::sys::fs::file_status PWDStatus, DotStatus;
   if (pwd && llvm::sys::path::is_absolute(pwd) &&
@@ -230,9 +217,6 @@ std::error_code current_path(SmallVectorImpl<char> &result) {
 
   result.set_size(strlen(result.data()));
   return std::error_code();
-  // @LOCALMOD-START
-#endif // defined(__native_client__)
-  // @LOCALMOD-END
 }
 
 std::error_code create_directory(const Twine &path, bool IgnoreExisting) {

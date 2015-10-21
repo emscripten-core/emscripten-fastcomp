@@ -228,7 +228,7 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   auto *BufPtr = IRB.CreateBitCast(Buf, I8Ptr, "vararg_lifetime_bitcast");
   auto *BufSize =
       ConstantInt::get(Ctx, APInt(64, DL->getTypeAllocSize(VarArgsTy)));
-  IRB.CreateCall2(LifetimeStart, BufSize, BufPtr);
+  IRB.CreateCall(LifetimeStart, {BufSize, BufPtr});
 
   // Copy variable arguments into buffer.
   int Index = 0;
@@ -264,15 +264,15 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
     auto *N = IRB.CreateCall(CastFunc, FixedArgs);
     N->setAttributes(AttributeSet::get(Ctx, Attrs));
     NewCall = N;
-    IRB.CreateCall2(LifetimeEnd, BufSize, BufPtr);
+    IRB.CreateCall(LifetimeEnd, {BufSize, BufPtr});
   } else if (auto *C = dyn_cast<InvokeInst>(Call)) {
     auto *N = IRB.CreateInvoke(CastFunc, C->getNormalDest(), C->getUnwindDest(),
                                FixedArgs, C->getName());
     N->setAttributes(AttributeSet::get(Ctx, Attrs));
     (IRBuilder<>(C->getNormalDest()->getFirstInsertionPt()))
-        .CreateCall2(LifetimeEnd, BufSize, BufPtr);
+        .CreateCall(LifetimeEnd, {BufSize, BufPtr});
     (IRBuilder<>(C->getUnwindDest()->getFirstInsertionPt()))
-        .CreateCall2(LifetimeEnd, BufSize, BufPtr);
+        .CreateCall(LifetimeEnd, {BufSize, BufPtr});
     NewCall = N;
   } else {
     llvm_unreachable("not a call/invoke");

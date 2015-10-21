@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := opt
-LINK_COMPONENTS := naclbitwriter nacltransforms naclanalysis minsfitransforms jsbackend bitreader bitwriter asmparser irreader instrumentation scalaropts objcarcopts ipo vectorize all-targets codegen passes linker
+LINK_COMPONENTS := nacltransforms jsbackend bitreader bitwriter asmparser irreader instrumentation scalaropts objcarcopts ipo vectorize all-targets codegen passes linker
 
 # Support plugins.
 NO_DEAD_STRIP := 1

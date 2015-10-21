@@ -65,6 +65,10 @@ N: Hal Finkel
 E: hfinkel@anl.gov
 D: BBVectorize, the loop reroller, alias analysis and the PowerPC target
 
+N: Dan Gohman
+E: sunfish@mozilla.com
+D: WebAssembly Backend (lib/Target/WebAssembly/*)
+
 N: Renato Golin
 E: renato.golin@linaro.org
 D: ARM Linux support
@@ -88,6 +92,10 @@ D: NVPTX Target (lib/Target/NVPTX/*)
 N: Lang Hames
 E: lhames@gmail.com
 D: MCJIT, RuntimeDyld and JIT event listeners
+
+N: David Majnemer
+E: david.majnemer@gmail.com
+D: IR Constant Folder
 
 N: Galina Kistanova
 E: gkistanova@gmail.com
@@ -182,3 +190,7 @@ D: libLTO, IR Linker
 N: Peter Zotov
 E: whitequark@whitequark.org
 D: OCaml bindings
+
+N: Andrey Churbanov
+E: andrey.churbanov@intel.com
+D: OpenMP runtime library

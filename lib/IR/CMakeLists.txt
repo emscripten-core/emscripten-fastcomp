@@ -35,6 +35,7 @@ add_llvm_library(LLVMCore
   MetadataTracking.cpp
   Module.cpp
   NaClAtomicIntrinsics.cpp
+  Operator.cpp
   Pass.cpp
   PassManager.cpp
   PassRegistry.cpp

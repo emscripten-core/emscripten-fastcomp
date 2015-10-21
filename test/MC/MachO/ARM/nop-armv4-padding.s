@@ -7,5 +7,4 @@ x:
       .align 4
       add r0, r1, r2
 
-; @LOCALMOD - Changed the NOP encoding
 @ CHECK: ('_section_data', '020081e0 0000a0e1 0000a0e1 0000a0e1 020081e0')

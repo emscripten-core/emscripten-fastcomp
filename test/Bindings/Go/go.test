@@ -1,14 +1,3 @@
-; @LOCALMOD-BEGIN
-; Disable this for now to allow cmake builds with libc++.
-; The bindings test tries build a bunch of things and then link against
-; the LLVM libraries, but the build script that it uses within the test
-; does not pick up changes to CMAKE_C*_FLAGS so if we change that then
-; the link commandline is wrong:
-; https://llvm.org/bugs/show_bug.cgi?id=21552
-; https://code.google.com/p/nativeclient/issues/detail?id=4119
-; Add "-x" to the below commandline to get more verbose output.
-; XFAIL: *
-; @LOCALMOD-END
 ; RUN: llvm-go test llvm.org/llvm/bindings/go/llvm
 
 ; REQUIRES: shell, not_ubsan

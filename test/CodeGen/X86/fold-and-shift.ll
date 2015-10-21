@@ -1,6 +1,4 @@
 ; RUN: llc < %s -march=x86 | FileCheck %s
-; @LOCALMOD
-; RUN: llc < %s -mtriple=x86_64-unknown-nacl | FileCheck %s --check-prefix=NACL
 
 define i32 @t1(i8* %X, i32 %i) {
 ; CHECK-LABEL: t1:
@@ -8,14 +6,6 @@ define i32 @t1(i8* %X, i32 %i) {
 ; CHECK: movzbl
 ; CHECK: movl (%{{...}},%{{...}},4),
 ; CHECK: ret
-
-; NaCl64 cannot fold everything into one memory operand, but should fold it
-; into a lea
-; NACL-LABEL: t1:
-; NACL-NOT: and
-; NACL: movzbl
-; NACL: leal (%{{...}},%{{...}},4),
-; NACL: movl %nacl:(%r15,%{{...}}),
 
 entry:
   %tmp2 = shl i32 %i, 2

@@ -142,6 +142,9 @@ def CC_ARM_AAPCS : CallingConv<[
   // Handles byval parameters.
   CCIfByVal<CCPassByVal<4, 4>>,
 
+  // The 'nest' parameter, if any, is passed in R12.
+  CCIfNest<CCAssignToReg<[R12]>>,
+
   // Handle all vector types as either f64 or v2f64.
   CCIfType<[v1i64, v2i32, v4i16, v8i8, v2f32], CCBitConvertToType<f64>>,
   CCIfType<[v2i64, v4i32, v8i16, v16i8, v4f32], CCBitConvertToType<v2f64>>,
@@ -238,8 +241,4 @@ def CSR_GenericInt : CalleeSavedRegs<(add LR, (sequence "R%u", 12, 0))>;
 // registers.
 def CSR_FIQ : CalleeSavedRegs<(add LR, R11, (sequence "R%u", 7, 0))>;
 
-// @LOCALMOD-START
-// NaCl does not save R9, but otherwise uses the same order as AAPCS
-def CSR_NaCl : CalleeSavedRegs<(add LR, R11, R10, R8, R7, R6, R5, R4,
-                                     (sequence "D%u", 15, 8))>;
-// @LOCALMOD-END
+

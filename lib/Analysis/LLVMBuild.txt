@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = IPA NaCl
+subdirectories = IPA
 
 [component_0]
 type = Library

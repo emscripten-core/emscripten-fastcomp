@@ -6,6 +6,7 @@ set(LLVM_LINK_COMPONENTS
   MCDisassembler
   NaClTransforms
   Support
+  Target
   )
 
 set(SOURCES

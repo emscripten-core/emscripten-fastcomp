@@ -130,7 +130,7 @@ private:
 
   bool
   simplifyFunction(LLVMContext &Ctx, Function *OldFunc,
-                   DenseMap<const Function *, DISubprogram> &DISubprogramMap);
+                   DenseMap<const Function *, DISubprogram *> &DISubprogramMap);
 
   void scheduleInstructionsForCleanup(Function *NewFunc);
 
@@ -461,7 +461,7 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
 // had to be changed.
 bool SimplifyStructRegSignatures::simplifyFunction(
     LLVMContext &Ctx, Function *OldFunc,
-    DenseMap<const Function *, DISubprogram> &DISubprogramMap) {
+    DenseMap<const Function *, DISubprogram *> &DISubprogramMap) {
   auto *OldFT = OldFunc->getFunctionType();
   auto *NewFT = cast<FunctionType>(Mapper.getSimpleType(Ctx, OldFT));
 
@@ -532,7 +532,7 @@ void SimplifyStructRegSignatures::checkNoUnsupportedInstructions(
   for (auto &BB : Fct->getBasicBlockList())
     for (auto &Inst : BB.getInstList())
       if (auto *Landing = dyn_cast<LandingPadInst>(&Inst)) {
-        auto *LType = Landing->getPersonalityFn()->getType();
+        auto *LType = Fct->getPersonalityFn()->getType();
         if (LType != Mapper.getSimpleType(Ctx, LType)) {
           errs() << *Landing << '\n';
           report_fatal_error("Landing pads with aggregate register "

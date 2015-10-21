@@ -530,7 +530,7 @@ INITIALIZE_PASS(ReplacePtrsWithInts, "replace-ptrs-with-ints",
 
 bool ReplacePtrsWithInts::runOnModule(Module &M) {
   DataLayout DL(&M);
-  DenseMap<const Function *, DISubprogram> FunctionDIs = makeSubprogramMap(M);
+  DenseMap<const Function *, DISubprogram *> FunctionDIs = makeSubprogramMap(M);
   Type *IntPtrType = DL.getIntPtrType(M.getContext());
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {

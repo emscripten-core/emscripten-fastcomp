@@ -16,11 +16,12 @@
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-static MCCodeGenInfo *createJSBackendMCCodeGenInfo(StringRef Triple, Reloc::Model RM,
+
+static MCCodeGenInfo *createJSBackendMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
                                                    CodeModel::Model CM,
                                                    CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
-  X->InitMCCodeGenInfo(RM, CM, OL);
+  X->initMCCodeGenInfo(RM, CM, OL);
   return X;
 }
 

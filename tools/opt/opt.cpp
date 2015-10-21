@@ -23,7 +23,6 @@
 #include "llvm/Analysis/TargetLibraryInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
-#include "llvm/Bitcode/NaCl/NaClBitcodeWriterPass.h" // @LOCALMOD
 #include "llvm/CodeGen/CommandFlags.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
@@ -53,7 +52,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/MinSFI.h"  // @LOCALMOD
 #include "llvm/Transforms/NaCl.h"  // @LOCALMOD
 #include <algorithm>
 #include <memory>
@@ -149,10 +147,6 @@ static cl::opt<bool>
 PNaClABISimplifyPostOpt(
     "pnacl-abi-simplify-postopt",
     cl::desc("PNaCl ABI simplifications for after optimizations"));
-
-static cl::opt<bool>
-MinSFI("minsfi",
-       cl::desc("MinSFI sandboxing"));
 // @LOCALMOD-END
 
 static cl::opt<std::string>
@@ -204,18 +198,6 @@ static cl::opt<bool> PreserveBitcodeUseListOrder(
     "preserve-bc-uselistorder",
     cl::desc("Preserve use-list order when writing LLVM bitcode."),
     cl::init(true), cl::Hidden);
-// @LOCALMOD-BEGIN
-static cl::opt<NaClFileFormat>
-OutputFileFormat(
-    "bitcode-format",
-    cl::desc("Define format of generated bitcode file:"),
-    cl::values(
-        clEnumValN(LLVMFormat, "llvm", "LLVM bitcode file (default)"),
-        clEnumValN(PNaClFormat, "pnacl", "PNaCl bitcode file"),
-        clEnumValEnd),
-    cl::init(LLVMFormat));
-extern bool OutputFileFormatIsPNaCl;
-// @LOCALMOD-END
 
 static cl::opt<bool> PreserveAssemblyUseListOrder(
     "preserve-ll-uselistorder",
@@ -296,7 +278,9 @@ static CodeGenOpt::Level GetCodeGenOptLevel() {
 }
 
 // Returns the TargetMachine instance or zero if no triple is provided.
-static TargetMachine* GetTargetMachine(Triple TheTriple) {
+static TargetMachine* GetTargetMachine(Triple TheTriple, StringRef CPUStr,
+                                       StringRef FeaturesStr,
+                                       const TargetOptions &Options) {
   std::string Error;
   // @LOCALMOD-BEGIN: Some optimization passes like SimplifyCFG do nice
   // things for code size, but only do it if the TTI says it is okay.
@@ -313,33 +297,8 @@ static TargetMachine* GetTargetMachine(Triple TheTriple) {
     return nullptr;
   }
 
-  // Package up features to be passed to target/subtarget
-  std::string FeaturesStr;
-  if (MAttrs.size() || MCPU == "native") {
-    SubtargetFeatures Features;
-
-    // If user asked for the 'native' CPU, we need to autodetect features.
-    // This is necessary for x86 where the CPU might not support all the
-    // features the autodetected CPU name lists in the target. For example,
-    // not all Sandybridge processors support AVX.
-    if (MCPU == "native") {
-      StringMap<bool> HostFeatures;
-      if (sys::getHostCPUFeatures(HostFeatures))
-        for (auto &F : HostFeatures)
-          Features.AddFeature(F.first(), F.second);
-    }
-
-    for (unsigned i = 0; i != MAttrs.size(); ++i)
-      Features.AddFeature(MAttrs[i]);
-    FeaturesStr = Features.getString();
-  }
-
-  if (MCPU == "native")
-    MCPU = sys::getHostCPUName();
-
   return TheTarget->createTargetMachine(TheTriple.getTriple(),
-                                        MCPU, FeaturesStr,
-                                        InitTargetOptionsFromCodeGenFlags(),
+                                        CPUStr, FeaturesStr, Options,
                                         RelocModel, CMModel,
                                         GetCodeGenOptLevel());
 }
@@ -387,6 +346,7 @@ int main(int argc, char **argv) {
   initializeRewriteSymbolsPass(Registry);
   initializeWinEHPreparePass(Registry);
   initializeDwarfEHPreparePass(Registry);
+  initializeSjLjEHPreparePass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -394,12 +354,10 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
-  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
-  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
@@ -420,28 +378,21 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
   initializeNormalizeAlignmentPass(Registry);
-  initializePNaClABIVerifyFunctionsPass(Registry);
-  initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
-  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
-  initializeSandboxIndirectCallsPass(Registry);
-  initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
   initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
-  initializeStripTlsPass(Registry);
-  initializeSubstituteUndefsPass(Registry);
   // Emscripten passes:
   initializeExpandI64Pass(Registry);
   initializeExpandInsertExtractElementPass(Registry);
@@ -540,10 +491,21 @@ int main(int argc, char **argv) {
   }
 
   Triple ModuleTriple(M->getTargetTriple());
+  std::string CPUStr, FeaturesStr;
   TargetMachine *Machine = nullptr;
-  if (ModuleTriple.getArch())
-    Machine = GetTargetMachine(ModuleTriple);
+  const TargetOptions Options = InitTargetOptionsFromCodeGenFlags();
+
+  if (ModuleTriple.getArch()) {
+    CPUStr = getCPUStr();
+    FeaturesStr = getFeaturesStr();
+    Machine = GetTargetMachine(ModuleTriple, CPUStr, FeaturesStr, Options);
+  }
+
   std::unique_ptr<TargetMachine> TM(Machine);
+
+  // Override function attributes based on CPUStr, FeaturesStr, and command line
+  // flags.
+  setFunctionAttributes(CPUStr, FeaturesStr, *M);
 
   // If the output is set to be emitted to standard out, and standard out is a
   // console, print out a warning message and refuse to do it.  We don't
@@ -668,11 +630,6 @@ int main(int argc, char **argv) {
       PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
       PNaClABISimplifyPostOpt = false;
     }
-
-    if (MinSFI && MinSFI.getPosition() < PassList.getPosition(i)) {
-      MinSFIPasses(Passes);
-      MinSFI = false;
-    }
     // @LOCALMOD-END
 
     const PassInfo *PassInf = PassList[i];
@@ -752,9 +709,6 @@ int main(int argc, char **argv) {
   // @LOCALMOD-BEGIN
   if (PNaClABISimplifyPostOpt)
     PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
-
-  if (MinSFI)
-     MinSFIPasses(Passes);
   // @LOCALMOD-END
 
   // Check that the module is well formed on completion of optimization
@@ -767,19 +721,8 @@ int main(int argc, char **argv) {
       Passes.add(
           createPrintModulePass(Out->os(), "", PreserveAssemblyUseListOrder));
     else
-      // @LOCALMOD-START
-      switch (OutputFileFormat) {
-      case LLVMFormat:
-        Passes.add(createBitcodeWriterPass(Out->os(), PreserveBitcodeUseListOrder));
-        break;
-      case PNaClFormat:
-        Passes.add(createNaClBitcodeWriterPass(Out->os()));
-        break;
-      case AutodetectFileFormat:
-        report_fatal_error("Command can't autodetect file format!");
-        break;
-      }
-      // @LOCALMOD-END
+      Passes.add(
+          createBitcodeWriterPass(Out->os(), PreserveBitcodeUseListOrder));
   }
 
   // Before executing passes, print the final values of the LLVM options.

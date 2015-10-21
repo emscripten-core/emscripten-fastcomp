@@ -19,4 +19,4 @@
 type = Tool
 name = llvm-dis
 parent = Tools
-required_libraries = Analysis BitReader NaClBitReader
+required_libraries = Analysis BitReader

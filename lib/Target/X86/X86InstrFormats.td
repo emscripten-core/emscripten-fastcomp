@@ -55,7 +55,6 @@ def MRM_F6 : Format<86>; def MRM_F7 : Format<87>; def MRM_F8 : Format<88>;
 def MRM_F9 : Format<89>; def MRM_FA : Format<90>; def MRM_FB : Format<91>;
 def MRM_FC : Format<92>; def MRM_FD : Format<93>; def MRM_FE : Format<94>;
 def MRM_FF : Format<95>;
-def CustomFrm : Format<126>; // @LOCALMOD
 
 // ImmType - This specifies the immediate type used by an instruction. This is
 // part of the ad-hoc solution used to emit machine instruction encodings by our
@@ -443,12 +442,29 @@ class SI<bits<8> o, Format F, dag outs, dag ins, string asm,
                   asm));
 }
 
-// SIi8 - SSE 1 & 2 scalar instructions
+// SI - SSE 1 & 2 scalar intrinsics - vex form available on AVX512
+class SI_Int<bits<8> o, Format F, dag outs, dag ins, string asm,
+         list<dag> pattern, InstrItinClass itin = NoItinerary,
+         Domain d = GenericDomain>
+      : I<o, F, outs, ins, asm, pattern, itin, d> {
+  let Predicates = !if(!eq(OpEnc.Value, EncEVEX.Value), [HasAVX512],
+                   !if(!eq(OpEnc.Value, EncVEX.Value), [HasAVX],
+                   !if(!eq(OpPrefix.Value, XS.Value), [UseSSE1],
+                   !if(!eq(OpPrefix.Value, XD.Value), [UseSSE2],
+                   !if(!eq(OpPrefix.Value, PD.Value), [UseSSE2],
+                   [UseSSE1])))));
+
+  // AVX instructions have a 'v' prefix in the mnemonic
+  let AsmString = !if(!eq(OpEnc.Value, EncEVEX.Value), !strconcat("v", asm),
+                  !if(!eq(OpEnc.Value, EncVEX.Value), !strconcat("v", asm),
+                  asm));
+}
+// SIi8 - SSE 1 & 2 scalar instructions - vex form available on AVX512
 class SIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
            list<dag> pattern, InstrItinClass itin = NoItinerary>
       : Ii8<o, F, outs, ins, asm, pattern, itin> {
   let Predicates = !if(!eq(OpEnc.Value, EncEVEX.Value), [HasAVX512],
-                   !if(!eq(OpEnc.Value, EncVEX.Value), [UseAVX],
+                   !if(!eq(OpEnc.Value, EncVEX.Value), [HasAVX],
                    !if(!eq(OpPrefix.Value, XS.Value), [UseSSE1],
                    [UseSSE2])));
 
@@ -746,6 +762,22 @@ class AVX512BIi8<bits<8> o, Format F, dag outs, dag ins, string asm,
         Requires<[HasAVX512]>;
 class AVX512BIi8Base : PD {
   Domain ExeDomain = SSEPackedInt;
+  ImmType ImmT = Imm8;
+}
+class AVX512XSIi8Base : XS {
+  Domain ExeDomain = SSEPackedInt;
+  ImmType ImmT = Imm8;
+}
+class AVX512XDIi8Base : XD {
+  Domain ExeDomain = SSEPackedInt;
+  ImmType ImmT = Imm8;
+}
+class AVX512PSIi8Base : PS {
+  Domain ExeDomain = SSEPackedSingle;
+  ImmType ImmT = Imm8;
+}
+class AVX512PDIi8Base : PD {
+  Domain ExeDomain = SSEPackedDouble;
   ImmType ImmT = Imm8;
 }
 class AVX512AIi8<bits<8> o, Format F, dag outs, dag ins, string asm,

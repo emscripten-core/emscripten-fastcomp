@@ -102,9 +102,6 @@ public:
   bool isBlockAddress() const { return Kind == ARMCP::CPBlockAddress; }
   bool isLSDA() const { return Kind == ARMCP::CPLSDA; }
   bool isMachineBasicBlock() const{ return Kind == ARMCP::CPMachineBasicBlock; }
-  // @LOCALMOD-START
-  bool isValue() const { return Kind == ARMCP::CPValue; }
-  // @LOCALMOD-END
 
   unsigned getRelocationInfo() const override { return 2; }
 

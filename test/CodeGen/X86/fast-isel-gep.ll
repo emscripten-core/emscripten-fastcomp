@@ -1,9 +1,6 @@
 ; RUN: llc < %s -mtriple=x86_64-linux -O0 | FileCheck %s --check-prefix=X64
 ; RUN: llc < %s -mtriple=x86_64-windows-itanium -O0 | FileCheck %s --check-prefix=X64
 ; RUN: llc < %s -march=x86 -O0 | FileCheck %s --check-prefix=X32
-; @LOCALMOD-BEGIN
-; RUN: pnacl-llc < %s -mtriple=i686-nacl -march=x86 -O0 | FileCheck %s --check-prefix=NACL32
-; @LOCALMOD-END
 
 ; GEP indices are interpreted as signed integers, so they
 ; should be sign-extended to 64 bits on 64-bit targets.
@@ -21,13 +18,6 @@ define i32 @test1(i32 %t3, i32* %t1) nounwind {
 ; X64:  	movl	(%r[[A1:si|dx]],%rax,4), %eax
 ; X64:  	ret
 
-; @LOCALMOD-BEGIN
-; NACL32: test1:
-; NACL32:   movl (%e{{.*}},%e{{.*}},4), %eax
-; NACL32:   popl %ecx
-; NACL32:   nacljmp %ecx
-; @LOCALMOD-END
-
 }
 define i32 @test2(i64 %t3, i32* %t1) nounwind {
        %t9 = getelementptr i32, i32* %t1, i64 %t3           ; <i32*> [#uses=1]
@@ -40,12 +30,6 @@ define i32 @test2(i64 %t3, i32* %t1) nounwind {
 ; X64-LABEL: test2:
 ; X64:  	movl	(%r[[A1]],%r[[A0]],4), %eax
 ; X64:  	ret
-
-; @LOCALMOD-BEGIN
-; NACL32: test2:
-; NACL32:   movl (%e{{.*}},%e{{.*}},4), %e
-; @LOCALMOD-END
-
 }
 
 
@@ -67,12 +51,6 @@ entry:
 ; X64:  	movb	-2(%r[[A0]]), %al
 ; X64:  	ret
 
-; @LOCALMOD-BEGIN
-; NACL32: test3:
-; NACL32:   movl 4(%esp), %[[REG:e..]]
-; NACL32:   movb -2(%{{.*}}[[REG]]), %al
-; @LOCALMOD-END
-
 }
 
 define double @test4(i64 %x, double* %p) nounwind {
@@ -92,10 +70,6 @@ entry:
 ; X32: 128(%e{{.*}},%e{{.*}},8)
 ; X64-LABEL: test4:
 ; X64: 128(%r{{.*}},%r{{.*}},8)
-; @LOCALMOD-BEGIN
-; NACL32: test4:
-; NACL32: 128(%e{{.*}},%e{{.*}},8)
-; @LOCALMOD-END
 }
 
 ; PR8961 - Make sure the sext for the GEP addressing comes before the load that
@@ -115,7 +89,7 @@ define i64 @test5(i8* %A, i32 %I, i64 %B) nounwind {
 ; PR9500, rdar://9156159 - Don't do non-local address mode folding,
 ; because it may require values which wouldn't otherwise be live out
 ; of their blocks.
-define void @test6() {
+define void @test6() personality i32 (...)* @__gxx_personality_v0 {
 if.end:                                           ; preds = %if.then, %invoke.cont
   %tmp15 = load i64, i64* undef
   %dec = add i64 %tmp15, 13
@@ -129,7 +103,7 @@ invoke.cont16:                                    ; preds = %if.then14
   unreachable
 
 lpad:                                             ; preds = %if.end19, %if.then14, %if.end, %entry
-  %exn = landingpad {i8*, i32} personality i32 (...)* @__gxx_personality_v0
+  %exn = landingpad {i8*, i32}
             cleanup
   unreachable
 }

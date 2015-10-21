@@ -59,8 +59,7 @@ public:
     return "ARM Assembly / Object Emitter";
   }
 
-  void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O,
-                    const char *Modifier = nullptr);
+  void printOperand(const MachineInstr *MI, int OpNum, raw_ostream &O);
 
   bool PrintAsmOperand(const MachineInstr *MI, unsigned OpNum,
                        unsigned AsmVariant, const char *ExtraCode,
@@ -72,39 +71,23 @@ public:
   void emitInlineAsmEnd(const MCSubtargetInfo &StartInfo,
                         const MCSubtargetInfo *EndInfo) const override;
 
-  void EmitJumpTable(const MachineInstr *MI);
-  void EmitJump2Table(const MachineInstr *MI);
+  void EmitJumpTableAddrs(const MachineInstr *MI);
+  void EmitJumpTableInsts(const MachineInstr *MI);
+  void EmitJumpTableTBInst(const MachineInstr *MI, unsigned OffsetWidth);
   void EmitInstruction(const MachineInstr *MI) override;
   bool runOnMachineFunction(MachineFunction &F) override;
 
-  // @LOCALMOD-START
-  // Usually this does nothing on ARM as constants pools are handled with
-  // custom code (for constant islands).
-  // When not using constant islands, fall back to the default implementation.
   void EmitConstantPool() override {
-    if (!Subtarget->useConstIslands()) AsmPrinter::EmitConstantPool();
+    // we emit constant pools customly!
   }
-  // @LOCALMOD-END
-
   void EmitFunctionBodyEnd() override;
   void EmitFunctionEntryLabel() override;
   void EmitStartOfAsmFile(Module &M) override;
   void EmitEndOfAsmFile(Module &M) override;
-  void EmitXXStructor(const Constant *CV) override;
+  void EmitXXStructor(const DataLayout &DL, const Constant *CV) override;
 
   // lowerOperand - Convert a MachineOperand into the equivalent MCOperand.
   bool lowerOperand(const MachineOperand &MO, MCOperand &MCOp);
-  
-  // @LOCALMOD-START
-  /// UseReadOnlyJumpTables - true if JumpTableInfo must be in rodata.
-  bool UseReadOnlyJumpTables() const override;
-  /// GetTargetBasicBlockAlign - Get the target alignment for basic blocks.
-  unsigned GetTargetBasicBlockAlign() const override;
-  /// GetTargetLabelAlign - Get optional alignment for TargetOpcode
-  /// labels E.g., EH_LABEL.
-  /// TODO(sehr,robertm): remove this if the labeled block has address taken.
-  unsigned GetTargetLabelAlign(const MachineInstr *MI) const override;
-  // @LOCALMOD-END
 
 private:
   // Helpers for EmitStartOfAsmFile() and EmitEndOfAsmFile()
@@ -122,7 +105,7 @@ private:
 public:
   unsigned getISAEncoding() override {
     // ARM/Darwin adds ISA to the DWARF info for each function.
-    Triple TT(TM.getTargetTriple());
+    const Triple &TT = TM.getTargetTriple();
     if (!TT.isOSBinFormatMachO())
       return 0;
     bool isThumb = TT.getArch() == Triple::thumb ||
@@ -134,9 +117,7 @@ public:
 
 private:
   MCOperand GetSymbolRef(const MachineOperand &MO, const MCSymbol *Symbol);
-  MCSymbol *GetARMJTIPICJumpTableLabel2(unsigned uid, unsigned uid2) const;
-
-  MCSymbol *GetARMSJLJEHLabel() const;
+  MCSymbol *GetARMJTIPICJumpTableLabel(unsigned uid) const;
 
   MCSymbol *GetARMGVSymbol(const GlobalValue *GV, unsigned char TargetFlags);
 

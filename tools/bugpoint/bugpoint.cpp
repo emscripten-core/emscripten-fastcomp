@@ -50,7 +50,7 @@ TimeoutValue("timeout", cl::init(300), cl::value_desc("seconds"),
 static cl::opt<int>
 MemoryLimit("mlimit", cl::init(-1), cl::value_desc("MBytes"),
             cl::desc("Maximum amount of memory to use. 0 disables check."
-                     " Defaults to 300MB (800MB under valgrind)."));
+                     " Defaults to 400MB (800MB under valgrind)."));
 
 static cl::opt<bool>
 UseValgrind("enable-valgrind",
@@ -138,12 +138,10 @@ int main(int argc, char **argv) {
 
   // @LOCALMOD-BEGIN
   initializeAddPNaClExternalDeclsPass(Registry);
-  initializeAllocateDataSegmentPass(Registry);
   initializeBackendCanonicalizePass(Registry);
   initializeCanonicalizeMemIntrinsicsPass(Registry);
   initializeCleanupUsedGlobalsMetadataPass(Registry);
   initializeConstantInsertExtractElementIndexPass(Registry);
-  initializeExpandAllocasPass(Registry);
   initializeExpandArithWithOverflowPass(Registry);
   initializeExpandByValPass(Registry);
   initializeExpandConstantExprPass(Registry);
@@ -164,28 +162,21 @@ int main(int argc, char **argv) {
   initializeInsertDivideCheckPass(Registry);
   initializeInternalizeUsedGlobalsPass(Registry);
   initializeNormalizeAlignmentPass(Registry);
-  initializePNaClABIVerifyFunctionsPass(Registry);
-  initializePNaClABIVerifyModulePass(Registry);
   initializePNaClSjLjEHPass(Registry);
   initializePromoteI1OpsPass(Registry);
   initializePromoteIntegersPass(Registry);
   initializeRemoveAsmMemoryPass(Registry);
-  initializeRenameEntryPointPass(Registry);
   initializeReplacePtrsWithIntsPass(Registry);
   initializeResolveAliasesPass(Registry);
   initializeResolvePNaClIntrinsicsPass(Registry);
   initializeRewriteAtomicsPass(Registry);
   initializeRewriteLLVMIntrinsicsPass(Registry);
   initializeRewritePNaClLibraryCallsPass(Registry);
-  initializeSandboxIndirectCallsPass(Registry);
-  initializeSandboxMemoryAccessesPass(Registry);
   initializeSimplifyAllocasPass(Registry);
   initializeSimplifyStructRegSignaturesPass(Registry);
   initializeStripAttributesPass(Registry);
   initializeStripMetadataPass(Registry);
   initializeStripModuleFlagsPass(Registry);
-  initializeStripTlsPass(Registry);
-  initializeSubstituteUndefsPass(Registry);
   // Emscripten passes:
   initializeExpandI64Pass(Registry);
   initializeExpandInsertExtractElementPass(Registry);
@@ -218,7 +209,7 @@ int main(int argc, char **argv) {
     if (sys::RunningOnValgrind() || UseValgrind)
       MemoryLimit = 800;
     else
-      MemoryLimit = 300;
+      MemoryLimit = 400;
   }
 
   BugDriver D(argv[0], FindBugs, TimeoutValue, MemoryLimit,

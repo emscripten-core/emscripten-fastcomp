@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = Reader Writer NaCl
+subdirectories = Reader Writer
 
 [component_0]
 type = Group

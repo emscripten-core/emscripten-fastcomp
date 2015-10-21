@@ -5,10 +5,6 @@
 
 ; NOMOVT-NOT: movt
 
-; For NaCl (where we always want movt) ensure no const pool loads are generated.
-; RUN: llc < %s -mtriple=armv7-unknown-nacl-gnueabi | FileCheck %s -check-prefix=NACL
-; NACL-NOT: .LCPI
-
 ; rdar://9877866
 %struct.SmallStruct = type { i32, [8 x i32], [37 x i8] }
 %struct.LargeStruct = type { i32, [1001 x i8], [300 x i32] }

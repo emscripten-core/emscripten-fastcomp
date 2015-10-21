@@ -333,10 +333,6 @@ void Memory::InvalidateInstructionCache(const void *Addr,
   for (intptr_t Line = StartLine; Line < EndLine; Line += LineSize)
     asm volatile("icbi 0, %0" : : "r"(Line));
   asm volatile("isync");
-  // @LOCALMOD-START
-#  elif defined(__native_client__)
-  exit(1); // Native Client disallows JIT-compilation.
-  // @LOCALMOD-END
 #  elif (defined(__arm__) || defined(__aarch64__) || defined(__mips__)) && \
         defined(__GNUC__)
   // FIXME: Can we safely always call this for __GNUC__ everywhere?

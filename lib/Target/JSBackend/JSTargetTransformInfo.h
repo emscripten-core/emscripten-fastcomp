@@ -36,11 +36,9 @@ class JSTTIImpl : public BasicTTIImplBase<JSTTIImpl> {
   const TargetLoweringBase *getTLI() const { return TLI; }
 
 public:
-  explicit JSTTIImpl(const JSTargetMachine *TM)
-      : BaseT(TM), ST(TM->getJSSubtargetImpl()), TLI(ST->getTargetLowering()) {
-    assert(ST);
-    assert(TLI);
-  }
+  explicit JSTTIImpl(const JSTargetMachine *TM, Function &F)
+      : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
+        TLI(ST->getTargetLowering()) {}
 
   // Provide value semantics. MSVC requires that we spell all of these out.
   JSTTIImpl(const JSTTIImpl &Arg)
@@ -48,6 +46,7 @@ public:
   JSTTIImpl(JSTTIImpl &&Arg)
       : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
         TLI(std::move(Arg.TLI)) {}
+/*
   JSTTIImpl &operator=(const JSTTIImpl &RHS) {
     BaseT::operator=(static_cast<const BaseT &>(RHS));
     ST = RHS.ST;
@@ -60,6 +59,7 @@ public:
     TLI = std::move(RHS.TLI);
     return *this;
   }
+*/
 
   bool hasBranchDivergence() { return true; }
 
@@ -71,6 +71,8 @@ public:
     // Hopefully we'll get popcnt in ES7, but for now, we just have software.
     return TargetTransformInfo::PSK_Software;
   }
+
+  unsigned getNumberOfRegisters(bool Vector);
 
   unsigned getRegisterBitWidth(bool Vector);
 

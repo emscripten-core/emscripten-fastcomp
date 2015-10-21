@@ -1,16 +1,13 @@
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=false -mtriple=armv7-apple-ios     < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=false -mtriple=armv7-linux-gnueabi < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=false -mtriple=thumbv7-apple-ios   < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=thumbv7-apple-ios   < %s | FileCheck %s --check-prefix=CHECK --check-prefix=THUMB
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=armv7-apple-ios     < %s | FileCheck %s --check-prefix=MOVT
-; @LOCALMOD: check that we use movt in t10
-; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -arm-use-movt=true  -mtriple=armv7-unknown-nacl-gnueabi     < %s | FileCheck %s --check-prefix=CHECK --check-prefix=NACL
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mattr=+no-movt -mtriple=armv7-apple-ios     < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mattr=+no-movt -mtriple=armv7-linux-gnueabi < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mattr=+no-movt -mtriple=thumbv7-apple-ios   < %s | FileCheck %s --check-prefix=CHECK --check-prefix=ARM
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=thumbv7-apple-ios   < %s | FileCheck %s --check-prefix=CHECK --check-prefix=THUMB
+; RUN: llc -O0 -verify-machineinstrs -fast-isel-abort=1 -relocation-model=dynamic-no-pic -mtriple=armv7-apple-ios     < %s | FileCheck %s --check-prefix=MOVT
 ; rdar://10412592
 
 define void @t1() nounwind {
 entry:
-; @LOCALMOD
-; CHECK-LABEL: t1:
+; CHECK-LABEL: t1
 ; CHECK:       mvn r0, #0
   call void @foo(i32 -1)
   ret void
@@ -90,9 +87,6 @@ entry:
 define i32 @t10(i32 %a) {
 ; MOVT-LABEL: t10
 ; MOVT:       ldr
-; NACL-LABEL:  t10
-; NACL:        movw [[REG:r.*]],  #52257
-; NACL:        movt [[REG]],  #35037
   %1 = xor i32 -1998730207, %a
   ret i32 %1
 }

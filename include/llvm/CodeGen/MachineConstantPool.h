@@ -58,17 +58,6 @@ public:
 
   virtual void addSelectionDAGCSEId(FoldingSetNodeID &ID) = 0;
 
-  // @LOCALMOD-START
-  /// getJumpTableIndex - Check if this is a reference to a jump table.
-  /// If so, return a pointer to the jump table index value that is stored
-  /// in the constant pool, else return 0.
-  /// The default behavior is to indicate that the value is not a jump table
-  /// index. This is used by BranchFolder::runOnMachineFunction() and only in
-  /// conjunction with ARM targets
-  /// TODO: this should be cleaned up as it does tripple duty: tester, setter, getter
-  virtual unsigned *getJumpTableIndex() { return 0; }
-  // @LOCALMOD-END
-
   /// print - Implement operator<<
   virtual void print(raw_ostream &O) const = 0;
 };
@@ -146,17 +135,18 @@ public:
 /// address of the function constant pool values.
 /// @brief The machine constant pool.
 class MachineConstantPool {
-  const TargetMachine &TM;      ///< The target machine.
   unsigned PoolAlignment;       ///< The alignment for the pool.
   std::vector<MachineConstantPoolEntry> Constants; ///< The pool of constants.
   /// MachineConstantPoolValues that use an existing MachineConstantPoolEntry.
   DenseSet<MachineConstantPoolValue*> MachineCPVsSharingEntries;
+  const DataLayout &DL;
 
-  const DataLayout *getDataLayout() const;
+  const DataLayout &getDataLayout() const { return DL; }
+
 public:
   /// @brief The only constructor.
-  explicit MachineConstantPool(const TargetMachine &TM)
-    : TM(TM), PoolAlignment(1) {}
+  explicit MachineConstantPool(const DataLayout &DL)
+      : PoolAlignment(1), DL(DL) {}
   ~MachineConstantPool();
     
   /// getConstantPoolAlignment - Return the alignment required by

@@ -87,7 +87,7 @@ public:
   bool runOnModule(Module &M) override;
 
 private:
-  typedef DenseMap<const llvm::Function *, DISubprogram> DebugMap;
+  typedef DenseMap<const llvm::Function *, DISubprogram *> DebugMap;
   TypeMap TypeMapper;
 
   bool ensureCompliantSignature(LLVMContext &Ctx, Function *OldFct, Module &M,
@@ -662,7 +662,7 @@ static bool processFunction(Function &F, DataLayout &DL) {
 
 bool PromoteIntegers::ensureCompliantSignature(
     LLVMContext &Ctx, Function *OldFct, Module &M,
-    DenseMap<const llvm::Function *, DISubprogram> &DISubprogramMap) {
+    DenseMap<const llvm::Function *, DISubprogram *> &DISubprogramMap) {
 
   auto *NewFctType = cast<FunctionType>(
       TypeMapper.getSimpleType(Ctx, OldFct->getFunctionType()));

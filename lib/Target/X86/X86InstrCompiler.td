@@ -17,12 +17,12 @@
 
 def GetLo32XForm : SDNodeXForm<imm, [{
   // Transformation function: get the low 32 bits.
-  return getI32Imm((unsigned)N->getZExtValue());
+  return getI32Imm((unsigned)N->getZExtValue(), SDLoc(N));
 }]>;
 
 def GetLo8XForm : SDNodeXForm<imm, [{
   // Transformation function: get the low 8 bits.
-  return getI8Imm((uint8_t)N->getZExtValue());
+  return getI8Imm((uint8_t)N->getZExtValue(), SDLoc(N));
 }]>;
 
 
@@ -97,8 +97,8 @@ def VAARG_64 : I<0, Pseudo,
                  "#VAARG_64 $dst, $ap, $size, $mode, $align",
                  [(set GR64:$dst,
                     (X86vaarg64 addr:$ap, imm:$size, imm:$mode, imm:$align)),
-                  (implicit EFLAGS)]>,
-                 Requires<[IsNotNaCl]>;
+                  (implicit EFLAGS)]>;
+
 // Dynamic stack allocation yields a _chkstk or _alloca call for all Windows
 // targets.  These calls are needed to probe the stack when allocating more than
 // 4k bytes in one go. Touching the stack at 4K increments is necessary to
@@ -449,16 +449,6 @@ def TLS_base_addr64 : I<0, Pseudo, (outs), (ins i64mem:$sym),
                   Requires<[In64BitMode]>;
 }
 
-// @LOCALMOD-BEGIN
-// NaCl TLS support
-let usesCustomInserter = 1 in {
-  def THREAD_POINTER_FROM_GS :
-    I<0, Pseudo, (outs GR32:$dst), (ins),
-      "# get thread pointer from %gs:0",
-      [(set GR32:$dst, (X86thread_pointer_from_gs))]>;
-}
-// @LOCALMOD-END
-
 // Darwin TLS Support
 // For i386, the address of the thunk is passed on the stack, on return the
 // address of the variable is in %eax.  %ecx is trashed during the function
@@ -528,6 +518,10 @@ let usesCustomInserter = 1, Uses = [EFLAGS] in {
   defm _V8I64  : CMOVrr_PSEUDO<VR512, v8i64>;
   defm _V8F64  : CMOVrr_PSEUDO<VR512, v8f64>;
   defm _V16F32 : CMOVrr_PSEUDO<VR512, v16f32>;
+  defm _V8I1   : CMOVrr_PSEUDO<VK8,  v8i1>;
+  defm _V16I1  : CMOVrr_PSEUDO<VK16, v16i1>;
+  defm _V32I1  : CMOVrr_PSEUDO<VK32, v32i1>;
+  defm _V64I1  : CMOVrr_PSEUDO<VK64, v64i1>;
 } // usesCustomInserter = 1, Uses = [EFLAGS]
 
 //===----------------------------------------------------------------------===//
@@ -875,6 +869,7 @@ def : Pat<(i32 (X86Wrapper tjumptable  :$dst)), (MOV32ri tjumptable  :$dst)>;
 def : Pat<(i32 (X86Wrapper tglobaltlsaddr:$dst)),(MOV32ri tglobaltlsaddr:$dst)>;
 def : Pat<(i32 (X86Wrapper tglobaladdr :$dst)), (MOV32ri tglobaladdr :$dst)>;
 def : Pat<(i32 (X86Wrapper texternalsym:$dst)), (MOV32ri texternalsym:$dst)>;
+def : Pat<(i32 (X86Wrapper mcsym:$dst)), (MOV32ri mcsym:$dst)>;
 def : Pat<(i32 (X86Wrapper tblockaddress:$dst)), (MOV32ri tblockaddress:$dst)>;
 
 def : Pat<(add GR32:$src1, (X86Wrapper tconstpool:$src2)),
@@ -885,6 +880,8 @@ def : Pat<(add GR32:$src1, (X86Wrapper tglobaladdr :$src2)),
           (ADD32ri GR32:$src1, tglobaladdr:$src2)>;
 def : Pat<(add GR32:$src1, (X86Wrapper texternalsym:$src2)),
           (ADD32ri GR32:$src1, texternalsym:$src2)>;
+def : Pat<(add GR32:$src1, (X86Wrapper mcsym:$src2)),
+          (ADD32ri GR32:$src1, mcsym:$src2)>;
 def : Pat<(add GR32:$src1, (X86Wrapper tblockaddress:$src2)),
           (ADD32ri GR32:$src1, tblockaddress:$src2)>;
 
@@ -892,6 +889,8 @@ def : Pat<(store (i32 (X86Wrapper tglobaladdr:$src)), addr:$dst),
           (MOV32mi addr:$dst, tglobaladdr:$src)>;
 def : Pat<(store (i32 (X86Wrapper texternalsym:$src)), addr:$dst),
           (MOV32mi addr:$dst, texternalsym:$src)>;
+def : Pat<(store (i32 (X86Wrapper mcsym:$src)), addr:$dst),
+          (MOV32mi addr:$dst, mcsym:$src)>;
 def : Pat<(store (i32 (X86Wrapper tblockaddress:$src)), addr:$dst),
           (MOV32mi addr:$dst, tblockaddress:$src)>;
 
@@ -906,6 +905,8 @@ def : Pat<(i64 (X86Wrapper tglobaladdr :$dst)),
           (MOV64ri tglobaladdr :$dst)>, Requires<[FarData]>;
 def : Pat<(i64 (X86Wrapper texternalsym:$dst)),
           (MOV64ri texternalsym:$dst)>, Requires<[FarData]>;
+def : Pat<(i64 (X86Wrapper mcsym:$dst)),
+          (MOV64ri mcsym:$dst)>, Requires<[FarData]>;
 def : Pat<(i64 (X86Wrapper tblockaddress:$dst)),
           (MOV64ri tblockaddress:$dst)>, Requires<[FarData]>;
 
@@ -920,6 +921,8 @@ def : Pat<(i64 (X86Wrapper tglobaladdr :$dst)),
           (MOV64ri32 tglobaladdr :$dst)>, Requires<[KernelCode]>;
 def : Pat<(i64 (X86Wrapper texternalsym:$dst)),
           (MOV64ri32 texternalsym:$dst)>, Requires<[KernelCode]>;
+def : Pat<(i64 (X86Wrapper mcsym:$dst)),
+          (MOV64ri32 mcsym:$dst)>, Requires<[KernelCode]>;
 def : Pat<(i64 (X86Wrapper tblockaddress:$dst)),
           (MOV64ri32 tblockaddress:$dst)>, Requires<[KernelCode]>;
 
@@ -938,12 +941,15 @@ def : Pat<(store (i64 (X86Wrapper tglobaladdr:$src)), addr:$dst),
 def : Pat<(store (i64 (X86Wrapper texternalsym:$src)), addr:$dst),
           (MOV64mi32 addr:$dst, texternalsym:$src)>,
           Requires<[NearData, IsStatic]>;
+def : Pat<(store (i64 (X86Wrapper mcsym:$src)), addr:$dst),
+          (MOV64mi32 addr:$dst, mcsym:$src)>,
+          Requires<[NearData, IsStatic]>;
 def : Pat<(store (i64 (X86Wrapper tblockaddress:$src)), addr:$dst),
           (MOV64mi32 addr:$dst, tblockaddress:$src)>,
           Requires<[NearData, IsStatic]>;
 
-def : Pat<(i32 (X86RecoverFrameAlloc texternalsym:$dst)), (MOV32ri texternalsym:$dst)>;
-def : Pat<(i64 (X86RecoverFrameAlloc texternalsym:$dst)), (MOV64ri texternalsym:$dst)>;
+def : Pat<(i32 (X86RecoverFrameAlloc mcsym:$dst)), (MOV32ri mcsym:$dst)>;
+def : Pat<(i64 (X86RecoverFrameAlloc mcsym:$dst)), (MOV64ri mcsym:$dst)>;
 
 // Calls
 
@@ -959,9 +965,9 @@ def : Pat<(add GR64:$src1, (X86Wrapper tglobaltlsaddr :$dst)),
 // Direct PC relative function call for small code model. 32-bit displacement
 // sign extended to 64-bit.
 def : Pat<(X86call (i64 tglobaladdr:$dst)),
-          (CALL64pcrel32 tglobaladdr:$dst)>, Requires<[IsNotNaCl]>;
+          (CALL64pcrel32 tglobaladdr:$dst)>;
 def : Pat<(X86call (i64 texternalsym:$dst)),
-          (CALL64pcrel32 texternalsym:$dst)>, Requires<[IsNotNaCl]>;
+          (CALL64pcrel32 texternalsym:$dst)>;
 
 // Tailcall stuff. The TCRETURN instructions execute after the epilog, so they
 // can never use callee-saved registers. That is the purpose of the GR64_TC
@@ -990,7 +996,7 @@ def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
 // callee-saved register.
 def : Pat<(X86tcret (load addr:$dst), imm:$off),
           (TCRETURNmi addr:$dst, imm:$off)>,
-          Requires<[Not64BitMode, IsNotPIC, IsNotNaCl]>; // @LOCALMOD
+          Requires<[Not64BitMode, IsNotPIC]>;
 
 def : Pat<(X86tcret (i32 tglobaladdr:$dst), imm:$off),
           (TCRETURNdi tglobaladdr:$dst, imm:$off)>,
@@ -1008,7 +1014,7 @@ def : Pat<(X86tcret ptr_rc_tailcall:$dst, imm:$off),
 // There wouldn't be enough scratch registers for base+index.
 def : Pat<(X86tcret_6regs (load addr:$dst), imm:$off),
           (TCRETURNmi64 addr:$dst, imm:$off)>,
-          Requires<[In64BitMode, IsNotNaCl]>;
+          Requires<[In64BitMode]>;
 
 def : Pat<(X86tcret (i64 tglobaladdr:$dst), imm:$off),
           (TCRETURNdi64 tglobaladdr:$dst, imm:$off)>,
@@ -1070,11 +1076,12 @@ defm : CMOVmr<X86_COND_O , CMOVNO16rm, CMOVNO32rm, CMOVNO64rm>;
 defm : CMOVmr<X86_COND_NO, CMOVO16rm , CMOVO32rm , CMOVO64rm>;
 
 // zextload bool -> zextload byte
-def : Pat<(zextloadi8i1  addr:$src), (MOV8rm     addr:$src)>;
-def : Pat<(zextloadi16i1 addr:$src), (MOVZX16rm8 addr:$src)>;
-def : Pat<(zextloadi32i1 addr:$src), (MOVZX32rm8 addr:$src)>;
+def : Pat<(zextloadi8i1  addr:$src), (AND8ri (MOV8rm addr:$src), (i8 1))>;
+def : Pat<(zextloadi16i1 addr:$src), (AND16ri8 (MOVZX16rm8 addr:$src), (i16 1))>;
+def : Pat<(zextloadi32i1 addr:$src), (AND32ri8 (MOVZX32rm8 addr:$src), (i32 1))>;
 def : Pat<(zextloadi64i1 addr:$src),
-          (SUBREG_TO_REG (i64 0), (MOVZX32rm8 addr:$src), sub_32bit)>;
+          (SUBREG_TO_REG (i64 0),
+           (AND32ri8 (MOVZX32rm8 addr:$src), (i32 1)), sub_32bit)>;
 
 // extload bool -> extload byte
 // When extloading from 16-bit and smaller memory locations into 64-bit
@@ -1475,19 +1482,19 @@ def : Pat<(store (i8 (trunc_su (srl_su GR64:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i64 (COPY_TO_REGCLASS GR64:$src, GR64_ABCD)),
-                            sub_8bit_hi))>, Requires<[IsNotNaCl]>; // @LOCALMOD
+                            sub_8bit_hi))>;
 def : Pat<(store (i8 (trunc_su (srl_su GR32:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i32 (COPY_TO_REGCLASS GR32:$src, GR32_ABCD)),
                             sub_8bit_hi))>,
-      Requires<[In64BitMode, IsNotNaCl]>; // @LOCALMOD
+      Requires<[In64BitMode]>;
 def : Pat<(store (i8 (trunc_su (srl_su GR16:$src, (i8 8)))), addr:$dst),
           (MOV8mr_NOREX
             addr:$dst,
             (EXTRACT_SUBREG (i16 (COPY_TO_REGCLASS GR16:$src, GR16_ABCD)),
                             sub_8bit_hi))>,
-      Requires<[In64BitMode, IsNotNaCl]>; // @LOCALMOD
+      Requires<[In64BitMode]>;
 
 
 // (shl x, 1) ==> (add x, x)

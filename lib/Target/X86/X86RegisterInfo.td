@@ -262,8 +262,6 @@ def ES : X86Reg<"es", 0>;
 def FS : X86Reg<"fs", 4>;
 def GS : X86Reg<"gs", 5>;
 
-def PSEUDO_NACL_SEG : X86Reg<"nacl", 6>; // @LOCALMOD
-
 // Debug registers
 def DR0  : X86Reg<"dr0",   0>;
 def DR1  : X86Reg<"dr1",   1>;
@@ -304,6 +302,11 @@ def CR15 : X86Reg<"cr15", 15>;
 def EIZ : X86Reg<"eiz", 4>;
 def RIZ : X86Reg<"riz", 4>;
 
+// Bound registers, used in MPX instructions
+def BND0 : X86Reg<"bnd0",   0>;
+def BND1 : X86Reg<"bnd1",   1>;
+def BND2 : X86Reg<"bnd2",   2>;
+def BND3 : X86Reg<"bnd3",   3>;
 
 //===----------------------------------------------------------------------===//
 // Register Class Definitions... now that we have all of the pieces, define the
@@ -349,9 +352,7 @@ def GR64 : RegisterClass<"X86", [i64], 64,
 // Segment registers for use by MOV instructions (and others) that have a
 //   segment register as one operand.  Always contain a 16-bit segment
 //   descriptor.
-def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS,
-                                                   // @LOCALMOD
-                                                   PSEUDO_NACL_SEG)>;
+def SEGMENT_REG : RegisterClass<"X86", [i16], 16, (add CS, DS, SS, ES, FS, GS)>;
 
 // Debug registers.
 def DEBUG_REG : RegisterClass<"X86", [i32], 32, (sequence "DR%u", 0, 7)>;
@@ -488,3 +489,6 @@ def VK8WM   : RegisterClass<"X86", [v8i1],  8,  (sub VK8, K0)> {let Size = 8;}
 def VK16WM  : RegisterClass<"X86", [v16i1], 16, (add VK8WM)>   {let Size = 16;}
 def VK32WM  : RegisterClass<"X86", [v32i1], 32, (add VK16WM)> {let Size = 32;}
 def VK64WM  : RegisterClass<"X86", [v64i1], 64, (add VK32WM)> {let Size = 64;}
+
+// Bound registers
+def BNDR : RegisterClass<"X86", [v2i64], 128, (sequence "BND%u", 0, 3)>;

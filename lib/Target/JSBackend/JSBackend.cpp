@@ -711,7 +711,7 @@ static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
   auto &Loc = I->getDebugLoc();
   if (Loc) {
     unsigned Line = Loc.getLine();
-    auto *Scope = cast_or_null<MDScope>(Loc.getScope());
+    auto *Scope = cast_or_null<DIScope>(Loc.getScope());
     if (Scope) {
       StringRef File = Scope->getFilename();
       if (Line > 0)
@@ -3080,6 +3080,7 @@ void JSWriter::printModuleBody() {
       // which doesn't require the intrinsic function itself to be declared.
       if (I->isIntrinsic()) {
         switch (I->getIntrinsicID()) {
+        default: break;
         case Intrinsic::dbg_declare:
         case Intrinsic::dbg_value:
         case Intrinsic::lifetime_start:
@@ -3600,12 +3601,11 @@ Pass *createCheckTriplePass() {
 //                       External Interface declaration
 //===----------------------------------------------------------------------===//
 
-bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
-                                          raw_pwrite_stream &o,
-                                          CodeGenFileType FileType,
-                                          bool DisableVerify,
-                                          AnalysisID StartAfter,
-                                          AnalysisID StopAfter) {
+bool JSTargetMachine::addPassesToEmitFile(
+      PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
+      bool DisableVerify, AnalysisID StartBefore,
+      AnalysisID StartAfter, AnalysisID StopAfter,
+      MachineFunctionInitializer *MFInitializer) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createCheckTriplePass());
@@ -3623,7 +3623,7 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM,
   PM.add(createEmscriptenRemoveLLVMAssumePass());
   PM.add(createEmscriptenExpandBigSwitchesPass());
 
-  PM.add(new JSWriter(o, OptLevel));
+  PM.add(new JSWriter(Out, OptLevel));
 
   return false;
 }

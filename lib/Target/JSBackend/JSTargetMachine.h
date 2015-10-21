@@ -33,7 +33,7 @@ class JSSubtarget : public TargetSubtargetInfo {
   JSTargetLowering TL;
 
 public:
-  JSSubtarget(const TargetMachine& TM) : TL(TM) {}
+  JSSubtarget(const TargetMachine& TM, const Triple &TT);
 
   const TargetLowering *getTargetLowering() const override {
     return &TL;
@@ -44,19 +44,24 @@ class JSTargetMachine : public TargetMachine {
   const JSSubtarget ST;
 
 public:
-  JSTargetMachine(const Target &T, StringRef Triple,
+  JSTargetMachine(const Target &T, const Triple &TT,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
                   Reloc::Model RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
-  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
-                           CodeGenFileType FileType, bool DisableVerify,
-                           AnalysisID StartAfter,
-                           AnalysisID StopAfter) override;
+  bool addPassesToEmitFile(
+      PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
+      bool DisableVerify = true, AnalysisID StartBefore = nullptr,
+      AnalysisID StartAfter = nullptr, AnalysisID StopAfter = nullptr,
+      MachineFunctionInitializer *MFInitializer = nullptr) override;
 
   TargetIRAnalysis getTargetIRAnalysis() override;
 
   const TargetSubtargetInfo *getJSSubtargetImpl() const {
+    return &ST;
+  }
+
+  const JSSubtarget *getSubtargetImpl(const Function &F) const override {
     return &ST;
   }
 };

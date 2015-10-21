@@ -71,14 +71,12 @@ const uint8_t *RawMemoryObject::getPointer(uint64_t address,
 namespace llvm {
 // If the bitcode has a header, then its size is known, and we don't have to
 // block until we actually want to read it.
-// @LOCALMOD -- separated into Impl (revisit after merge)
-bool StreamingMemoryObjectImpl::isValidAddress(uint64_t address) const {
+bool StreamingMemoryObject::isValidAddress(uint64_t address) const {
   if (ObjectSize && address < ObjectSize) return true;
-    return fetchToPos(address);
+  return fetchToPos(address);
 }
 
-// @LOCALMOD -- separated into Impl
-uint64_t StreamingMemoryObjectImpl::getExtent() const {
+uint64_t StreamingMemoryObject::getExtent() const {
   if (ObjectSize) return ObjectSize;
   size_t pos = BytesRead + kChunkSize;
   // keep fetching until we run out of bytes
@@ -86,34 +84,38 @@ uint64_t StreamingMemoryObjectImpl::getExtent() const {
   return ObjectSize;
 }
 
-// @LOCALMOD --separated into Impl
-uint64_t StreamingMemoryObjectImpl::readBytes(uint8_t *Buf, uint64_t Size,
+uint64_t StreamingMemoryObject::readBytes(uint8_t *Buf, uint64_t Size,
                                           uint64_t Address) const {
   fetchToPos(Address + Size - 1);
-  if (Address >= BytesRead)
+  // Note: For wrapped bitcode files will set ObjectSize after the
+  // first call to fetchToPos. In such cases, ObjectSize can be
+  // smaller than BytesRead.
+  size_t MaxAddress =
+      (ObjectSize && ObjectSize < BytesRead) ? ObjectSize : BytesRead;
+  if (Address >= MaxAddress)
     return 0;
 
   uint64_t End = Address + Size;
-  if (End > BytesRead)
-    End = BytesRead;
-  assert(static_cast<int64_t>(End - Address) >= 0);
+  if (End > MaxAddress)
+    End = MaxAddress;
+  assert(End >= Address);
   Size = End - Address;
   memcpy(Buf, &Bytes[Address + BytesSkipped], Size);
   return Size;
 }
 
-// @LOCALMOD -- separated into Impl
-bool StreamingMemoryObjectImpl::dropLeadingBytes(size_t s) {
+bool StreamingMemoryObject::dropLeadingBytes(size_t s) {
   if (BytesRead < s) return true;
   BytesSkipped = s;
   BytesRead -= s;
   return false;
 }
 
-// @LOCALMOD -- separated into Impl
-void StreamingMemoryObjectImpl::setKnownObjectSize(size_t size) {
+void StreamingMemoryObject::setKnownObjectSize(size_t size) {
   ObjectSize = size;
   Bytes.reserve(size);
+  if (ObjectSize <= BytesRead)
+    EOFReached = true;
 }
 
 MemoryObject *getNonStreamedMemoryObject(const unsigned char *Start,
@@ -121,11 +123,10 @@ MemoryObject *getNonStreamedMemoryObject(const unsigned char *Start,
   return new RawMemoryObject(Start, End);
 }
 
-// @LOCALMOD -- separated into Impl
-StreamingMemoryObjectImpl::StreamingMemoryObjectImpl(
-    DataStreamer *streamer) :
-  Bytes(kChunkSize), Streamer(streamer), BytesRead(0), BytesSkipped(0),
-  ObjectSize(0), EOFReached(false) {
-  BytesRead = streamer->GetBytes(&Bytes[0], kChunkSize);
+StreamingMemoryObject::StreamingMemoryObject(
+    std::unique_ptr<DataStreamer> Streamer)
+    : Bytes(kChunkSize), Streamer(std::move(Streamer)), BytesRead(0),
+      BytesSkipped(0), ObjectSize(0), EOFReached(false) {
+  BytesRead = this->Streamer->GetBytes(&Bytes[0], kChunkSize);
 }
 }

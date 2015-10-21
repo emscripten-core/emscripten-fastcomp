@@ -104,10 +104,6 @@ def SDT_X86TLSBASEADDR : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
 def SDT_X86TLSCALL : SDTypeProfile<0, 1, [SDTCisInt<0>]>;
 
-// @LOCALMOD-BEGIN
-def SDT_X86ThreadPointer : SDTypeProfile<1, 0, [SDTCisPtrTy<0>]>;
-// @LOCALMOD-END
-
 def SDT_X86SEG_ALLOCA : SDTypeProfile<1, 1, [SDTCisVT<0, iPTR>, SDTCisVT<1, iPTR>]>;
 
 def SDT_X86WIN_FTOL : SDTypeProfile<0, 1, [SDTCisFP<0>]>;
@@ -198,7 +194,7 @@ def X86rdpmc   : SDNode<"X86ISD::RDPMC_DAG", SDTX86Void,
 def X86Wrapper    : SDNode<"X86ISD::Wrapper",     SDTX86Wrapper>;
 def X86WrapperRIP : SDNode<"X86ISD::WrapperRIP",  SDTX86Wrapper>;
 
-def X86RecoverFrameAlloc : SDNode<"ISD::FRAME_ALLOC_RECOVER",
+def X86RecoverFrameAlloc : SDNode<"ISD::LOCAL_RECOVER",
                                   SDTypeProfile<1, 1, [SDTCisSameAs<0, 1>,
                                                        SDTCisInt<1>]>>;
 
@@ -207,17 +203,6 @@ def X86tlsaddr : SDNode<"X86ISD::TLSADDR", SDT_X86TLSADDR,
 
 def X86tlsbaseaddr : SDNode<"X86ISD::TLSBASEADDR", SDT_X86TLSBASEADDR,
                         [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-// @LOCALMOD-BEGIN
-def X86tlsaddr_le : SDNode<"X86ISD::TLSADDR_LE", SDT_X86TLSADDR,
-                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-def X86tlsaddr_ie : SDNode<"X86ISD::TLSADDR_IE", SDT_X86TLSADDR,
-                           [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue]>;
-
-def X86thread_pointer_from_gs :
-  SDNode<"X86ISD::THREAD_POINTER_FROM_GS", SDT_X86ThreadPointer>;
-// @LOCALMOD-END
 
 def X86ehret : SDNode<"X86ISD::EH_RETURN", SDT_X86EHRET,
                         [SDNPHasChain]>;
@@ -297,6 +282,10 @@ let RenderMethod = "addMemOperands" in {
   def X86MemVX64Operand : AsmOperandClass { let Name = "MemVX64"; }
   def X86MemVY64Operand : AsmOperandClass { let Name = "MemVY64"; }
   def X86MemVZ64Operand : AsmOperandClass { let Name = "MemVZ64"; }
+  def X86MemVX32XOperand : AsmOperandClass { let Name = "MemVX32X"; }
+  def X86MemVY32XOperand : AsmOperandClass { let Name = "MemVY32X"; }
+  def X86MemVX64XOperand : AsmOperandClass { let Name = "MemVX64X"; }
+  def X86MemVY64XOperand : AsmOperandClass { let Name = "MemVY64X"; }
 }
 
 def X86AbsMemAsmOperand : AsmOperandClass {
@@ -347,7 +336,11 @@ def vx32mem  : X86VMemOperand<VR128,  "printi32mem", X86MemVX32Operand>;
 def vy32mem  : X86VMemOperand<VR256,  "printi32mem", X86MemVY32Operand>;
 def vx64mem  : X86VMemOperand<VR128,  "printi64mem", X86MemVX64Operand>;
 def vy64mem  : X86VMemOperand<VR256,  "printi64mem", X86MemVY64Operand>;
-def vy64xmem : X86VMemOperand<VR256X, "printi64mem", X86MemVY64Operand>;
+
+def vx32xmem : X86VMemOperand<VR128X, "printi32mem", X86MemVX32XOperand>;
+def vx64xmem : X86VMemOperand<VR128X, "printi32mem", X86MemVX64XOperand>;
+def vy32xmem : X86VMemOperand<VR256X, "printi32mem", X86MemVY32XOperand>;
+def vy64xmem : X86VMemOperand<VR256X, "printi64mem", X86MemVY64XOperand>;
 def vz32mem  : X86VMemOperand<VR512,  "printi32mem", X86MemVZ32Operand>;
 def vz64mem  : X86VMemOperand<VR512,  "printi64mem", X86MemVZ64Operand>;
 
@@ -731,6 +724,8 @@ def tls64addr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
 def tls64baseaddr : ComplexPattern<i64, 5, "SelectTLSADDRAddr",
                                [tglobaltlsaddr], []>;
 
+def vectoraddr : ComplexPattern<iPTR, 5, "SelectVectorAddr", [],[SDNPWantParent]>;
+
 //===----------------------------------------------------------------------===//
 // X86 Instruction Predicate Definitions.
 def HasCMov      : Predicate<"Subtarget->hasCMov()">;
@@ -772,9 +767,11 @@ def HasDQI       : Predicate<"Subtarget->hasDQI()">,
 def NoDQI        : Predicate<"!Subtarget->hasDQI()">;
 def HasBWI       : Predicate<"Subtarget->hasBWI()">,
                      AssemblerPredicate<"FeatureBWI", "AVX-512 BW ISA">;
+def NoBWI        : Predicate<"!Subtarget->hasBWI()">;
 def HasVLX       : Predicate<"Subtarget->hasVLX()">,
                      AssemblerPredicate<"FeatureVLX", "AVX-512 VL ISA">;
 def NoVLX        : Predicate<"!Subtarget->hasVLX()">;
+def NoVLX_Or_NoBWI : Predicate<"!Subtarget->hasVLX() || !Subtarget->hasBWI()">;
 
 def HasPOPCNT    : Predicate<"Subtarget->hasPOPCNT()">;
 def HasAES       : Predicate<"Subtarget->hasAES()">;
@@ -801,6 +798,7 @@ def HasRDSEED    : Predicate<"Subtarget->hasRDSEED()">;
 def HasPrefetchW : Predicate<"Subtarget->hasPRFCHW()">;
 def FPStackf32   : Predicate<"!Subtarget->hasSSE1()">;
 def FPStackf64   : Predicate<"!Subtarget->hasSSE2()">;
+def HasMPX       : Predicate<"Subtarget->hasMPX()">;
 def HasCmpxchg16b: Predicate<"Subtarget->hasCmpxchg16b()">;
 def Not64BitMode : Predicate<"!Subtarget->is64Bit()">,
                              AssemblerPredicate<"!Mode64Bit", "Not 64-bit mode">;
@@ -819,7 +817,7 @@ def NotWin64     : Predicate<"!Subtarget->isTargetWin64()">;
 def IsPS4        : Predicate<"Subtarget->isTargetPS4()">;
 def NotPS4       : Predicate<"!Subtarget->isTargetPS4()">;
 def IsNaCl       : Predicate<"Subtarget->isTargetNaCl()">;
-def IsNotNaCl    : Predicate<"!Subtarget->isTargetNaCl()">;
+def NotNaCl      : Predicate<"!Subtarget->isTargetNaCl()">;
 def SmallCode    : Predicate<"TM.getCodeModel() == CodeModel::Small">;
 def KernelCode   : Predicate<"TM.getCodeModel() == CodeModel::Kernel">;
 def FarData      : Predicate<"TM.getCodeModel() != CodeModel::Small &&"
@@ -1024,26 +1022,29 @@ def PUSH32r  : I<0x50, AddRegFrm, (outs), (ins GR32:$reg), "push{l}\t$reg",[],
                  IIC_PUSH_REG>, OpSize32, Requires<[Not64BitMode]>;
 def PUSH16rmr: I<0xFF, MRM6r, (outs), (ins GR16:$reg), "push{w}\t$reg",[],
                  IIC_PUSH_REG>, OpSize16;
-def PUSH16rmm: I<0xFF, MRM6m, (outs), (ins i16mem:$src), "push{w}\t$src",[],
-                 IIC_PUSH_MEM>, OpSize16;
 def PUSH32rmr: I<0xFF, MRM6r, (outs), (ins GR32:$reg), "push{l}\t$reg",[],
                  IIC_PUSH_REG>, OpSize32, Requires<[Not64BitMode]>;
-def PUSH32rmm: I<0xFF, MRM6m, (outs), (ins i32mem:$src), "push{l}\t$src",[],
-                 IIC_PUSH_MEM>, OpSize32, Requires<[Not64BitMode]>;
 
 def PUSH16i8 : Ii8<0x6a, RawFrm, (outs), (ins i16i8imm:$imm),
-                   "push{w}\t$imm", [], IIC_PUSH_IMM>, OpSize16,
-                   Requires<[Not64BitMode]>;
+                   "push{w}\t$imm", [], IIC_PUSH_IMM>, OpSize16;
+def PUSHi16  : Ii16<0x68, RawFrm, (outs), (ins i16imm:$imm),
+                   "push{w}\t$imm", [], IIC_PUSH_IMM>, OpSize16;
+
 def PUSH32i8 : Ii8<0x6a, RawFrm, (outs), (ins i32i8imm:$imm),
                    "push{l}\t$imm", [], IIC_PUSH_IMM>, OpSize32,
-                   Requires<[Not64BitMode]>;
-def PUSHi16  : Ii16<0x68, RawFrm, (outs), (ins i16imm:$imm),
-                   "push{w}\t$imm", [], IIC_PUSH_IMM>, OpSize16,
                    Requires<[Not64BitMode]>;
 def PUSHi32  : Ii32<0x68, RawFrm, (outs), (ins i32imm:$imm),
                    "push{l}\t$imm", [], IIC_PUSH_IMM>, OpSize32,
                    Requires<[Not64BitMode]>;
 } // mayStore, SchedRW
+
+let mayLoad = 1, mayStore = 1, SchedRW = [WriteRMW] in {
+def PUSH16rmm: I<0xFF, MRM6m, (outs), (ins i16mem:$src), "push{w}\t$src",[],
+                 IIC_PUSH_MEM>, OpSize16;
+def PUSH32rmm: I<0xFF, MRM6m, (outs), (ins i32mem:$src), "push{l}\t$src",[],
+                 IIC_PUSH_MEM>, OpSize32, Requires<[Not64BitMode]>;
+} // mayLoad, mayStore, SchedRW
+
 }
 
 let Defs = [ESP, EFLAGS], Uses = [ESP], mayLoad = 1, hasSideEffects=0,
@@ -1076,18 +1077,17 @@ def PUSH64r  : I<0x50, AddRegFrm, (outs), (ins GR64:$reg), "push{q}\t$reg", [],
                  IIC_PUSH_REG>, OpSize32, Requires<[In64BitMode]>;
 def PUSH64rmr: I<0xFF, MRM6r, (outs), (ins GR64:$reg), "push{q}\t$reg", [],
                  IIC_PUSH_REG>, OpSize32, Requires<[In64BitMode]>;
+} // mayStore, SchedRW
+let mayLoad = 1, mayStore = 1, SchedRW = [WriteRMW] in {
 def PUSH64rmm: I<0xFF, MRM6m, (outs), (ins i64mem:$src), "push{q}\t$src", [],
                  IIC_PUSH_MEM>, OpSize32, Requires<[In64BitMode]>;
-} // mayStore, SchedRW
+} // mayLoad, mayStore, SchedRW
 }
 
 let Defs = [RSP], Uses = [RSP], hasSideEffects = 0, mayStore = 1,
     SchedRW = [WriteStore] in {
 def PUSH64i8   : Ii8<0x6a, RawFrm, (outs), (ins i64i8imm:$imm),
                     "push{q}\t$imm", [], IIC_PUSH_IMM>, Requires<[In64BitMode]>;
-def PUSH64i16  : Ii16<0x68, RawFrm, (outs), (ins i16imm:$imm),
-                    "push{w}\t$imm", [], IIC_PUSH_IMM>, OpSize16,
-                    Requires<[In64BitMode]>;
 def PUSH64i32  : Ii32S<0x68, RawFrm, (outs), (ins i64i32imm:$imm),
                     "push{q}\t$imm", [], IIC_PUSH_IMM>, OpSize32,
                     Requires<[In64BitMode]>;
@@ -2238,7 +2238,7 @@ let Predicates = [HasBMI2], Defs = [EFLAGS] in {
 
 def CountTrailingOnes : SDNodeXForm<imm, [{
   // Count the trailing ones in the immediate.
-  return getI8Imm(countTrailingOnes(N->getZExtValue()));
+  return getI8Imm(countTrailingOnes(N->getZExtValue()), SDLoc(N));
 }]>;
 
 def BZHIMask : ImmLeaf<i64, [{
@@ -2446,12 +2446,6 @@ def PCOMMIT    : I<0xAE, MRM_F8, (outs), (ins), "pcommit", []>, PD;
 //===----------------------------------------------------------------------===//
 
 include "X86InstrArithmetic.td"
-
-//===----------------------------------------------------------------------===//
-// NaCl support (@LOCALMOD)
-//===----------------------------------------------------------------------===//
-
-include "X86InstrNaCl.td"
 include "X86InstrCMovSetCC.td"
 include "X86InstrExtension.td"
 include "X86InstrControl.td"
@@ -2474,6 +2468,9 @@ include "X86InstrSSE.td"
 include "X86InstrAVX512.td"
 include "X86InstrMMX.td"
 include "X86Instr3DNow.td"
+
+// MPX instructions
+include "X86InstrMPX.td"
 
 include "X86InstrVMX.td"
 include "X86InstrSVM.td"

@@ -18,7 +18,6 @@
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCInstPrinter.h"
 #include "llvm/MC/MCInstrInfo.h"
-#include "llvm/MC/MCNaCl.h"
 #include "llvm/MC/MCObjectFileInfo.h"
 #include "llvm/MC/MCParser/AsmLexer.h"
 #include "llvm/MC/MCRegisterInfo.h"
@@ -70,6 +69,9 @@ OutputAsmVariant("output-asm-variant",
 static cl::opt<bool>
 PrintImmHex("print-imm-hex", cl::init(false),
             cl::desc("Prefer hex format for immediate values"));
+
+static cl::list<std::string>
+DefineSymbol("defsym", cl::desc("Defines a symbol to be an integer constant"));
 
 enum OutputFileType {
   OFT_Null,
@@ -317,6 +319,26 @@ static int AsLexInput(SourceMgr &SrcMgr, MCAsmInfo &MAI,
   return Error;
 }
 
+static int fillCommandLineSymbols(MCAsmParser &Parser){
+  for(auto &I: DefineSymbol){
+    auto Pair = StringRef(I).split('=');
+    if(Pair.second.empty()){
+      errs() << "error: defsym must be of the form: sym=value: " << I;
+      return 1;
+    }
+    int64_t Value;
+    if(Pair.second.getAsInteger(0, Value)){
+      errs() << "error: Value is not an integer: " << Pair.second;
+      return 1;
+    }
+    auto &Context = Parser.getContext();
+    auto Symbol = Context.getOrCreateSymbol(Pair.first);
+    Parser.getStreamer().EmitAssignment(Symbol,
+                                        MCConstantExpr::create(Value, Context));
+  }
+  return 0;
+}
+
 static int AssembleInput(const char *ProgName, const Target *TheTarget,
                          SourceMgr &SrcMgr, MCContext &Ctx, MCStreamer &Str,
                          MCAsmInfo &MAI, MCSubtargetInfo &STI,
@@ -332,6 +354,9 @@ static int AssembleInput(const char *ProgName, const Target *TheTarget,
     return 1;
   }
 
+  int SymbolResult = fillCommandLineSymbols(*Parser);
+  if(SymbolResult)
+    return SymbolResult;
   Parser->setShowParsedOperands(ShowInstOperands);
   Parser->setTargetParser(*TAP);
 
@@ -358,7 +383,6 @@ int main(int argc, char **argv) {
   cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
   MCTargetOptions MCOptions = InitMCTargetOptionsFromFlags();
   TripleName = Triple::normalize(TripleName);
-  Triple TheTriple(TripleName);
   setDwarfDebugFlags(argc, argv);
 
   setDwarfDebugProducer();
@@ -367,6 +391,9 @@ int main(int argc, char **argv) {
   const Target *TheTarget = GetTarget(ProgName);
   if (!TheTarget)
     return 1;
+  // Now that GetTarget() has (potentially) replaced TripleName, it's safe to
+  // construct the Triple object.
+  Triple TheTriple(TripleName);
 
   ErrorOr<std::unique_ptr<MemoryBuffer>> BufferPtr =
       MemoryBuffer::getFileOrSTDIN(InputFilename);
@@ -404,7 +431,7 @@ int main(int argc, char **argv) {
   // MCObjectFileInfo needs a MCContext reference in order to initialize itself.
   MCObjectFileInfo MOFI;
   MCContext Ctx(MAI.get(), MRI.get(), &MOFI, &SrcMgr);
-  MOFI.InitMCObjectFileInfo(TripleName, RelocModel, CMModel, Ctx);
+  MOFI.InitMCObjectFileInfo(TheTriple, RelocModel, CMModel, Ctx);
 
   if (SaveTempLabels)
     Ctx.setAllowTemporaryLabels(false);
@@ -448,9 +475,7 @@ int main(int argc, char **argv) {
   std::unique_ptr<MCSubtargetInfo> STI(
       TheTarget->createMCSubtargetInfo(TripleName, MCPU, FeaturesStr));
 
-  Triple T(TripleName); // @LOCALMOD
-
-  MCInstPrinter *IP = NULL;
+  MCInstPrinter *IP = nullptr;
   if (FileType == OFT_AssemblyFile) {
     IP = TheTarget->createMCInstPrinter(Triple(TripleName), OutputAsmVariant,
                                         *MAI, *MCII, *MRI);
@@ -461,7 +486,7 @@ int main(int argc, char **argv) {
     // Set up the AsmStreamer.
     MCCodeEmitter *CE = nullptr;
     MCAsmBackend *MAB = nullptr;
-    if (ShowEncoding || T.isOSNaCl()) { // @LOCALMOD
+    if (ShowEncoding) {
       CE = TheTarget->createMCCodeEmitter(*MCII, *MRI, Ctx);
       MAB = TheTarget->createMCAsmBackend(*MRI, TripleName, MCPU);
     }
@@ -470,17 +495,13 @@ int main(int argc, char **argv) {
         Ctx, std::move(FOut), /*asmverbose*/ true,
         /*useDwarfDirectory*/ true, IP, CE, MAB, ShowInst));
 
-    // @LOCALMOD-START
-    if (T.isOSNaCl()) {
-      Str->InitSections(NoExecStack);
-      initializeNaClMCStreamer(*Str.get(), Ctx, T);
-    }
-    // @LOCALMOD-END
-
   } else if (FileType == OFT_Null) {
     Str.reset(TheTarget->createNullStreamer(Ctx));
   } else {
     assert(FileType == OFT_ObjectFile && "Invalid file type!");
+
+    // Don't waste memory on names of temp labels.
+    Ctx.setUseNamesOnTempLabels(false);
 
     if (!Out->os().supportsSeeking()) {
       BOS = make_unique<buffer_ostream>(Out->os());
@@ -494,14 +515,6 @@ int main(int argc, char **argv) {
                                                 /*DWARFMustBeAtTheEnd*/ false));
     if (NoExecStack)
       Str->InitSections(true);
-    // @LOCALMOD-BEGIN
-    if (T.isOSNaCl()) {
-      // If the above non-localmod does InitSections unconditionally,
-      // we can use that.
-      Str->InitSections(NoExecStack);
-      initializeNaClMCStreamer(*Str.get(), Ctx, T);
-    }
-    // @LOCALMOD-END
   }
 
   int Res = 1;

@@ -10,8 +10,6 @@
 #include "ARMTargetObjectFile.h"
 #include "ARMTargetMachine.h"
 #include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/Triple.h" // @LOCALMOD
-#include "llvm/CodeGen/MachineModuleInfo.h" // @LOCALMOD
 #include "llvm/IR/Mangler.h"
 #include "llvm/MC/MCAsmInfo.h"
 #include "llvm/MC/MCContext.h"
@@ -34,9 +32,7 @@ void ARMElfTargetObjectFile::Initialize(MCContext &Ctx,
   TargetLoweringObjectFileELF::Initialize(Ctx, TM);
   InitializeELF(isAAPCS_ABI);
 
-  // @LOCALMOD-BEGIN
-  if (isAAPCS_ABI && !Triple(TM.getTargetTriple()).isOSNaCl()) {
-  // @LOCALMOD-END
+  if (isAAPCS_ABI) {
     LSDASection = nullptr;
   }
 
@@ -53,20 +49,13 @@ const MCExpr *ARMElfTargetObjectFile::getTTypeGlobalReference(
         GV, Encoding, Mang, TM, MMI, Streamer);
 
   assert(Encoding == DW_EH_PE_absptr && "Can handle absptr encoding only");
-  // @LOCALMOD-BEGIN
-  // FIXME: There has got to be a better way to get this info.
-  Triple T(MMI->getModule()->getTargetTriple());
-  if (T.isOSNaCl())
-    return TargetLoweringObjectFileELF::getTTypeGlobalReference(
-        GV, Encoding, Mang, TM, MMI, Streamer);
-  // @LOCALMOD-END
 
-  return MCSymbolRefExpr::Create(TM.getSymbol(GV, Mang),
+  return MCSymbolRefExpr::create(TM.getSymbol(GV, Mang),
                                  MCSymbolRefExpr::VK_ARM_TARGET2, getContext());
 }
 
 const MCExpr *ARMElfTargetObjectFile::
 getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
-  return MCSymbolRefExpr::Create(Sym, MCSymbolRefExpr::VK_ARM_TLSLDO,
+  return MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_ARM_TLSLDO,
                                  getContext());
 }

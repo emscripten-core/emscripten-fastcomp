@@ -267,7 +267,7 @@ namespace X86II {
     /// register DI/EDI/ESI.
     RawFrmDst      = 9,
 
-    /// RawFrmSrc - This form is for instructions that use the the source index
+    /// RawFrmSrc - This form is for instructions that use the source index
     /// register SI/ESI/ERI with a possible segment override, and also the
     /// destination index register DI/ESI/RDI.
     RawFrmDstSrc   = 10,
@@ -317,7 +317,7 @@ namespace X86II {
     MRM_F4 = 84, MRM_F5 = 85, MRM_F6 = 86, MRM_F7 = 87,
     MRM_F8 = 88, MRM_F9 = 89, MRM_FA = 90, MRM_FB = 91,
     MRM_FC = 92, MRM_FD = 93, MRM_FE = 94, MRM_FF = 95,
-    CustomFrm = 126, // @LOCALMOD
+
     FormMask       = 127,
 
     //===------------------------------------------------------------------===//
@@ -664,7 +664,6 @@ namespace X86II {
 
     switch (TSFlags & X86II::FormMask) {
     default: llvm_unreachable("Unknown FormMask value in getMemoryOperandNo!");
-    case X86II::CustomFrm: // @LOCALMOD
     case X86II::Pseudo:
     case X86II::RawFrm:
     case X86II::AddRegFrm:

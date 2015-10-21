@@ -20,6 +20,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Config/config.h"
 #include "llvm/Support/Compiler.h"
+#include "llvm/Support/Errc.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
@@ -92,7 +93,7 @@ ErrorOr<std::string> sys::findProgramByName(StringRef Name,
     if (sys::fs::can_execute(FilePath.c_str()))
       return std::string(FilePath.str()); // Found the executable!
   }
-  return std::errc::no_such_file_or_directory;
+  return errc::no_such_file_or_directory;
 }
 
 static bool RedirectIO(const StringRef *Path, int FD, std::string* ErrMsg) {
@@ -322,9 +323,7 @@ namespace llvm {
 
 ProcessInfo sys::Wait(const ProcessInfo &PI, unsigned SecondsToWait,
                       bool WaitUntilTerminates, std::string *ErrMsg) {
-  // @LOCALMOD-BEGIN
-#if defined(HAVE_SYS_WAIT_H) && !defined(PNACL_BROWSER_TRANSLATOR)
-  // @LOCALMOD-END
+#ifdef HAVE_SYS_WAIT_H
   struct sigaction Act, Old;
   assert(PI.Pid && "invalid pid to wait on, process not started?");
 
@@ -449,17 +448,13 @@ llvm::sys::writeFileWithEncoding(StringRef FileName, StringRef Contents,
   OS << Contents;
 
   if (OS.has_error())
-    return std::make_error_code(std::errc::io_error);
+    return make_error_code(errc::io_error);
 
   return EC;
 }
 
 bool llvm::sys::argumentsFitWithinSystemLimits(ArrayRef<const char*> Args) {
-#if defined(__native_client__)
-  static long ArgMax = -1;
-#else // !__native_client__
   static long ArgMax = sysconf(_SC_ARG_MAX);
-#endif // __native_client__
 
   // System says no practical limit.
   if (ArgMax == -1)

@@ -40,11 +40,3 @@ ifeq ($(HOST_OS),Darwin)
                           -Wl,-object_path_lto -Wl,$(TempFile)
     endif
 endif
-
-#@ LOCALMOD-BEGIN
-# This is to fix an upstream bug. It is in the process of being upstreamed.
-# This line can be removed after it has been fixed upstream and we've merged.
-ifneq ($(HOST_OS),Darwin)
-  LLVMLibsOptions := $(LLVMLibsOptions) -Wl,-soname=$(SharedPrefix)LTO$(SHLIBEXT)
-endif
-#@ LOCALMOD-END
