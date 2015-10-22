@@ -9,7 +9,7 @@
 
 LEVEL := ../..
 TOOLNAME := llvm-lto
-LINK_COMPONENTS := lto ipo scalaropts linker bitreader bitwriter mcdisassembler nacltransforms support target vectorize all-targets
+LINK_COMPONENTS := lto ipo scalaropts linker bitreader bitwriter mcdisassembler support target vectorize all-targets
 
 # This tool has no plugins, optimize startup time.
 TOOL_NO_EXPORTS := 1

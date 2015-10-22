@@ -16,7 +16,7 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = MCTargetDesc TargetInfo
+subdirectories = MCTargetDesc NaCl TargetInfo
 
 [component_0]
 type = TargetGroup
@@ -27,5 +27,5 @@ parent = Target
 type = Library
 name = JSBackendCodeGen
 parent = JSBackend
-required_libraries = Analysis CodeGen Core JSBackendInfo JSBackendDesc NaClTransforms Support Target
+required_libraries = Analysis CodeGen Core JSBackendInfo JSBackendDesc PNaClTransforms Support Target
 add_to_library_groups = JSBackend

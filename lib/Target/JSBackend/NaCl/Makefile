@@ -1,4 +1,4 @@
-##===- lib/Transforms/NaCl/Makefile-------------------------*- Makefile -*-===##
+##===- lib/Target/JSBackend/NaCl/Makefile-------------------------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -6,10 +6,8 @@
 # License. See LICENSE.TXT for details.
 #
 ##===----------------------------------------------------------------------===##
-
-LEVEL = ../../..
-LIBRARYNAME = LLVMNaClTransforms
-BUILD_ARCHIVE = 1
+LEVEL = ../../../..
+LIBRARYNAME = LLVMPNaClTransforms
 
 include $(LEVEL)/Makefile.common
 
