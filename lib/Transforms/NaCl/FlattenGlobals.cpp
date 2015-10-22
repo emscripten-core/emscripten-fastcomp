@@ -165,7 +165,7 @@ namespace {
     // 1) an array of bytes;
     unsigned BufSize;
     uint8_t *Buf;
-    uint8_t *BufEnd;
+    // XXX EMSCRIPTEN: There used to be a BufEnd here. No more.
 
     // 2) an array of relocations.
     class Reloc {
@@ -216,8 +216,7 @@ namespace {
     FlattenedConstant(FlattenGlobalsState &State, Constant *Value):
         State(State),
         BufSize(getDataLayout().getTypeAllocSize(Value->getType())),
-        Buf(new uint8_t[BufSize]),
-        BufEnd(Buf + BufSize) {
+        Buf(new uint8_t[BufSize]) {
       memset(Buf, 0, BufSize);
       putAtDest(Value, Buf);
     }
@@ -380,7 +379,7 @@ static void ExpandConstant(const DataLayout *DL, Constant *Val,
 
 void FlattenedConstant::putAtDest(Constant *Val, uint8_t *Dest) {
   uint64_t ValSize = getDataLayout().getTypeAllocSize(Val->getType());
-  assert(Dest + ValSize <= BufEnd);
+  assert(Dest + ValSize <= Buf + BufSize);
   if (isa<ConstantAggregateZero>(Val) ||
       isa<UndefValue>(Val) ||
       isa<ConstantPointerNull>(Val)) {
