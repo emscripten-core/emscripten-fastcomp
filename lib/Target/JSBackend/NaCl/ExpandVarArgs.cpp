@@ -59,6 +59,9 @@ static bool isEmscriptenJSArgsFunc(Module *M, StringRef Name) {
 }
 
 static bool ExpandVarArgFunc(Module *M, Function *Func) {
+  if (Func->isDeclaration() && Func->use_empty())
+    return false; // No point in doing any work.
+
   if (isEmscriptenJSArgsFunc(M, Func->getName()))
     return false;
 
