@@ -1,157 +1,129 @@
-; RUN: opt -S -expand-illegal-ints < %s | FileCheck %s
+; RUN: llc < %s | FileCheck %s
 
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:128-n32-S128"
+target triple = "asmjs-unknown-emscripten"
 
-; CHECK: define i32 @add(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @i64Add(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _add($0,$1,$2,$3) {
+; CHECK:  $4 = (_i64Add(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @add(i64 %a, i64 %b) {
   %c = add i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @sub(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @i64Subtract(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _sub($0,$1,$2,$3) {
+; CHECK:  $4 = (_i64Subtract(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @sub(i64 %a, i64 %b) {
   %c = sub i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @mul(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @__muldi3(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _mul($0,$1,$2,$3) {
+; CHECK:  $4 = (___muldi3(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @mul(i64 %a, i64 %b) {
   %c = mul i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @sdiv(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @__divdi3(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _sdiv($0,$1,$2,$3) {
+; CHECK:  $4 = (___divdi3(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @sdiv(i64 %a, i64 %b) {
   %c = sdiv i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @udiv(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @__udivdi3(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _udiv($0,$1,$2,$3) {
+; CHECK:  $4 = (___udivdi3(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @udiv(i64 %a, i64 %b) {
   %c = udiv i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @srem(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @__remdi3(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _srem($0,$1,$2,$3) {
+; CHECK:  $4 = (___remdi3(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @srem(i64 %a, i64 %b) {
   %c = srem i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @urem(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @__uremdi3(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _urem($0,$1,$2,$3) {
+; CHECK:  $4 = (___uremdi3(($0|0),($1|0),($2|0),($3|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @urem(i64 %a, i64 %b) {
   %c = urem i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @and(i32, i32, i32, i32) {
-; CHECK:   %5 = and i32 %0, %2
-; CHECK:   %6 = and i32 %1, %3
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _and($0,$1,$2,$3) {
+; CHECK:  $4 = $0 & $2;
+; CHECK:  $5 = $1 & $3;
 ; CHECK: }
 define i64 @and(i64 %a, i64 %b) {
   %c = and i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @or(i32, i32, i32, i32) {
-; CHECK:   %5 = or i32 %0, %2
-; CHECK:   %6 = or i32 %1, %3
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _or($0,$1,$2,$3) {
+; CHECK:  $4 = $0 | $2;
+; CHECK:  $5 = $1 | $3;
 ; CHECK: }
 define i64 @or(i64 %a, i64 %b) {
   %c = or i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @xor(i32, i32, i32, i32) {
-; CHECK:   %5 = xor i32 %0, %2
-; CHECK:   %6 = xor i32 %1, %3
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _xor($0,$1,$2,$3) {
+; CHECK:  $4 = $0 ^ $2;
+; CHECK:  $5 = $1 ^ $3;
 ; CHECK: }
 define i64 @xor(i64 %a, i64 %b) {
   %c = xor i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @lshr(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @bitshift64Lshr(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _lshr($0,$1,$2,$3) {
+; CHECK:  $4 = (_bitshift64Lshr(($0|0),($1|0),($2|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @lshr(i64 %a, i64 %b) {
   %c = lshr i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @ashr(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @bitshift64Ashr(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _ashr($0,$1,$2,$3) {
+; CHECK:  $4 = (_bitshift64Ashr(($0|0),($1|0),($2|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @ashr(i64 %a, i64 %b) {
   %c = ashr i64 %a, %b
   ret i64 %c
 }
 
-; CHECK: define i32 @shl(i32, i32, i32, i32) {
-; CHECK:   %5 = call i32 @bitshift64Shl(i32 %0, i32 %1, i32 %2, i32 %3)
-; CHECK:   %6 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %5
+; CHECK: function _shl($0,$1,$2,$3) {
+; CHECK:  $4 = (_bitshift64Shl(($0|0),($1|0),($2|0))|0);
+; CHECK:  $5 = tempRet0;
 ; CHECK: }
 define i64 @shl(i64 %a, i64 %b) {
   %c = shl i64 %a, %b
   ret i64 %c
 }
 
-
-; CHECK: define i32 @icmp_eq(i32, i32, i32, i32) {
-; CHECK:   %5 = icmp eq i32 %0, %2
-; CHECK:   %6 = icmp eq i32 %1, %3
-; CHECK:   %7 = and i1 %5, %6
-; CHECK:   %d = zext i1 %7 to i32
-; CHECK:   ret i32 %d
+; CHECK: function _icmp_eq($0,$1,$2,$3) {
+; CHECK:  $4 = ($0|0)==($2|0);
+; CHECK:  $5 = ($1|0)==($3|0);
+; CHECK:  $6 = $4 & $5;
 ; CHECK: }
 define i32 @icmp_eq(i64 %a, i64 %b) {
   %c = icmp eq i64 %a, %b
@@ -159,12 +131,10 @@ define i32 @icmp_eq(i64 %a, i64 %b) {
   ret i32 %d
 }
 
-; CHECK: define i32 @icmp_ne(i32, i32, i32, i32) {
-; CHECK:   %5 = icmp ne i32 %0, %2
-; CHECK:   %6 = icmp ne i32 %1, %3
-; CHECK:   %7 = or i1 %5, %6
-; CHECK:   %d = zext i1 %7 to i32
-; CHECK:   ret i32 %d
+; CHECK: function _icmp_ne($0,$1,$2,$3) {
+; CHECK:  $4 = ($0|0)!=($2|0);
+; CHECK:  $5 = ($1|0)!=($3|0);
+; CHECK:  $6 = $4 | $5;
 ; CHECK: }
 define i32 @icmp_ne(i64 %a, i64 %b) {
   %c = icmp ne i64 %a, %b
@@ -172,14 +142,12 @@ define i32 @icmp_ne(i64 %a, i64 %b) {
   ret i32 %d
 }
 
-; CHECK: define i32 @icmp_slt(i32, i32, i32, i32) {
-; CHECK:   %5 = icmp slt i32 %1, %3
-; CHECK:   %6 = icmp ult i32 %0, %2
-; CHECK:   %7 = icmp eq i32 %1, %3
-; CHECK:   %8 = and i1 %7, %6
-; CHECK:   %9 = or i1 %5, %8
-; CHECK:   %d = zext i1 %9 to i32
-; CHECK:   ret i32 %d
+; CHECK: function _icmp_slt($0,$1,$2,$3) {
+; CHECK:  $4 = ($1|0)<($3|0);
+; CHECK:  $5 = ($0>>>0)<($2>>>0);
+; CHECK:  $6 = ($1|0)==($3|0);
+; CHECK:  $7 = $6 & $5;
+; CHECK:  $8 = $4 | $7;
 ; CHECK: }
 define i32 @icmp_slt(i64 %a, i64 %b) {
   %c = icmp slt i64 %a, %b
@@ -187,14 +155,12 @@ define i32 @icmp_slt(i64 %a, i64 %b) {
   ret i32 %d
 }
 
-; CHECK: define i32 @icmp_ult(i32, i32, i32, i32) {
-; CHECK:   %5 = icmp ult i32 %1, %3
-; CHECK:   %6 = icmp ult i32 %0, %2
-; CHECK:   %7 = icmp eq i32 %1, %3
-; CHECK:   %8 = and i1 %7, %6
-; CHECK:   %9 = or i1 %5, %8
-; CHECK:   %d = zext i1 %9 to i32
-; CHECK:   ret i32 %d
+; CHECK: function _icmp_ult($0,$1,$2,$3) {
+; CHECK:  $4 = ($1>>>0)<($3>>>0);
+; CHECK:  $5 = ($0>>>0)<($2>>>0);
+; CHECK:  $6 = ($1|0)==($3|0);
+; CHECK:  $7 = $6 & $5;
+; CHECK:  $8 = $4 | $7;
 ; CHECK: }
 define i32 @icmp_ult(i64 %a, i64 %b) {
   %c = icmp ult i64 %a, %b
@@ -202,69 +168,60 @@ define i32 @icmp_ult(i64 %a, i64 %b) {
   ret i32 %d
 }
 
-; CHECK: define i32 @load(i64* %a) {
-; CHECK:   %1 = ptrtoint i64* %a to i32
-; CHECK:   %2 = inttoptr i32 %1 to i32*
-; CHECK:   %3 = load i32, i32* %2
-; CHECK:   %4 = add i32 %1, 4
-; CHECK:   %5 = inttoptr i32 %4 to i32*
-; CHECK:   %6 = load i32, i32* %5
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %3
+; CHECK: function _load($a) {
+; CHECK:  $0 = $a;
+; CHECK:  $1 = $0;
+; CHECK:  $2 = HEAP32[$1>>2]|0;
+; CHECK:  $3 = (($0) + 4)|0;
+; CHECK:  $4 = $3;
+; CHECK:  $5 = HEAP32[$4>>2]|0;
 ; CHECK: }
 define i64 @load(i64 *%a) {
   %c = load i64, i64* %a
   ret i64 %c
 }
 
-; CHECK: define i32 @aligned_load(i64* %a) {
-; CHECK:   %1 = ptrtoint i64* %a to i32
-; CHECK:   %2 = inttoptr i32 %1 to i32*
-; CHECK:   %3 = load i32, i32* %2, align 16
-; CHECK:   %4 = add i32 %1, 4
-; CHECK:   %5 = inttoptr i32 %4 to i32*
-; CHECK:   %6 = load i32, i32* %5, align 4
-; CHECK:   call void @setHigh32(i32 %6)
-; CHECK:   ret i32 %3
+; CHECK: function _aligned_load($a) {
+; CHECK:  $0 = $a;
+; CHECK:  $1 = $0;
+; CHECK:  $2 = HEAP32[$1>>2]|0;
+; CHECK:  $3 = (($0) + 4)|0;
+; CHECK:  $4 = $3;
+; CHECK:  $5 = HEAP32[$4>>2]|0;
 ; CHECK: }
 define i64 @aligned_load(i64 *%a) {
   %c = load i64, i64* %a, align 16
   ret i64 %c
 }
 
-; CHECK: define void @store(i64* %a, i32, i32) {
-; CHECK:   %3 = ptrtoint i64* %a to i32
-; CHECK:   %4 = inttoptr i32 %3 to i32*
-; CHECK:   store i32 %0, i32* %4
-; CHECK:   %5 = add i32 %3, 4
-; CHECK:   %6 = inttoptr i32 %5 to i32*
-; CHECK:   store i32 %1, i32* %6
-; CHECK:   ret void
+; CHECK: function _store($a,$0,$1) {
+; CHECK:  $2 = $a;
+; CHECK:  $3 = $2;
+; CHECK:  HEAP32[$3>>2] = $0;
+; CHECK:  $4 = (($2) + 4)|0;
+; CHECK:  $5 = $4;
+; CHECK:  HEAP32[$5>>2] = $1;
 ; CHECK: }
 define void @store(i64 *%a, i64 %b) {
   store i64 %b, i64* %a
   ret void
 }
 
-; CHECK: define void @aligned_store(i64* %a, i32, i32) {
-; CHECK:   %3 = ptrtoint i64* %a to i32
-; CHECK:   %4 = inttoptr i32 %3 to i32*
-; CHECK:   store i32 %0, i32* %4, align 16
-; CHECK:   %5 = add i32 %3, 4
-; CHECK:   %6 = inttoptr i32 %5 to i32*
-; CHECK:   store i32 %1, i32* %6, align 4
-; CHECK:   ret void
+; CHECK: function _aligned_store($a,$0,$1) {
+; CHECK:  $2 = $a;
+; CHECK:  $3 = $2;
+; CHECK:  HEAP32[$3>>2] = $0;
+; CHECK:  $4 = (($2) + 4)|0;
+; CHECK:  $5 = $4;
+; CHECK:  HEAP32[$5>>2] = $1;
 ; CHECK: }
 define void @aligned_store(i64 *%a, i64 %b) {
   store i64 %b, i64* %a, align 16
   ret void
 }
 
-; CHECK: define i32 @call(i32, i32) {
-; CHECK:   %3 = call i32 @foo(i32 %0, i32 %1)
-; CHECK:   %4 = call i32 @getHigh32()
-; CHECK:   call void @setHigh32(i32 %4)
-; CHECK:   ret i32 %3
+; CHECK: function _call($0,$1) {
+; CHECK:  $2 = (_foo(($0|0),($1|0))|0);
 ; CHECK: }
 declare i64 @foo(i64 %arg)
 define i64 @call(i64 %arg) {
@@ -272,37 +229,36 @@ define i64 @call(i64 %arg) {
   ret i64 %ret
 }
 
-; CHECK: define i32 @trunc(i32, i32) {
-; CHECK:   ret i32 %0
+; CHECK: function _trunc($0,$1) {
+; CHECK:   return ($0|0);
 ; CHECK: }
 define i32 @trunc(i64 %x) {
   %y = trunc i64 %x to i32
   ret i32 %y
 }
 
-; CHECK: define i32 @zext(i32 %x) {
-; CHECK:   call void @setHigh32(i32 0)
-; CHECK:   ret i32 %x
+; CHECK: function _zext($x) {
+; CHECK:  tempRet0 = (0);
+; CHECL:  return ($x|0);
 ; CHECK: }
 define i64 @zext(i32 %x) {
   %y = zext i32 %x to i64
   ret i64 %y
 }
 
-; CHECK: define i32 @sext(i32 %x) {
-; CHECK:   %1 = icmp slt i32 %x, 0
-; CHECK:   %2 = sext i1 %1 to i32
-; CHECK:   call void @setHigh32(i32 %2)
-; CHECK:   ret i32 %x
+; CHECK: function _sext($x) {
+; CHECK:  $0 = ($x|0)<(0);
+; CHECK:  $1 = $0 << 31 >> 31;
+; CHECK:  tempRet0 = ($1);
+; CHECK:  return ($x|0);
 ; CHECK: }
 define i64 @sext(i32 %x) {
   %y = sext i32 %x to i64
   ret i64 %y
 }
 
-; CHECK:      define void @unreachable_blocks(i64* %p) {
-; CHECK-NEXT:   ret void
-; CHECK-NEXT: }
+; CHECK: function _unreachable_blocks($p) {
+; CHECK: }
 define void @unreachable_blocks(i64* %p) {
   ret void
 
@@ -311,19 +267,5 @@ dead:
   %s = add i64 %t, 1
   store i64 %s, i64* %p
   ret void
-}
-
-; CHECK: define i1 @slt_zero(i32 %a) {
-; CHECK:   %1 = icmp slt i32 %a, 0
-; CHECK:   %2 = sext i1 %1 to i32
-; CHECK:   %3 = sext i1 %1 to i32
-; CHECK:   %4 = sext i1 %1 to i32
-; CHECK:   %5 = icmp slt i32 %4, 0
-; CHECK:   ret i1 %5
-; CHECK: }
-define i1 @slt_zero(i32 %a) {
-  %b = sext i32 %a to i128
-  %c = icmp slt i128 %b, 0
-  ret i1 %c
 }
 
