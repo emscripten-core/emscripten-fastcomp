@@ -564,11 +564,11 @@ namespace {
     /// @return The index to the heap HeapName for the memory access.
     std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName);
 
-    // Like getHeapNameAndIndex(), but uses the given memory operation size instead of the one from Ptr.
-    std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes);
+    // Like getHeapNameAndIndex(), but uses the given memory operation size and whether it is an Integer instead of the type of Ptr.
+    std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes, bool Integer);
 
     /// Like getHeapNameAndIndex(), but for global variables only.
-    std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const Type *T, const char **HeapName);
+    std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, unsigned Bytes, bool Integer, const char **HeapName);
 
     /// Like getHeapNameAndIndex(), but for pointers represented in string expression form.
     static std::string getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName);
@@ -982,12 +982,10 @@ static inline const char *getHeapShiftStr(int Bytes)
   }
 }
 
-std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const Type *T, const char **HeapName)
+std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, unsigned Bytes, bool Integer, const char **HeapName)
 {
-  Type *t = cast<PointerType>(T)->getElementType();
-  unsigned Bytes = DL->getTypeAllocSize(t);
   unsigned Addr = getGlobalAddress(GV->getName().str());
-  *HeapName = getHeapName(Bytes, t->isIntegerTy() || t->isPointerTy());
+  *HeapName = getHeapName(Bytes, Integer);
   if (!Relocatable) {
     return utostr(Addr >> getHeapShift(Bytes));
   } else {
@@ -1001,24 +999,21 @@ std::string JSWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned 
   return Ptr + getHeapShiftStr(Bytes);
 }
 
-std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes)
+std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes, bool Integer)
 {
-  Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-
   const GlobalVariable *GV;
   if ((GV = dyn_cast<GlobalVariable>(Ptr->stripPointerCasts())) && GV->hasInitializer()) {
     // Note that we use the type of the pointer, as it might be a bitcast of the underlying global. We need the right type.
-    return getHeapNameAndIndexToGlobal(GV, Ptr->getType(), HeapName);
+    return getHeapNameAndIndexToGlobal(GV, Bytes, Integer, HeapName);
   } else {
-    return getHeapNameAndIndexToPtr(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy(), HeapName);
+    return getHeapNameAndIndexToPtr(getValueAsStr(Ptr), Bytes, Integer, HeapName);
   }
 }
 
 std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
 {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
-  unsigned Bytes = DL->getTypeAllocSize(t);
-  return getHeapNameAndIndex(Ptr, HeapName, Bytes);
+  return getHeapNameAndIndex(Ptr, HeapName, DL->getTypeAllocSize(t), t->isIntegerTy() || t->isPointerTy());
 }
 
 static const char *heapNameToAtomicTypeName(const char *HeapName)
@@ -1293,7 +1288,7 @@ std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, boo
 
 std::string JSWriter::getShiftedPtr(const Value *Ptr, unsigned Bytes) {
   const char *HeapName = 0; // unused
-  return getHeapNameAndIndex(Ptr, &HeapName, Bytes);
+  return getHeapNameAndIndex(Ptr, &HeapName, Bytes, true /* Integer; doesn't matter */);
 }
 
 std::string JSWriter::getPtrUse(const Value* Ptr) {
