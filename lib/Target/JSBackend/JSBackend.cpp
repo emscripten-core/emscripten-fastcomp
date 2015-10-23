@@ -568,7 +568,7 @@ namespace {
     std::string getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes);
 
     /// Like getHeapNameAndIndex(), but for global variables only.
-    std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const char **HeapName);
+    std::string getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const Type *T, const char **HeapName);
 
     /// Like getHeapNameAndIndex(), but for pointers represented in string expression form.
     static std::string getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName);
@@ -982,9 +982,9 @@ static inline const char *getHeapShiftStr(int Bytes)
   }
 }
 
-std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const char **HeapName)
+std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, const Type *T, const char **HeapName)
 {
-  Type *t = cast<PointerType>(GV->getType())->getElementType();
+  Type *t = cast<PointerType>(T)->getElementType();
   unsigned Bytes = DL->getTypeAllocSize(t);
   unsigned Addr = getGlobalAddress(GV->getName().str());
   *HeapName = getHeapName(Bytes, t->isIntegerTy() || t->isPointerTy());
@@ -1005,8 +1005,10 @@ std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapNam
 {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
 
-  if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-    return getHeapNameAndIndexToGlobal(GV, HeapName);
+  const GlobalVariable *GV;
+  if ((GV = dyn_cast<GlobalVariable>(Ptr->stripPointerCasts())) && GV->hasInitializer()) {
+    // Note that we use the type of the pointer, as it might be a bitcast of the underlying global. We need the right type.
+    return getHeapNameAndIndexToGlobal(GV, Ptr->getType(), HeapName);
   } else {
     return getHeapNameAndIndexToPtr(getValueAsStr(Ptr), Bytes, t->isIntegerTy() || t->isPointerTy(), HeapName);
   }
