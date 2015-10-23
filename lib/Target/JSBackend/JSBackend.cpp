@@ -590,7 +590,7 @@ namespace {
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
     void generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code);
-    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr);
+    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend);
     void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
@@ -1426,7 +1426,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     } else {
       VectorType *IntTy = VectorType::getInteger(C->getType());
       checkVectorType(IntTy);
-      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')');
+      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', true);
     }
   }
 
@@ -1458,7 +1458,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
       c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
     }
 
-    return getSIMDCast(IntTy, C->getType(), c + ")");
+    return getSIMDCast(IntTy, C->getType(), c + ")", true);
   }
 }
 
@@ -1616,11 +1616,11 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
   error("SIMD extract element with non-constant index not implemented yet");
 }
 
-std::string castBoolVecToIntVec(int numElems, const std::string &str)
+std::string castBoolVecToIntVec(int numElems, const std::string &str, bool signExtend)
 {
   int elemWidth = 128 / numElems;
   std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
-  return simdType + "_select(" + str + ", " + simdType + "_splat(-1), " + simdType + "_splat(0))";
+  return simdType + "_select(" + str + ", " + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
 }
 
 std::string castIntVecToBoolVec(int numElems, const std::string &str)
@@ -1630,7 +1630,7 @@ std::string castIntVecToBoolVec(int numElems, const std::string &str)
   return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
 }
 
-std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr)
+std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend)
 {
   bool toInt = toType->getElementType()->isIntegerTy();
   bool fromInt = fromType->getElementType()->isIntegerTy();
@@ -1648,7 +1648,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
   bool fromIsBool = (fromInt && fromPrimSize == 1);
   bool toIsBool = (toInt && toPrimSize == 1);
   if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
-    return castBoolVecToIntVec(toNumElems, valueStr);
+    return castBoolVecToIntVec(toNumElems, valueStr, signExtend);
   }
 
   if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
@@ -1726,8 +1726,8 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Emit a fully-general shuffle.
   Code << "SIMD_" << SIMDType(SVI->getType()) << "_shuffle(";
 
-  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A) << ", "
-       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B) << ", ";
+  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, true) << ", "
+       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, true) << ", ";
 
   SmallVector<int, 16> Indices;
   SVI->getShuffleMask(Indices);
@@ -1795,26 +1795,26 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
            << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
     case ICmpInst::FCMP_UEQ:
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
            << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
     case FCmpInst::FCMP_ORD:
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
            << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
 
     case FCmpInst::FCMP_UNO:
@@ -1822,8 +1822,8 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
            << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')') + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')') + ')');
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
 
     case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
@@ -2003,7 +2003,12 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)));
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), true /* signExtend */);
+        break;
+      case Instruction::ZExt:
+        assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
+               "sign-extension from vector of other than i1 not yet supported");
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), false /* signExtend */);
         break;
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
@@ -2047,7 +2052,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::BitCast: {
       case Instruction::SIToFP:
         Code << getAssignIfNeeded(I);
-        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)));
+        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), true);
         break;
       }
       case Instruction::Load: {
