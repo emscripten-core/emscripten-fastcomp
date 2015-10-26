@@ -23,3 +23,19 @@ define <4 x float> @test_rsqrt(<4 x float> %a) {
     %c = call <4 x float> @emscripten_float32x4_reciprocalSqrtApproximation(<4 x float> %a)
     ret <4 x float> %c
 }
+
+; CHECK: function _sext_vec($a) {
+; CHECK:  $b = SIMD_Int32x4_select($a, SIMD_Int32x4_splat(-1), SIMD_Int32x4_splat(0));
+; CHECK: }
+define <4 x i32> @sext_vec(<4 x i1> %a) {
+    %b = sext <4 x i1> %a to <4 x i32>
+    ret <4 x i32> %b
+}
+
+; CHECK: function _zext_vec($a) {
+; CHECK:  $b = SIMD_Int32x4_select($a, SIMD_Int32x4_splat(1), SIMD_Int32x4_splat(0));
+; CHECK: }
+define <4 x i32> @zext_vec(<4 x i1> %a) {
+    %b = zext <4 x i1> %a to <4 x i32>
+    ret <4 x i32> %b
+}
