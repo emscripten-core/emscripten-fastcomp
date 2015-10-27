@@ -29,6 +29,5 @@ required_libraries =
  Instrumentation
  JSBackend
  Linker
- NaClTransforms
  ObjCARC
  Scalar

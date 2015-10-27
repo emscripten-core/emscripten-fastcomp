@@ -10,7 +10,6 @@ set(LLVM_LINK_COMPONENTS
   Instrumentation
   Linker
   # @LOCALMOD-BEGIN
-  NaClTransforms
   JSBackend
   # @LOCALMOD-END
   ObjCARCOpts

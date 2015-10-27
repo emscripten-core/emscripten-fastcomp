@@ -20,7 +20,6 @@ type = Tool
 name = opt
 parent = Tools
 required_libraries =
- NaClTransforms
  AsmParser
  BitReader
  BitWriter

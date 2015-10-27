@@ -16,7 +16,7 @@ NO_INSTALL = 1
 
 # If there is no shared lib, link all components...
 ifneq ($(ENABLE_SHARED),1)
-LINK_COMPONENTS = nacltransforms all nacltransforms
+LINK_COMPONENTS = all
 endif
 
 include $(LEVEL)/Makefile.common

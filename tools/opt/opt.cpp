@@ -52,7 +52,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "llvm/Transforms/NaCl.h"  // @LOCALMOD
 #include <algorithm>
 #include <memory>
 using namespace llvm;
@@ -136,18 +135,6 @@ OptLevelOz("Oz",
 static cl::opt<bool>
 OptLevelO3("O3",
            cl::desc("Optimization level 3. Similar to clang -O3"));
-
-// @LOCALMOD-BEGIN
-static cl::opt<bool>
-PNaClABISimplifyPreOpt(
-    "pnacl-abi-simplify-preopt",
-    cl::desc("PNaCl ABI simplifications for before optimizations"));
-
-static cl::opt<bool>
-PNaClABISimplifyPostOpt(
-    "pnacl-abi-simplify-postopt",
-    cl::desc("PNaCl ABI simplifications for after optimizations"));
-// @LOCALMOD-END
 
 static cl::opt<std::string>
 TargetTriple("mtriple", cl::desc("Override target triple for module"));
@@ -282,14 +269,6 @@ static TargetMachine* GetTargetMachine(Triple TheTriple, StringRef CPUStr,
                                        StringRef FeaturesStr,
                                        const TargetOptions &Options) {
   std::string Error;
-  // @LOCALMOD-BEGIN: Some optimization passes like SimplifyCFG do nice
-  // things for code size, but only do it if the TTI says it is okay.
-  // For now, use the ARM TTI for LE32 until we have an LE32 TTI.
-  // https://code.google.com/p/nativeclient/issues/detail?id=2554
-  if (TheTriple.getArch() == Triple::le32) {
-    TheTriple.setArchName("armv7a");
-  }
-  // @LOCALMOD-END
   const Target *TheTarget = TargetRegistry::lookupTarget(MArch, TheTriple,
                                                          Error);
   // Some modules don't specify a triple, and this is okay.
@@ -351,57 +330,6 @@ int main(int argc, char **argv) {
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
 #endif
-
-  // @LOCALMOD-BEGIN
-  initializeAddPNaClExternalDeclsPass(Registry);
-  initializeBackendCanonicalizePass(Registry);
-  initializeCanonicalizeMemIntrinsicsPass(Registry);
-  initializeCleanupUsedGlobalsMetadataPass(Registry);
-  initializeConstantInsertExtractElementIndexPass(Registry);
-  initializeExpandArithWithOverflowPass(Registry);
-  initializeExpandByValPass(Registry);
-  initializeExpandConstantExprPass(Registry);
-  initializeExpandCtorsPass(Registry);
-  initializeExpandGetElementPtrPass(Registry);
-  initializeExpandIndirectBrPass(Registry);
-  initializeExpandLargeIntegersPass(Registry);
-  initializeExpandShuffleVectorPass(Registry);
-  initializeExpandSmallArgumentsPass(Registry);
-  initializeExpandStructRegsPass(Registry);
-  initializeExpandTlsConstantExprPass(Registry);
-  initializeExpandTlsPass(Registry);
-  initializeExpandVarArgsPass(Registry);
-  initializeFixVectorLoadStoreAlignmentPass(Registry);
-  initializeFlattenGlobalsPass(Registry);
-  initializeGlobalCleanupPass(Registry);
-  initializeGlobalizeConstantVectorsPass(Registry);
-  initializeInsertDivideCheckPass(Registry);
-  initializeInternalizeUsedGlobalsPass(Registry);
-  initializeNormalizeAlignmentPass(Registry);
-  initializePNaClSjLjEHPass(Registry);
-  initializePromoteI1OpsPass(Registry);
-  initializePromoteIntegersPass(Registry);
-  initializeRemoveAsmMemoryPass(Registry);
-  initializeReplacePtrsWithIntsPass(Registry);
-  initializeResolveAliasesPass(Registry);
-  initializeResolvePNaClIntrinsicsPass(Registry);
-  initializeRewriteAtomicsPass(Registry);
-  initializeRewriteLLVMIntrinsicsPass(Registry);
-  initializeRewritePNaClLibraryCallsPass(Registry);
-  initializeSimplifyAllocasPass(Registry);
-  initializeSimplifyStructRegSignaturesPass(Registry);
-  initializeStripAttributesPass(Registry);
-  initializeStripMetadataPass(Registry);
-  initializeStripModuleFlagsPass(Registry);
-  // Emscripten passes:
-  initializeExpandI64Pass(Registry);
-  initializeExpandInsertExtractElementPass(Registry);
-  initializeLowerEmAsyncifyPass(Registry);
-  initializeLowerEmExceptionsPass(Registry);
-  initializeLowerEmSetjmpPass(Registry);
-  initializeNoExitRuntimePass(Registry);
-  // Emscripten passes end.
-  // @LOCALMOD-END
 
   cl::ParseCommandLineOptions(argc, argv,
     "llvm .bc -> .bc modular optimizer and analysis printer\n");
@@ -585,14 +513,6 @@ int main(int argc, char **argv) {
 
   // Create a new optimization pass for each one specified on the command line
   for (unsigned i = 0; i < PassList.size(); ++i) {
-    // @LOCALMOD-BEGIN
-    if (PNaClABISimplifyPreOpt &&
-        PNaClABISimplifyPreOpt.getPosition() < PassList.getPosition(i)) {
-      PNaClABISimplifyAddPreOptPasses(&ModuleTriple, Passes);
-      PNaClABISimplifyPreOpt = false;
-    }
-    // @LOCALMOD-END
-
     if (StandardLinkOpts &&
         StandardLinkOpts.getPosition() < PassList.getPosition(i)) {
       AddStandardLinkPasses(Passes);
@@ -623,14 +543,6 @@ int main(int argc, char **argv) {
       AddOptimizationPasses(Passes, *FPasses, 3, 0);
       OptLevelO3 = false;
     }
-
-    // @LOCALMOD-BEGIN
-    if (PNaClABISimplifyPostOpt &&
-        PNaClABISimplifyPostOpt.getPosition() < PassList.getPosition(i)) {
-      PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
-      PNaClABISimplifyPostOpt = false;
-    }
-    // @LOCALMOD-END
 
     const PassInfo *PassInf = PassList[i];
     Pass *P = nullptr;
@@ -674,11 +586,6 @@ int main(int argc, char **argv) {
           createPrintModulePass(errs(), "", PreserveAssemblyUseListOrder));
   }
 
-  // @LOCALMOD-BEGIN
-  if (PNaClABISimplifyPreOpt)
-    PNaClABISimplifyAddPreOptPasses(&ModuleTriple, Passes);
-  // @LOCALMOD-END
-
   if (StandardLinkOpts) {
     AddStandardLinkPasses(Passes);
     StandardLinkOpts = false;
@@ -705,11 +612,6 @@ int main(int argc, char **argv) {
       FPasses->run(F);
     FPasses->doFinalization();
   }
-
-  // @LOCALMOD-BEGIN
-  if (PNaClABISimplifyPostOpt)
-    PNaClABISimplifyAddPostOptPasses(&ModuleTriple, Passes);
-  // @LOCALMOD-END
 
   // Check that the module is well formed on completion of optimization
   if (!NoVerify && !VerifyEach)

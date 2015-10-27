@@ -9,7 +9,7 @@
 
 LEVEL = ../../..
 LIBRARYNAME = LLVMJSBackendCodeGen
-DIRS = MCTargetDesc TargetInfo
+DIRS = MCTargetDesc NaCl TargetInfo
 
 include $(LEVEL)/Makefile.common
 

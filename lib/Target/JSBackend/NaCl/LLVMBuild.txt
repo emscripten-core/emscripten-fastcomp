@@ -1,11 +1,11 @@
-;===- ./lib/Transforms/NaCl/LLVMBuild.txt ----------------------*- Conf -*--===;
+;===- ./lib/Target/JSBackend/NaCl/LLVMBuild.txt ---------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
 ; This file is distributed under the University of Illinois Open Source
 ; License. See LICENSE.TXT for details.
 ;
-;===------------------------------------------------------------------------===;
+;===-----------------------------------------------------------------------===;
 ;
 ; This is an LLVMBuild description file for the components in this subdirectory.
 ;
@@ -13,11 +13,11 @@
 ;
 ;   http://llvm.org/docs/LLVMBuild.html
 ;
-;===------------------------------------------------------------------------===;
+;===-----------------------------------------------------------------------===;
 
 [component_0]
 type = Library
-name = NaClTransforms
-parent = Transforms
-library_name = NaClTransforms
+name = PNaClTransforms
+parent = JSBackend
 required_libraries = Analysis Core Support IPO Scalar TransformUtils
+add_to_library_groups = JSBackend
