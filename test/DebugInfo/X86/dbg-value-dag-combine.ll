@@ -24,20 +24,20 @@ entry:
 !llvm.dbg.cu = !{!2}
 !llvm.module.flags = !{!20}
 
-!0 = !DISubprogram(name: "__OpenCL_test_kernel", linkageName: "__OpenCL_test_kernel", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: false, file: !19, scope: !1, type: !3, function: void (i32 addrspace(1)*)* @__OpenCL_test_kernel)
+!0 = distinct !DISubprogram(name: "__OpenCL_test_kernel", linkageName: "__OpenCL_test_kernel", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, isOptimized: false, file: !19, scope: !1, type: !3, function: void (i32 addrspace(1)*)* @__OpenCL_test_kernel)
 !1 = !DIFile(filename: "OCL6368.tmp.cl", directory: "E:CUsersCmvillmow.AMDCAppDataCLocalCTemp")
-!2 = !DICompileUnit(language: DW_LANG_C89, producer: "clc", isOptimized: false, emissionKind: 1, file: !19, enums: !12, retainedTypes: !12, subprograms: !18, imports:  null)
+!2 = distinct !DICompileUnit(language: DW_LANG_C89, producer: "clc", isOptimized: false, emissionKind: 1, file: !19, enums: !12, retainedTypes: !12, subprograms: !18, imports:  null)
 !3 = !DISubroutineType(types: !4)
 !4 = !{null, !5}
 !5 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 32, align: 32, scope: !2, baseType: !6)
 !6 = !DIBasicType(tag: DW_TAG_base_type, name: "unsigned int", size: 32, align: 32, encoding: DW_ATE_unsigned)
-!7 = !DILocalVariable(tag: DW_TAG_arg_variable, name: "ip", line: 1, arg: 1, scope: !0, file: !1, type: !5)
+!7 = !DILocalVariable(name: "ip", line: 1, arg: 1, scope: !0, file: !1, type: !5)
 !8 = !DILocation(line: 1, column: 42, scope: !0)
-!9 = !DILocalVariable(tag: DW_TAG_auto_variable, name: "gid", line: 3, scope: !10, file: !1, type: !6)
+!9 = !DILocalVariable(name: "gid", line: 3, scope: !10, file: !1, type: !6)
 !10 = distinct !DILexicalBlock(line: 2, column: 1, file: !19, scope: !0)
 !11 = !DILocation(line: 3, column: 41, scope: !10)
 !12 = !{}
-!13 = !DILocalVariable(tag: DW_TAG_auto_variable, name: "idx", line: 4, scope: !10, file: !1, type: !6)
+!13 = !DILocalVariable(name: "idx", line: 4, scope: !10, file: !1, type: !6)
 !14 = !DILocation(line: 4, column: 20, scope: !10)
 !15 = !DILocation(line: 5, column: 15, scope: !10)
 !16 = !DILocation(line: 6, column: 18, scope: !10)

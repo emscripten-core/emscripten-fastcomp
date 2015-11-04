@@ -196,10 +196,18 @@ bool AsmPrinter::doInitialization(Module &M) {
     unsigned Major, Minor, Update;
     TT.getOSVersion(Major, Minor, Update);
     // If there is a version specified, Major will be non-zero.
-    if (Major)
-      OutStreamer->EmitVersionMin((TT.isMacOSX() ?
-                                   MCVM_OSXVersionMin : MCVM_IOSVersionMin),
-                                  Major, Minor, Update);
+    if (Major) {
+      MCVersionMinType VersionType;
+      if (TT.isWatchOS())
+        VersionType = MCVM_WatchOSVersionMin;
+      else if (TT.isTvOS())
+        VersionType = MCVM_TvOSVersionMin;
+      else if (TT.isMacOSX())
+        VersionType = MCVM_OSXVersionMin;
+      else
+        VersionType = MCVM_IOSVersionMin;
+      OutStreamer->EmitVersionMin(VersionType, Major, Minor, Update);
+    }
   }
 
   // Allow the target to emit any magic that it wants at the start of the file.
@@ -233,22 +241,13 @@ bool AsmPrinter::doInitialization(Module &M) {
   }
 
   if (MAI->doesSupportDebugInformation()) {
-    bool skip_dwarf = false;
-    if (TM.getTargetTriple().isKnownWindowsMSVCEnvironment()) {
+    bool EmitCodeView = MMI->getModule()->getCodeViewFlag();
+    if (EmitCodeView && TM.getTargetTriple().isKnownWindowsMSVCEnvironment()) {
       Handlers.push_back(HandlerInfo(new WinCodeViewLineTables(this),
                                      DbgTimerName,
                                      CodeViewLineTablesGroupName));
-      // FIXME: Don't emit DWARF debug info if there's at least one function
-      // with AddressSanitizer instrumentation.
-      // This is a band-aid fix for PR22032.
-      for (auto &F : M.functions()) {
-        if (F.hasFnAttribute(Attribute::SanitizeAddress)) {
-          skip_dwarf = true;
-          break;
-        }
-      }
     }
-    if (!skip_dwarf) {
+    if (!EmitCodeView || MMI->getModule()->getDwarfVersion()) {
       DD = new DwarfDebug(this, &M);
       Handlers.push_back(HandlerInfo(DD, DbgTimerName, DWARFGroupName));
     }
@@ -974,7 +973,7 @@ void AsmPrinter::EmitFunctionBody() {
   EmitFunctionBodyEnd();
 
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
-      MAI->hasDotTypeDotSizeDirective()) {
+      MMI->hasEHFunclets() || MAI->hasDotTypeDotSizeDirective()) {
     // Create a symbol for the end of function.
     CurrentFnEnd = createTempSymbol("func_end");
     OutStreamer->EmitLabel(CurrentFnEnd);
@@ -1144,9 +1143,6 @@ bool AsmPrinter::doFinalization(Module &M) {
     }
   }
 
-  // Make sure we wrote out everything we need.
-  OutStreamer->Flush();
-
   // Finalize debug and EH information.
   for (const HandlerInfo &HI : Handlers) {
     NamedRegionTimer T(HI.TimerName, HI.TimerGroupName,
@@ -1194,10 +1190,14 @@ bool AsmPrinter::doFinalization(Module &M) {
     // Emit the directives as assignments aka .set:
     OutStreamer->EmitAssignment(Name, lowerConstant(Alias.getAliasee()));
 
-    // Set the size of the alias symbol if we can, as otherwise the alias gets
-    // the size of the aliasee which may not be correct e.g. if the alias is of
-    // a member of a struct.
-    if (MAI->hasDotTypeDotSizeDirective() && Alias.getValueType()->isSized()) {
+    // If the aliasee does not correspond to a symbol in the output, i.e. the
+    // alias is not of an object or the aliased object is private, then set the
+    // size of the alias symbol from the type of the alias. We don't do this in
+    // other situations as the alias and aliasee having differing types but same
+    // size may be intentional.
+    const GlobalObject *BaseObject = Alias.getBaseObject();
+    if (MAI->hasDotTypeDotSizeDirective() && Alias.getValueType()->isSized() &&
+        (!BaseObject || BaseObject->hasPrivateLinkage())) {
       const DataLayout &DL = M.getDataLayout();
       uint64_t Size = DL.getTypeAllocSize(Alias.getValueType());
       OutStreamer->emitELFSize(cast<MCSymbolELF>(Name),
@@ -1265,7 +1265,7 @@ void AsmPrinter::SetupMachineFunction(MachineFunction &MF) {
   CurExceptionSym = nullptr;
   bool NeedsLocalForSize = MAI->needsLocalForSize();
   if (!MMI->getLandingPads().empty() || MMI->hasDebugInfo() ||
-      NeedsLocalForSize) {
+      MMI->hasEHFunclets() || NeedsLocalForSize) {
     CurrentFnBegin = createTempSymbol("func_begin");
     if (NeedsLocalForSize)
       CurrentFnSymForSize = CurrentFnBegin;
@@ -2464,6 +2464,14 @@ static void emitBasicBlockLoopComments(const MachineBasicBlock &MBB,
 /// MachineBasicBlock, an alignment (if present) and a comment describing
 /// it if appropriate.
 void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
+  // End the previous funclet and start a new one.
+  if (MBB.isEHFuncletEntry()) {
+    for (const HandlerInfo &HI : Handlers) {
+      HI.Handler->endFunclet();
+      HI.Handler->beginFunclet(MBB);
+    }
+  }
+
   // Emit an alignment directive for this block, if needed.
   if (unsigned Align = MBB.getAlignment())
     EmitAlignment(Align);
@@ -2477,8 +2485,11 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
     if (isVerbose())
       OutStreamer->AddComment("Block address taken");
 
-    for (MCSymbol *Sym : MMI->getAddrLabelSymbolToEmit(BB))
-      OutStreamer->EmitLabel(Sym);
+    // MBBs can have their address taken as part of CodeGen without having
+    // their corresponding BB's address taken in IR
+    if (BB->hasAddressTaken())
+      for (MCSymbol *Sym : MMI->getAddrLabelSymbolToEmit(BB))
+        OutStreamer->EmitLabel(Sym);
   }
 
   // Print some verbose block comments.
@@ -2490,7 +2501,8 @@ void AsmPrinter::EmitBasicBlockStart(const MachineBasicBlock &MBB) const {
   }
 
   // Print the main label for the block.
-  if (MBB.pred_empty() || isBlockOnlyReachableByFallthrough(&MBB)) {
+  if (MBB.pred_empty() ||
+      (isBlockOnlyReachableByFallthrough(&MBB) && !MBB.isEHFuncletEntry())) {
     if (isVerbose()) {
       // NOTE: Want this comment at start of line, don't emit with AddComment.
       OutStreamer->emitRawComment(" BB#" + Twine(MBB.getNumber()) + ":", false);
@@ -2528,7 +2540,7 @@ bool AsmPrinter::
 isBlockOnlyReachableByFallthrough(const MachineBasicBlock *MBB) const {
   // If this is a landing pad, it isn't a fall through.  If it has no preds,
   // then nothing falls through to it.
-  if (MBB->isLandingPad() || MBB->pred_empty())
+  if (MBB->isEHPad() || MBB->pred_empty())
     return false;
 
   // If there isn't exactly one predecessor, it can't be a fall through.

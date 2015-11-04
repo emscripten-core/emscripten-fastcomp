@@ -260,7 +260,7 @@ public:
 
       for (BasicBlock::iterator J = BB->begin(), JE = BB->end(); J != JE; ++J)
         if (isa<CallInst>(J) || isa<InvokeInst>(J)) {
-          ImmutableCallSite CS(J);
+          ImmutableCallSite CS(&*J);
           if (const Function *F = CS.getCalledFunction()) {
             if (!static_cast<T *>(this)->isLoweredToCall(F))
               continue;
@@ -534,7 +534,8 @@ public:
     VectorType *SubVT = VectorType::get(VT->getElementType(), NumSubElts);
 
     // Firstly, the cost of load/store operation.
-    unsigned Cost = getMemoryOpCost(Opcode, VecTy, Alignment, AddressSpace);
+    unsigned Cost = static_cast<T *>(this)->getMemoryOpCost(
+        Opcode, VecTy, Alignment, AddressSpace);
 
     // Then plus the cost of interleave operation.
     if (Opcode == Instruction::Load) {
@@ -549,18 +550,20 @@ public:
 
       assert(Indices.size() <= Factor &&
              "Interleaved memory op has too many members");
+
       for (unsigned Index : Indices) {
         assert(Index < Factor && "Invalid index for interleaved memory op");
 
         // Extract elements from loaded vector for each sub vector.
         for (unsigned i = 0; i < NumSubElts; i++)
-          Cost += getVectorInstrCost(Instruction::ExtractElement, VT,
-                                     Index + i * Factor);
+          Cost += static_cast<T *>(this)->getVectorInstrCost(
+              Instruction::ExtractElement, VT, Index + i * Factor);
       }
 
       unsigned InsSubCost = 0;
       for (unsigned i = 0; i < NumSubElts; i++)
-        InsSubCost += getVectorInstrCost(Instruction::InsertElement, SubVT, i);
+        InsSubCost += static_cast<T *>(this)->getVectorInstrCost(
+            Instruction::InsertElement, SubVT, i);
 
       Cost += Indices.size() * InsSubCost;
     } else {
@@ -575,12 +578,13 @@ public:
 
       unsigned ExtSubCost = 0;
       for (unsigned i = 0; i < NumSubElts; i++)
-        ExtSubCost += getVectorInstrCost(Instruction::ExtractElement, SubVT, i);
-
-      Cost += Factor * ExtSubCost;
+        ExtSubCost += static_cast<T *>(this)->getVectorInstrCost(
+            Instruction::ExtractElement, SubVT, i);
+      Cost += ExtSubCost * Factor;
 
       for (unsigned i = 0; i < NumElts; i++)
-        Cost += getVectorInstrCost(Instruction::InsertElement, VT, i);
+        Cost += static_cast<T *>(this)
+                    ->getVectorInstrCost(Instruction::InsertElement, VT, i);
     }
 
     return Cost;
@@ -804,7 +808,7 @@ class BasicTTIImpl : public BasicTTIImplBase<BasicTTIImpl> {
   const TargetLoweringBase *getTLI() const { return TLI; }
 
 public:
-  explicit BasicTTIImpl(const TargetMachine *ST, Function &F);
+  explicit BasicTTIImpl(const TargetMachine *ST, const Function &F);
 
   // Provide value semantics. MSVC requires that we spell all of these out.
   BasicTTIImpl(const BasicTTIImpl &Arg)

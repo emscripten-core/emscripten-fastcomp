@@ -39,9 +39,9 @@ entry:
 !llvm.ident = !{!13}
 
 ; Extract out the list of subprograms from each compile unit.
-; CHECK-DAG: ![[CU1]] = !DICompileUnit({{.*}} subprograms: ![[SPs1:[0-9]+]]
-; CHECK-DAG: ![[CU2]] = !DICompileUnit({{.*}} subprograms: ![[SPs2:[0-9]+]]
-!0 = !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.6.0 (trunk 224193) (llvm/trunk 224197)", isOptimized: false, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+; CHECK-DAG: ![[CU1]] = distinct !DICompileUnit({{.*}} subprograms: ![[SPs1:[0-9]+]]
+; CHECK-DAG: ![[CU2]] = distinct !DICompileUnit({{.*}} subprograms: ![[SPs2:[0-9]+]]
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.6.0 (trunk 224193) (llvm/trunk 224197)", isOptimized: false, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "t1.cpp", directory: "/Users/dexonsmith/data/llvm/staging/test/Linker/repro/d1")
 !2 = !{}
 
@@ -50,19 +50,19 @@ entry:
 ; CHECK-DAG: ![[SPs1]] = !{![[SP1:[0-9]+]], ![[SP2r:[0-9]+]]}
 ; CHECK-DAG: ![[SPs2]] = !{![[SP2:[0-9]+]]}
 !3 = !{!4, !7}
-!4 = !DISubprogram(name: "foo", line: 2, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !1, scope: !5, type: !6, function: i32 ()* @_Z3foov, variables: !2)
+!4 = distinct !DISubprogram(name: "foo", line: 2, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !1, scope: !5, type: !6, function: i32 ()* @_Z3foov, variables: !2)
 !5 = !DIFile(filename: "t1.cpp", directory: "/Users/dexonsmith/data/llvm/staging/test/Linker/repro/d1")
 !6 = !DISubroutineType(types: !2)
 
 ; Extract out the file from the replaced subprogram.  Confirm that each
 ; subprogram is pointing at the correct function.
-; CHECK-DAG: ![[SP1]] = !DISubprogram({{.*}} function: i32 ()* @_Z3foov
-; CHECK-DAG: ![[SP2]] = !DISubprogram({{.*}} file: ![[FILE:[0-9]+]],{{.*}} function: i32 (%struct.Class*)* @_ZN5ClassIiE3fooEv
+; CHECK-DAG: ![[SP1]] = distinct !DISubprogram({{.*}} function: i32 ()* @_Z3foov
+; CHECK-DAG: ![[SP2]] = distinct !DISubprogram({{.*}} file: ![[FILE:[0-9]+]],{{.*}} function: i32 (%struct.Class*)* @_ZN5ClassIiE3fooEv
 
 ; We can't use CHECK-NOT/CHECK-SAME with a CHECK-DAG, so rely on field order to
 ; prove that there's no function: here.
 ; CHECK-DAG: ![[SP2r]] = {{.*}}!DISubprogram({{.*}} isOptimized: false, variables:
-!7 = !DISubprogram(name: "foo", line: 2, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !8, scope: !9, type: !6, function: i32 (%struct.Class*)* @_ZN5ClassIiE3fooEv, variables: !2)
+!7 = distinct !DISubprogram(name: "foo", line: 2, isLocal: false, isDefinition: true, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !8, scope: !9, type: !6, function: i32 (%struct.Class*)* @_ZN5ClassIiE3fooEv, variables: !2)
 
 ; The new subprogram should be pointing at the new directory.
 ; CHECK-DAG: ![[FILE]] = !DIFile(filename: "../t.h", directory: "/Users/dexonsmith/data/llvm/staging/test/Linker/repro/d2")

@@ -12,7 +12,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "AArch64InstrInfo.h"
-#include "AArch64MachineCombinerPattern.h"
 #include "AArch64Subtarget.h"
 #include "MCTargetDesc/AArch64AddressingModes.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -1393,41 +1392,33 @@ bool AArch64InstrInfo::getMemOpBaseRegImmOfsWidth(
     Width = 1;
     Scale = 1;
     break;
-  case AArch64::LDRXui:
-  case AArch64::STRXui:
-    Scale = Width = 8;
-    break;
-  case AArch64::LDRWui:
-  case AArch64::STRWui:
-    Scale = Width = 4;
-    break;
-  case AArch64::LDRBui:
-  case AArch64::STRBui:
-    Scale = Width = 1;
-    break;
-  case AArch64::LDRHui:
-  case AArch64::STRHui:
-    Scale = Width = 2;
-    break;
-  case AArch64::LDRSui:
-  case AArch64::STRSui:
-    Scale = Width = 4;
-    break;
-  case AArch64::LDRDui:
-  case AArch64::STRDui:
-    Scale = Width = 8;
-    break;
   case AArch64::LDRQui:
   case AArch64::STRQui:
     Scale = Width = 16;
     break;
-  case AArch64::LDRBBui:
-  case AArch64::STRBBui:
-    Scale = Width = 1;
+  case AArch64::LDRXui:
+  case AArch64::LDRDui:
+  case AArch64::STRXui:
+  case AArch64::STRDui:
+    Scale = Width = 8;
     break;
+  case AArch64::LDRWui:
+  case AArch64::LDRSui:
+  case AArch64::STRWui:
+  case AArch64::STRSui:
+    Scale = Width = 4;
+    break;
+  case AArch64::LDRHui:
   case AArch64::LDRHHui:
+  case AArch64::STRHui:
   case AArch64::STRHHui:
     Scale = Width = 2;
+    break;
+  case AArch64::LDRBui:
+  case AArch64::LDRBBui:
+  case AArch64::STRBui:
+  case AArch64::STRBBui:
+    Scale = Width = 1;
     break;
   };
 
@@ -1848,7 +1839,7 @@ void AArch64InstrInfo::storeRegToStackSlot(
   MachineFrameInfo &MFI = *MF.getFrameInfo();
   unsigned Align = MFI.getObjectAlignment(FI);
 
-  MachinePointerInfo PtrInfo(PseudoSourceValue::getFixedStack(FI));
+  MachinePointerInfo PtrInfo = MachinePointerInfo::getFixedStack(MF, FI);
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       PtrInfo, MachineMemOperand::MOStore, MFI.getObjectSize(FI), Align);
   unsigned Opc = 0;
@@ -1945,7 +1936,7 @@ void AArch64InstrInfo::loadRegFromStackSlot(
   MachineFunction &MF = *MBB.getParent();
   MachineFrameInfo &MFI = *MF.getFrameInfo();
   unsigned Align = MFI.getObjectAlignment(FI);
-  MachinePointerInfo PtrInfo(PseudoSourceValue::getFixedStack(FI));
+  MachinePointerInfo PtrInfo = MachinePointerInfo::getFixedStack(MF, FI);
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       PtrInfo, MachineMemOperand::MOLoad, MFI.getObjectSize(FI), Align);
 
@@ -2260,11 +2251,19 @@ int llvm::isAArch64FrameOffsetLegal(const MachineInstr &MI, int &Offset,
   case AArch64::LDPDi:
   case AArch64::STPXi:
   case AArch64::STPDi:
+  case AArch64::LDNPXi:
+  case AArch64::LDNPDi:
+  case AArch64::STNPXi:
+  case AArch64::STNPDi:
+    ImmIdx = 3;
     IsSigned = true;
     Scale = 8;
     break;
   case AArch64::LDPQi:
   case AArch64::STPQi:
+  case AArch64::LDNPQi:
+  case AArch64::STNPQi:
+    ImmIdx = 3;
     IsSigned = true;
     Scale = 16;
     break;
@@ -2272,6 +2271,11 @@ int llvm::isAArch64FrameOffsetLegal(const MachineInstr &MI, int &Offset,
   case AArch64::LDPSi:
   case AArch64::STPWi:
   case AArch64::STPSi:
+  case AArch64::LDNPWi:
+  case AArch64::LDNPSi:
+  case AArch64::STNPWi:
+  case AArch64::STNPSi:
+    ImmIdx = 3;
     IsSigned = true;
     Scale = 4;
     break;
@@ -2977,4 +2981,35 @@ bool AArch64InstrInfo::optimizeCondBranch(MachineInstr *MI) const {
   BuildMI(RefToMBB, MI, DL, get(AArch64::Bcc)).addImm(CC).addMBB(TBB);
   MI->eraseFromParent();
   return true;
+}
+
+std::pair<unsigned, unsigned>
+AArch64InstrInfo::decomposeMachineOperandsTargetFlags(unsigned TF) const {
+  const unsigned Mask = AArch64II::MO_FRAGMENT;
+  return std::make_pair(TF & Mask, TF & ~Mask);
+}
+
+ArrayRef<std::pair<unsigned, const char *>>
+AArch64InstrInfo::getSerializableDirectMachineOperandTargetFlags() const {
+  using namespace AArch64II;
+  static const std::pair<unsigned, const char *> TargetFlags[] = {
+      {MO_PAGE, "aarch64-page"},
+      {MO_PAGEOFF, "aarch64-pageoff"},
+      {MO_G3, "aarch64-g3"},
+      {MO_G2, "aarch64-g2"},
+      {MO_G1, "aarch64-g1"},
+      {MO_G0, "aarch64-g0"},
+      {MO_HI12, "aarch64-hi12"}};
+  return makeArrayRef(TargetFlags);
+}
+
+ArrayRef<std::pair<unsigned, const char *>>
+AArch64InstrInfo::getSerializableBitmaskMachineOperandTargetFlags() const {
+  using namespace AArch64II;
+  static const std::pair<unsigned, const char *> TargetFlags[] = {
+      {MO_GOT, "aarch64-got"},
+      {MO_NC, "aarch64-nc"},
+      {MO_TLS, "aarch64-tls"},
+      {MO_CONSTPOOL, "aarch64-constant-pool"}};
+  return makeArrayRef(TargetFlags);
 }

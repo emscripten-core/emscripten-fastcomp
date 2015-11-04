@@ -91,17 +91,17 @@ public:
   bool canSimplifyCallFramePseudos(const MachineFunction &MF) const override;
   bool needsFrameIndexResolution(const MachineFunction &MF) const override;
 
-  int getFrameIndexOffset(const MachineFunction &MF, int FI) const override;
   int getFrameIndexReference(const MachineFunction &MF, int FI,
                              unsigned &FrameReg) const override;
 
-  int getFrameIndexOffsetFromSP(const MachineFunction &MF, int FI) const;
   int getFrameIndexReferenceFromSP(const MachineFunction &MF, int FI,
                                    unsigned &FrameReg) const override;
 
   void eliminateCallFramePseudoInstr(MachineFunction &MF,
                                  MachineBasicBlock &MBB,
                                  MachineBasicBlock::iterator MI) const override;
+
+  unsigned getWinEHParentFrameOffset(const MachineFunction &MF) const override;
 
   /// Check the instruction before/after the passed instruction. If
   /// it is an ADD/SUB/LEA instruction it is deleted argument and the
@@ -125,32 +125,37 @@ public:
   /// \p MBB will be correctly handled by the target.
   bool canUseAsEpilogue(const MachineBasicBlock &MBB) const override;
 
-private:
-  /// convertArgMovsToPushes - This method tries to convert a call sequence
-  /// that uses sub and mov instructions to put the argument onto the stack
-  /// into a series of pushes.
-  /// Returns true if the transformation succeeded, false if not.
-  bool convertArgMovsToPushes(MachineFunction &MF, 
-                              MachineBasicBlock &MBB,
-                              MachineBasicBlock::iterator I, 
-                              uint64_t Amount) const;
-
-  uint64_t calculateMaxStackAlign(const MachineFunction &MF) const;
-
   /// Wraps up getting a CFI index and building a MachineInstr for it.
   void BuildCFI(MachineBasicBlock &MBB, MachineBasicBlock::iterator MBBI,
                 DebugLoc DL, MCCFIInstruction CFIInst) const;
+
+private:
+  uint64_t calculateMaxStackAlign(const MachineFunction &MF) const;
 
   /// Aligns the stack pointer by ANDing it with -MaxAlign.
   void BuildStackAlignAND(MachineBasicBlock &MBB,
                           MachineBasicBlock::iterator MBBI, DebugLoc DL,
                           uint64_t MaxAlign) const;
 
+  /// Make small positive stack adjustments using POPs.
+  bool adjustStackWithPops(MachineBasicBlock &MBB,
+                           MachineBasicBlock::iterator MBBI, DebugLoc DL,
+                           int Offset) const;
+
   /// Adjusts the stack pointer using LEA, SUB, or ADD.
   MachineInstrBuilder BuildStackAdjustment(MachineBasicBlock &MBB,
                                            MachineBasicBlock::iterator MBBI,
                                            DebugLoc DL, int64_t Offset,
                                            bool InEpilogue) const;
+
+  /// Sets up EBP and optionally ESI based on the incoming EBP value.  Only
+  /// needed for 32-bit. Used in funclet prologues and at catchret destinations.
+  MachineBasicBlock::iterator
+  restoreWin32EHStackPointers(MachineBasicBlock &MBB,
+                              MachineBasicBlock::iterator MBBI, DebugLoc DL,
+                              bool RestoreSP = false) const;
+
+  unsigned getWinEHFuncletFrameSize(const MachineFunction &MF) const;
 };
 
 } // End llvm namespace

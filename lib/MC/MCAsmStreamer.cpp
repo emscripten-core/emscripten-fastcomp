@@ -29,6 +29,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/LEB128.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/Path.h"
 #include <cctype>
@@ -163,7 +164,7 @@ public:
   void EmitBytes(StringRef Data) override;
 
   void EmitValueImpl(const MCExpr *Value, unsigned Size,
-                     const SMLoc &Loc = SMLoc()) override;
+                     SMLoc Loc = SMLoc()) override;
   void EmitIntValue(uint64_t Value, unsigned Size) override;
 
   void EmitULEB128Value(const MCExpr *Value) override;
@@ -210,6 +211,8 @@ public:
   void EmitCFISameValue(int64_t Register) override;
   void EmitCFIRelOffset(int64_t Register, int64_t Offset) override;
   void EmitCFIAdjustCfaOffset(int64_t Adjustment) override;
+  void EmitCFIEscape(StringRef Values) override;
+  void EmitCFIGnuArgsSize(int64_t Size) override;
   void EmitCFISignalFrame() override;
   void EmitCFIUndefined(int64_t Register) override;
   void EmitCFIRegister(int64_t Register1, int64_t Register2) override;
@@ -253,15 +256,9 @@ public:
 void MCAsmStreamer::AddComment(const Twine &T) {
   if (!IsVerboseAsm) return;
 
-  // Make sure that CommentStream is flushed.
-  CommentStream.flush();
-
   T.toVector(CommentToEmit);
   // Each comment goes on its own line.
   CommentToEmit.push_back('\n');
-
-  // Tell the comment stream that the vector changed underneath it.
-  CommentStream.resync();
 }
 
 void MCAsmStreamer::EmitCommentsAndEOL() {
@@ -270,7 +267,6 @@ void MCAsmStreamer::EmitCommentsAndEOL() {
     return;
   }
 
-  CommentStream.flush();
   StringRef Comments = CommentToEmit;
 
   assert(Comments.back() == '\n' &&
@@ -285,8 +281,6 @@ void MCAsmStreamer::EmitCommentsAndEOL() {
   } while (!Comments.empty());
 
   CommentToEmit.clear();
-  // Tell the comment stream that the vector changed underneath it.
-  CommentStream.resync();
 }
 
 static inline int64_t truncateToSize(int64_t Value, unsigned Bytes) {
@@ -375,6 +369,8 @@ void MCAsmStreamer::EmitDataRegion(MCDataRegionType Kind) {
 void MCAsmStreamer::EmitVersionMin(MCVersionMinType Kind, unsigned Major,
                                    unsigned Minor, unsigned Update) {
   switch (Kind) {
+  case MCVM_WatchOSVersionMin:    OS << "\t.watchos_version_min"; break;
+  case MCVM_TvOSVersionMin:       OS << "\t.tvos_version_min"; break;
   case MCVM_IOSVersionMin:        OS << "\t.ios_version_min"; break;
   case MCVM_OSXVersionMin:        OS << "\t.macosx_version_min"; break;
   }
@@ -542,9 +538,6 @@ void MCAsmStreamer::emitELFSize(MCSymbolELF *Symbol, const MCExpr *Value) {
 
 void MCAsmStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                      unsigned ByteAlignment) {
-  // Common symbols do not belong to any actual section.
-  AssignSection(Symbol, nullptr);
-
   OS << "\t.comm\t";
   Symbol->print(OS, MAI);
   OS << ',' << Size;
@@ -564,9 +557,6 @@ void MCAsmStreamer::EmitCommonSymbol(MCSymbol *Symbol, uint64_t Size,
 /// @param Size - The size of the common symbol.
 void MCAsmStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
                                           unsigned ByteAlign) {
-  // Common symbols do not belong to any actual section.
-  AssignSection(Symbol, nullptr);
-
   OS << "\t.lcomm\t";
   Symbol->print(OS, MAI);
   OS << ',' << Size;
@@ -590,7 +580,7 @@ void MCAsmStreamer::EmitLocalCommonSymbol(MCSymbol *Symbol, uint64_t Size,
 void MCAsmStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
                                  uint64_t Size, unsigned ByteAlignment) {
   if (Symbol)
-    AssignSection(Symbol, Section);
+    AssignFragment(Symbol, &Section->getDummyFragment());
 
   // Note: a .zerofill directive does not switch sections.
   OS << ".zerofill ";
@@ -614,7 +604,7 @@ void MCAsmStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
 // e.g. _a.
 void MCAsmStreamer::EmitTBSSSymbol(MCSection *Section, MCSymbol *Symbol,
                                    uint64_t Size, unsigned ByteAlignment) {
-  AssignSection(Symbol, Section);
+  AssignFragment(Symbol, &Section->getDummyFragment());
 
   assert(Symbol && "Symbol shouldn't be NULL!");
   // Instead of using the Section we'll just use the shortcut.
@@ -696,7 +686,7 @@ void MCAsmStreamer::EmitIntValue(uint64_t Value, unsigned Size) {
 }
 
 void MCAsmStreamer::EmitValueImpl(const MCExpr *Value, unsigned Size,
-                                  const SMLoc &Loc) {
+                                  SMLoc Loc) {
   assert(Size <= 8 && "Invalid size");
   assert(getCurrentSection().first &&
          "Cannot emit contents before setting section!");
@@ -1025,6 +1015,32 @@ void MCAsmStreamer::EmitCFIDefCfaOffset(int64_t Offset) {
   EmitEOL();
 }
 
+static void PrintCFIEscape(llvm::formatted_raw_ostream &OS, StringRef Values) {
+  OS << "\t.cfi_escape ";
+  if (!Values.empty()) {
+    size_t e = Values.size() - 1;
+    for (size_t i = 0; i < e; ++i)
+      OS << format("0x%02x", uint8_t(Values[i])) << ", ";
+    OS << format("0x%02x", uint8_t(Values[e]));
+  }
+}
+
+void MCAsmStreamer::EmitCFIEscape(StringRef Values) {
+  MCStreamer::EmitCFIEscape(Values);
+  PrintCFIEscape(OS, Values);
+  EmitEOL();
+}
+
+void MCAsmStreamer::EmitCFIGnuArgsSize(int64_t Size) {
+  MCStreamer::EmitCFIGnuArgsSize(Size);
+  
+  uint8_t Buffer[16] = { dwarf::DW_CFA_GNU_args_size };
+  unsigned Len = encodeULEB128(Size, Buffer + 1) + 1;
+  
+  PrintCFIEscape(OS, StringRef((const char *)&Buffer[0], Len));
+  EmitEOL();
+}
+
 void MCAsmStreamer::EmitCFIDefCfaRegister(int64_t Register) {
   MCStreamer::EmitCFIDefCfaRegister(Register);
   OS << "\t.cfi_def_cfa_register ";
@@ -1228,7 +1244,6 @@ void MCAsmStreamer::AddEncodingComment(const MCInst &Inst,
   SmallVector<MCFixup, 4> Fixups;
   raw_svector_ostream VecOS(Code);
   Emitter->encodeInstruction(Inst, VecOS, Fixups, STI);
-  VecOS.flush();
 
   // If we are showing fixups, create symbolic markers in the encoded
   // representation. We do this by making a per-bit map to the fixup item index,

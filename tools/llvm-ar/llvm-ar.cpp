@@ -81,7 +81,7 @@ static cl::opt<Format>
                          clEnumValN(GNU, "gnu", "gnu"),
                          clEnumValN(BSD, "bsd", "bsd"), clEnumValEnd));
 
-std::string Options;
+static std::string Options;
 
 // Provide additional help output explaining the operations and modifiers of
 // llvm-ar. This object instructs the CommandLine library to print the text of
@@ -436,8 +436,8 @@ static void performReadOperation(ArchiveOperation Operation,
   std::exit(1);
 }
 
-void addMember(std::vector<NewArchiveIterator> &Members, StringRef FileName,
-               int Pos = -1) {
+static void addMember(std::vector<NewArchiveIterator> &Members,
+                      StringRef FileName, int Pos = -1) {
   NewArchiveIterator NI(FileName);
   if (Pos == -1)
     Members.push_back(NI);
@@ -445,12 +445,12 @@ void addMember(std::vector<NewArchiveIterator> &Members, StringRef FileName,
     Members[Pos] = NI;
 }
 
-void addMember(std::vector<NewArchiveIterator> &Members,
-               object::Archive::child_iterator I, StringRef Name,
-               int Pos = -1) {
-  if (Thin && !I->getParent()->isThin())
+static void addMember(std::vector<NewArchiveIterator> &Members,
+                      const object::Archive::Child &M, StringRef Name,
+                      int Pos = -1) {
+  if (Thin && !M.getParent()->isThin())
     fail("Cannot convert a regular archive to a thin one");
-  NewArchiveIterator NI(I, Name);
+  NewArchiveIterator NI(M, Name);
   if (Pos == -1)
     Members.push_back(NI);
   else
@@ -466,7 +466,7 @@ enum InsertAction {
 };
 
 static InsertAction computeInsertAction(ArchiveOperation Operation,
-                                        object::Archive::child_iterator I,
+                                        const object::Archive::Child &Member,
                                         StringRef Name,
                                         std::vector<StringRef>::iterator &Pos) {
   if (Operation == QuickAppend || Members.empty())
@@ -500,7 +500,7 @@ static InsertAction computeInsertAction(ArchiveOperation Operation,
     // operation.
     sys::fs::file_status Status;
     failIfError(sys::fs::status(*MI, Status), *MI);
-    if (Status.getLastModificationTime() < I->getLastModified()) {
+    if (Status.getLastModificationTime() < Member.getLastModified()) {
       if (PosName.empty())
         return IA_AddOldMember;
       return IA_MoveOldMember;
@@ -797,9 +797,9 @@ int main(int argc, char **argv) {
     "  This program archives bitcode files into single libraries\n"
   );
 
-  if (Stem.find("ar") != StringRef::npos)
-    return ar_main();
   if (Stem.find("ranlib") != StringRef::npos)
     return ranlib_main();
+  if (Stem.find("ar") != StringRef::npos)
+    return ar_main();
   fail("Not ranlib, ar or lib!");
 }

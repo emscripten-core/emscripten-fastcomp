@@ -73,7 +73,7 @@ namespace {
       AU.addPreserved<DominatorTreeWrapperPass>();
       AU.addRequired<LoopInfoWrapperPass>();
       AU.addPreserved<LoopInfoWrapperPass>();
-      AU.addRequired<ScalarEvolution>();
+      AU.addRequired<ScalarEvolutionWrapperPass>();
     }
 
     bool runOnFunction(Function &F) override;
@@ -93,7 +93,7 @@ char PPCLoopPreIncPrep::ID = 0;
 static const char *name = "Prepare loop for pre-inc. addressing modes";
 INITIALIZE_PASS_BEGIN(PPCLoopPreIncPrep, DEBUG_TYPE, name, false, false)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(ScalarEvolution)
+INITIALIZE_PASS_DEPENDENCY(ScalarEvolutionWrapperPass)
 INITIALIZE_PASS_END(PPCLoopPreIncPrep, DEBUG_TYPE, name, false, false)
 
 FunctionPass *llvm::createPPCLoopPreIncPrepPass(PPCTargetMachine &TM) {
@@ -140,7 +140,7 @@ static Value *GetPointerOperand(Value *MemI) {
 
 bool PPCLoopPreIncPrep::runOnFunction(Function &F) {
   LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  SE = &getAnalysis<ScalarEvolution>();
+  SE = &getAnalysis<ScalarEvolutionWrapperPass>().getSE();
 
   bool MadeChange = false;
 
@@ -302,7 +302,7 @@ bool PPCLoopPreIncPrep::runOnLoop(Loop *L) {
       NewPHI->addIncoming(BasePtrStart, LoopPredecessor);
     }
 
-    Instruction *InsPoint = Header->getFirstInsertionPt();
+    Instruction *InsPoint = &*Header->getFirstInsertionPt();
     GetElementPtrInst *PtrInc = GetElementPtrInst::Create(
         I8Ty, NewPHI, BasePtrIncSCEV->getValue(),
         MemI->hasName() ? MemI->getName() + ".inc" : "", InsPoint);
@@ -346,7 +346,7 @@ bool PPCLoopPreIncPrep::runOnLoop(Loop *L) {
             cast<Instruction>(NewBasePtr)->getParent() == PtrIP->getParent())
           PtrIP = 0;
         else if (isa<PHINode>(PtrIP))
-          PtrIP = PtrIP->getParent()->getFirstInsertionPt();
+          PtrIP = &*PtrIP->getParent()->getFirstInsertionPt();
         else if (!PtrIP)
           PtrIP = I->second;
 

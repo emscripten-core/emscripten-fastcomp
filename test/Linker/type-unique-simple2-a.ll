@@ -1,4 +1,4 @@
-; REQUIRES: object-emission
+; REQUIRES: default_triple, object-emission
 ;
 ; RUN: llvm-link %s %p/type-unique-simple2-b.ll -S -o - | %llc_dwarf -filetype=obj -O0 | llvm-dwarfdump -debug-dump=info - | FileCheck %s
 ;
@@ -18,7 +18,8 @@
 ;     return A().getFoo();
 ; }
 ;
-; CHECK: _ZN1A6setFooEv
+; CHECK: DW_AT_name {{.*}} "setFoo"
+; CHECK-NOT: DW_TAG
 ; CHECK: DW_AT_accessibility [DW_FORM_data1]   (DW_ACCESS_public)
 ; CHECK-NOT: DW_AT_accessibility
 ; CHECK: DW_TAG
@@ -80,7 +81,7 @@ attributes #4 = { nounwind readnone }
 !llvm.module.flags = !{!35, !36}
 !llvm.ident = !{!37}
 
-!0 = !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5 ", isOptimized: false, emissionKind: 0, file: !1, enums: !2, retainedTypes: !3, subprograms: !26, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5 ", isOptimized: false, emissionKind: 0, file: !1, enums: !2, retainedTypes: !3, subprograms: !26, globals: !2, imports: !2)
 !1 = !DIFile(filename: "<unknown>", directory: "")
 !2 = !{}
 !3 = !{!4}
@@ -105,22 +106,22 @@ attributes #4 = { nounwind readnone }
 !23 = !DIDerivedType(tag: DW_TAG_typedef, name: "foo_t", line: 1, file: !24, baseType: !13)
 !24 = !DIFile(filename: "a.cpp", directory: "")
 !26 = !{!27, !31, !34}
-!27 = !DISubprogram(name: "bar", linkageName: "_Z3barv", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !24, scope: !28, type: !29, function: i32 ()* @_Z3barv, variables: !2)
+!27 = distinct !DISubprogram(name: "bar", linkageName: "_Z3barv", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !24, scope: !28, type: !29, function: i32 ()* @_Z3barv, variables: !2)
 !28 = !DIFile(filename: "a.cpp", directory: "")
 !29 = !DISubroutineType(types: !30)
 !30 = !{!23}
-!31 = !DISubprogram(name: "A", linkageName: "_ZN1AC1Ev", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagArtificial | DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !5, scope: !"_ZTS1A", type: !15, function: void (%class.A*)* @_ZN1AC1Ev, declaration: !32, variables: !2)
+!31 = distinct !DISubprogram(name: "A", linkageName: "_ZN1AC1Ev", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagArtificial | DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !5, scope: !"_ZTS1A", type: !15, function: void (%class.A*)* @_ZN1AC1Ev, declaration: !32, variables: !2)
 !32 = !DISubprogram(name: "A", isLocal: false, isDefinition: false, virtualIndex: 6, flags: DIFlagArtificial | DIFlagPrototyped, isOptimized: false, scope: !"_ZTS1A", type: !15)
-!34 = !DISubprogram(name: "A", linkageName: "_ZN1AC2Ev", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagArtificial | DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !5, scope: !"_ZTS1A", type: !15, function: void (%class.A*)* @_ZN1AC2Ev, declaration: !32, variables: !2)
+!34 = distinct !DISubprogram(name: "A", linkageName: "_ZN1AC2Ev", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagArtificial | DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !5, scope: !"_ZTS1A", type: !15, function: void (%class.A*)* @_ZN1AC2Ev, declaration: !32, variables: !2)
 !35 = !{i32 2, !"Dwarf Version", i32 2}
 !36 = !{i32 1, !"Debug Info Version", i32 3}
 !37 = !{!"clang version 3.5 "}
 !38 = !DILocation(line: 3, scope: !27)
-!39 = !DILocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !31, type: !40)
+!39 = !DILocalVariable(name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !31, type: !40)
 !40 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, baseType: !"_ZTS1A")
 !41 = !DILocation(line: 0, scope: !31)
 !42 = !DILocation(line: 2, scope: !43)
 !43 = !DILexicalBlockFile(discriminator: 0, file: !5, scope: !31)
-!44 = !DILocalVariable(tag: DW_TAG_arg_variable, name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !34, type: !40)
+!44 = !DILocalVariable(name: "this", arg: 1, flags: DIFlagArtificial | DIFlagObjectPointer, scope: !34, type: !40)
 !45 = !DILocation(line: 0, scope: !34)
 !46 = !DILocation(line: 2, scope: !34)

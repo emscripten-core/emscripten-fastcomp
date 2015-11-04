@@ -23,6 +23,7 @@
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
 #include "llvm/ADT/iterator_range.h"
+#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DebugLoc.h"
@@ -34,7 +35,6 @@
 namespace llvm {
 
 template <typename T> class SmallVectorImpl;
-class AliasAnalysis;
 class TargetInstrInfo;
 class TargetRegisterClass;
 class TargetRegisterInfo;
@@ -64,8 +64,10 @@ public:
     NoFlags      = 0,
     FrameSetup   = 1 << 0,              // Instruction is used as a part of
                                         // function frame setup code.
-    BundledPred  = 1 << 1,              // Instruction has bundled predecessors.
-    BundledSucc  = 1 << 2               // Instruction has bundled successors.
+    FrameDestroy = 1 << 1,              // Instruction is used as a part of
+                                        // function frame destruction code.
+    BundledPred  = 1 << 2,              // Instruction has bundled predecessors.
+    BundledSucc  = 1 << 3               // Instruction has bundled successors.
   };
 private:
   const MCInstrDesc *MCID;              // Instruction descriptor.
@@ -495,8 +497,8 @@ public:
   }
 
   /// Return true if this instruction is convergent.
-  /// Convergent instructions can only be moved to locations that are
-  /// control-equivalent to their initial position.
+  /// Convergent instructions can not be made control-dependent on any
+  /// additional values.
   bool isConvergent(QueryType Type = AnyInBundle) const {
     return hasProperty(MCID::Convergent, Type);
   }
@@ -903,6 +905,13 @@ public:
     return (Idx == -1) ? nullptr : &getOperand(Idx);
   }
 
+  const MachineOperand *findRegisterUseOperand(
+    unsigned Reg, bool isKill = false,
+    const TargetRegisterInfo *TRI = nullptr) const {
+    return const_cast<MachineInstr *>(this)->
+      findRegisterUseOperand(Reg, isKill, TRI);
+  }
+
   /// Returns the operand index that is a def of the specified register or
   /// -1 if it is not found. If isDead is true, defs that are not dead are
   /// skipped. If Overlap is true, then it also looks for defs that merely
@@ -1100,6 +1109,9 @@ public:
   ///
   bool hasUnmodeledSideEffects() const;
 
+  /// Returns true if it is illegal to fold a load across this instruction.
+  bool isLoadFoldBarrier() const;
+
   /// Return true if all the defs of this instruction are dead.
   bool allDefsAreDead() const;
 
@@ -1180,15 +1192,14 @@ public:
     }
   }
 
+  /// Add all implicit def and use operands to this instruction.
+  void addImplicitDefUseOperands(MachineFunction &MF);
 
 private:
   /// If this instruction is embedded into a MachineFunction, return the
   /// MachineRegisterInfo object for the current function, otherwise
   /// return null.
   MachineRegisterInfo *getRegInfo();
-
-  /// Add all implicit def and use operands to this instruction.
-  void addImplicitDefUseOperands(MachineFunction &MF);
 
   /// Unlink all of the register operands in this instruction from their
   /// respective use lists.  This requires that the operands already be on their

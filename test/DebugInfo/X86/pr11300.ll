@@ -38,10 +38,10 @@ entry:
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!33}
 
-!0 = !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.0 ()", isOptimized: false, emissionKind: 0, file: !32, enums: !1, retainedTypes: !1, subprograms: !3, globals: !1, imports:  !1)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.0 ()", isOptimized: false, emissionKind: 0, file: !32, enums: !1, retainedTypes: !1, subprograms: !3, globals: !1, imports:  !1)
 !1 = !{}
 !3 = !{!5, !20}
-!5 = !DISubprogram(name: "zed", linkageName: "_Z3zedP3foo", line: 4, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 4, file: !6, scope: !6, type: !7, function: void (%struct.foo*)* @_Z3zedP3foo)
+!5 = distinct !DISubprogram(name: "zed", linkageName: "_Z3zedP3foo", line: 4, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 4, file: !6, scope: !6, type: !7, function: void (%struct.foo*)* @_Z3zedP3foo)
 !6 = !DIFile(filename: "/home/espindola/llvm/test.cc", directory: "/home/espindola/tmpfs/build")
 !7 = !DISubroutineType(types: !8)
 !8 = !{null, !9}
@@ -52,13 +52,13 @@ entry:
 !13 = !DISubroutineType(types: !14)
 !14 = !{null, !15}
 !15 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, flags: DIFlagArtificial, baseType: !10)
-!20 = !DISubprogram(name: "bar", linkageName: "_ZN3foo3barEv", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !6, scope: null, type: !13, function: void (%struct.foo*)* @_ZN3foo3barEv, declaration: !12)
-!23 = !DILocalVariable(tag: DW_TAG_arg_variable, name: "x", line: 4, arg: 1, scope: !5, file: !6, type: !9)
+!20 = distinct !DISubprogram(name: "bar", linkageName: "_ZN3foo3barEv", line: 2, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 2, file: !6, scope: null, type: !13, function: void (%struct.foo*)* @_ZN3foo3barEv, declaration: !12)
+!23 = !DILocalVariable(name: "x", line: 4, arg: 1, scope: !5, file: !6, type: !9)
 !24 = !DILocation(line: 4, column: 15, scope: !5)
 !25 = !DILocation(line: 4, column: 20, scope: !26)
 !26 = distinct !DILexicalBlock(line: 4, column: 18, file: !6, scope: !5)
 !27 = !DILocation(line: 4, column: 30, scope: !26)
-!28 = !DILocalVariable(tag: DW_TAG_arg_variable, name: "this", line: 2, arg: 1, flags: DIFlagArtificial, scope: !20, file: !6, type: !15)
+!28 = !DILocalVariable(name: "this", line: 2, arg: 1, flags: DIFlagArtificial, scope: !20, file: !6, type: !15)
 !29 = !DILocation(line: 2, column: 8, scope: !20)
 !30 = !DILocation(line: 2, column: 15, scope: !31)
 !31 = distinct !DILexicalBlock(line: 2, column: 14, file: !6, scope: !20)

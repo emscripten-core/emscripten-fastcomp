@@ -797,10 +797,10 @@ Constant *ConstantAggregateZero::getElementValue(unsigned Idx) const {
 }
 
 unsigned ConstantAggregateZero::getNumElements() const {
-  const Type *Ty = getType();
-  if (const auto *AT = dyn_cast<ArrayType>(Ty))
+  Type *Ty = getType();
+  if (auto *AT = dyn_cast<ArrayType>(Ty))
     return AT->getNumElements();
-  if (const auto *VT = dyn_cast<VectorType>(Ty))
+  if (auto *VT = dyn_cast<VectorType>(Ty))
     return VT->getNumElements();
   return Ty->getStructNumElements();
 }
@@ -838,10 +838,10 @@ UndefValue *UndefValue::getElementValue(unsigned Idx) const {
 }
 
 unsigned UndefValue::getNumElements() const {
-  const Type *Ty = getType();
-  if (const auto *AT = dyn_cast<ArrayType>(Ty))
+  Type *Ty = getType();
+  if (auto *AT = dyn_cast<ArrayType>(Ty))
     return AT->getNumElements();
-  if (const auto *VT = dyn_cast<VectorType>(Ty))
+  if (auto *VT = dyn_cast<VectorType>(Ty))
     return VT->getNumElements();
   return Ty->getStructNumElements();
 }
@@ -1245,7 +1245,7 @@ ConstantExpr::getWithOperandReplaced(unsigned OpNo, Constant *Op) const {
 /// operands replaced with the specified values.  The specified array must
 /// have the same number of operands as our current one.
 Constant *ConstantExpr::getWithOperands(ArrayRef<Constant *> Ops, Type *Ty,
-                                        bool OnlyIfReduced) const {
+                                        bool OnlyIfReduced, Type *SrcTy) const {
   assert(Ops.size() == getNumOperands() && "Operand count mismatch!");
 
   // If no operands changed return self.
@@ -1283,10 +1283,13 @@ Constant *ConstantExpr::getWithOperands(ArrayRef<Constant *> Ops, Type *Ty,
   case Instruction::ShuffleVector:
     return ConstantExpr::getShuffleVector(Ops[0], Ops[1], Ops[2],
                                           OnlyIfReducedTy);
-  case Instruction::GetElementPtr:
-    return ConstantExpr::getGetElementPtr(nullptr, Ops[0], Ops.slice(1),
-                                          cast<GEPOperator>(this)->isInBounds(),
-                                          OnlyIfReducedTy);
+  case Instruction::GetElementPtr: {
+    auto *GEPO = cast<GEPOperator>(this);
+    assert(SrcTy || (Ops[0]->getType() == getOperand(0)->getType()));
+    return ConstantExpr::getGetElementPtr(
+        SrcTy ? SrcTy : GEPO->getSourceElementType(), Ops[0], Ops.slice(1),
+        GEPO->isInBounds(), OnlyIfReducedTy);
+  }
   case Instruction::ICmp:
   case Instruction::FCmp:
     return ConstantExpr::getCompare(getPredicate(), Ops[0], Ops[1],
@@ -2430,9 +2433,9 @@ StringRef ConstantDataSequential::getRawDataValues() const {
 /// formed with a vector or array of the specified element type.
 /// ConstantDataArray only works with normal float and int types that are
 /// stored densely in memory, not with things like i42 or x86_f80.
-bool ConstantDataSequential::isElementTypeCompatible(const Type *Ty) {
+bool ConstantDataSequential::isElementTypeCompatible(Type *Ty) {
   if (Ty->isFloatTy() || Ty->isDoubleTy()) return true;
-  if (const IntegerType *IT = dyn_cast<IntegerType>(Ty)) {
+  if (auto *IT = dyn_cast<IntegerType>(Ty)) {
     switch (IT->getBitWidth()) {
     case 8:
     case 16:

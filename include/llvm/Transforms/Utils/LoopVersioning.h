@@ -16,7 +16,9 @@
 #ifndef LLVM_TRANSFORMS_UTILS_LOOPVERSIONING_H
 #define LLVM_TRANSFORMS_UTILS_LOOPVERSIONING_H
 
+#include "llvm/Analysis/LoopAccessAnalysis.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
+#include "llvm/Transforms/Utils/LoopUtils.h"
 
 namespace llvm {
 
@@ -31,14 +33,16 @@ class LoopInfo;
 /// already has a preheader.
 class LoopVersioning {
 public:
+  /// \brief Expects MemCheck, LoopAccessInfo, Loop, LoopInfo, DominatorTree
+  /// as input. It uses runtime check provided by user.
   LoopVersioning(SmallVector<RuntimePointerChecking::PointerCheck, 4> Checks,
                  const LoopAccessInfo &LAI, Loop *L, LoopInfo *LI,
-                 DominatorTree *DT,
-                 const SmallVector<int, 8> *PtrToPartition = nullptr);
+                 DominatorTree *DT);
 
-  /// \brief Returns true if we need memchecks to disambiguate may-aliasing
-  /// accesses.
-  bool needsRuntimeChecks() const;
+  /// \brief Expects LoopAccessInfo, Loop, LoopInfo, DominatorTree as input.
+  /// It uses default runtime check provided by LoopAccessInfo.
+  LoopVersioning(const LoopAccessInfo &LAInfo, Loop *L, LoopInfo *LI,
+                 DominatorTree *DT);
 
   /// \brief Performs the CFG manipulation part of versioning the loop including
   /// the DominatorTree and LoopInfo updates.
@@ -53,15 +57,11 @@ public:
   ///        analyze L
   ///        if versioning is necessary version L
   ///        transform L
-  void versionLoop(Pass *P);
+  void versionLoop() { versionLoop(findDefsUsedOutsideOfLoop(VersionedLoop)); }
 
-  /// \brief Adds the necessary PHI nodes for the versioned loops based on the
-  /// loop-defined values used outside of the loop.
-  ///
-  /// This needs to be called after versionLoop if there are defs in the loop
-  /// that are used outside the loop.  FIXME: this should be invoked internally
-  /// by versionLoop and made private.
-  void addPHINodes(const SmallVectorImpl<Instruction *> &DefsUsedOutside);
+  /// \brief Same but if the client has already precomputed the set of values
+  /// used outside the loop, this API will allows passing that.
+  void versionLoop(const SmallVectorImpl<Instruction *> &DefsUsedOutside);
 
   /// \brief Returns the versioned loop.  Control flows here if pointers in the
   /// loop don't alias (i.e. all memchecks passed).  (This loop is actually the
@@ -73,19 +73,19 @@ public:
   Loop *getNonVersionedLoop() { return NonVersionedLoop; }
 
 private:
+  /// \brief Adds the necessary PHI nodes for the versioned loops based on the
+  /// loop-defined values used outside of the loop.
+  ///
+  /// This needs to be called after versionLoop if there are defs in the loop
+  /// that are used outside the loop.
+  void addPHINodes(const SmallVectorImpl<Instruction *> &DefsUsedOutside);
+
   /// \brief The original loop.  This becomes the "versioned" one.  I.e.,
   /// control flows here if pointers in the loop don't alias.
   Loop *VersionedLoop;
   /// \brief The fall-back loop.  I.e. control flows here if pointers in the
   /// loop may alias (memchecks failed).
   Loop *NonVersionedLoop;
-
-  /// \brief For each memory pointer it contains the partitionId it is used in.
-  /// If nullptr, no partitioning is used.
-  ///
-  /// The I-th entry corresponds to I-th entry in LAI.getRuntimePointerCheck().
-  /// If the pointer is used in multiple partitions the entry is set to -1.
-  const SmallVector<int, 8> *PtrToPartition;
 
   /// \brief This maps the instructions from VersionedLoop to their counterpart
   /// in NonVersionedLoop.

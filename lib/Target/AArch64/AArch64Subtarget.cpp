@@ -47,9 +47,9 @@ AArch64Subtarget::AArch64Subtarget(const Triple &TT, const std::string &CPU,
                                    const TargetMachine &TM, bool LittleEndian)
     : AArch64GenSubtargetInfo(TT, CPU, FS), ARMProcFamily(Others),
       HasV8_1aOps(false), HasFPARMv8(false), HasNEON(false), HasCrypto(false),
-      HasCRC(false), HasZeroCycleRegMove(false), HasZeroCycleZeroing(false),
-      StrictAlign(false), ReserveX18(false), IsLittle(LittleEndian),
-      CPUString(CPU), TargetTriple(TT), FrameLowering(),
+      HasCRC(false), HasPerfMon(false), HasZeroCycleRegMove(false),
+      HasZeroCycleZeroing(false), StrictAlign(false), ReserveX18(false),
+      IsLittle(LittleEndian), CPUString(CPU), TargetTriple(TT), FrameLowering(),
       InstrInfo(initializeSubtargetDependencies(FS)), TSInfo(),
       TLInfo(TM, *this) {}
 
@@ -114,6 +114,11 @@ void AArch64Subtarget::overrideSchedPolicy(MachineSchedPolicy &Policy,
   // bi-directional scheduling. 253.perlbmk.
   Policy.OnlyTopDown = false;
   Policy.OnlyBottomUp = false;
+  // Enabling or Disabling the latency heuristic is a close call: It seems to
+  // help nearly no benchmark on out-of-order architectures, on the other hand
+  // it regresses register pressure on a few benchmarking.
+  if (isCyclone())
+    Policy.DisableLatencyHeuristic = true;
 }
 
 bool AArch64Subtarget::enableEarlyIfConversion() const {

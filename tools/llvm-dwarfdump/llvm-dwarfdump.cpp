@@ -15,6 +15,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/DebugInfo/DIContext.h"
 #include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/RelocVisitor.h"
 #include "llvm/Support/CommandLine.h"
@@ -76,23 +77,34 @@ static void error(StringRef Filename, std::error_code EC) {
   exit(1);
 }
 
+static void DumpObjectFile(ObjectFile &Obj, Twine Filename) {
+  std::unique_ptr<DIContext> DICtx(new DWARFContextInMemory(Obj));
+
+  outs() << Filename.str() << ":\tfile format " << Obj.getFileFormatName()
+         << "\n\n";
+  // Dump the complete DWARF structure.
+  DICtx->dump(outs(), DumpType);
+}
+
 static void DumpInput(StringRef Filename) {
   ErrorOr<std::unique_ptr<MemoryBuffer>> BuffOrErr =
       MemoryBuffer::getFileOrSTDIN(Filename);
   error(Filename, BuffOrErr.getError());
   std::unique_ptr<MemoryBuffer> Buff = std::move(BuffOrErr.get());
 
-  ErrorOr<std::unique_ptr<ObjectFile>> ObjOrErr =
-      ObjectFile::createObjectFile(Buff->getMemBufferRef());
-  error(Filename, ObjOrErr.getError());
-  ObjectFile &Obj = *ObjOrErr.get();
+  ErrorOr<std::unique_ptr<Binary>> BinOrErr =
+      object::createBinary(Buff->getMemBufferRef());
+  error(Filename, BinOrErr.getError());
 
-  std::unique_ptr<DIContext> DICtx(new DWARFContextInMemory(Obj));
-
-  outs() << Filename
-         << ":\tfile format " << Obj.getFileFormatName() << "\n\n";
-  // Dump the complete DWARF structure.
-  DICtx->dump(outs(), DumpType);
+  if (auto *Obj = dyn_cast<ObjectFile>(BinOrErr->get()))
+    DumpObjectFile(*Obj, Filename);
+  else if (auto *Fat = dyn_cast<MachOUniversalBinary>(BinOrErr->get()))
+    for (auto &ObjForArch : Fat->objects()) {
+      auto MachOOrErr = ObjForArch.getAsObjectFile();
+      error(Filename, MachOOrErr.getError());
+      DumpObjectFile(**MachOOrErr,
+                     Filename + " (" + ObjForArch.getArchTypeName() + ")");
+    }
 }
 
 int main(int argc, char **argv) {

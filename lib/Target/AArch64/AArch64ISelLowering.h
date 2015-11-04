@@ -66,10 +66,6 @@ enum NodeType : unsigned {
   // Floating point comparison
   FCMP,
 
-  // Floating point max and min instructions.
-  FMAX,
-  FMIN,
-
   // Scalar extract
   EXTR,
 
@@ -347,20 +343,28 @@ public:
   bool shouldConvertConstantLoadToIntImm(const APInt &Imm,
                                          Type *Ty) const override;
 
-  bool hasLoadLinkedStoreConditional() const override;
   Value *emitLoadLinked(IRBuilder<> &Builder, Value *Addr,
                         AtomicOrdering Ord) const override;
   Value *emitStoreConditional(IRBuilder<> &Builder, Value *Val,
                               Value *Addr, AtomicOrdering Ord) const override;
 
-  bool shouldExpandAtomicLoadInIR(LoadInst *LI) const override;
+  void emitAtomicCmpXchgNoStoreLLBalance(IRBuilder<> &Builder) const override;
+
+  TargetLoweringBase::AtomicExpansionKind
+  shouldExpandAtomicLoadInIR(LoadInst *LI) const override;
   bool shouldExpandAtomicStoreInIR(StoreInst *SI) const override;
-  TargetLoweringBase::AtomicRMWExpansionKind
+  TargetLoweringBase::AtomicExpansionKind
   shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override;
+
+  bool shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *AI) const override;
 
   bool useLoadStackGuardNode() const override;
   TargetLoweringBase::LegalizeTypeAction
   getPreferredVectorAction(EVT VT) const override;
+
+  /// If the target has a standard location for the unsafe stack pointer,
+  /// returns the address of that location. Otherwise, returns nullptr.
+  Value *getSafeStackPointerLocation(IRBuilder<> &IRB) const override;
 
 private:
   bool isExtFreeImpl(const Instruction *Ext) const override;

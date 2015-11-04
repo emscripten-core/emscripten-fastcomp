@@ -72,11 +72,11 @@ attributes #0 = { nounwind }
 !llvm.module.flags = !{!7, !8}
 !llvm.ident = !{!9}
 
-!0 = !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0", isOptimized: true, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0", isOptimized: true, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "no_array_bounds.cpp", directory: ".")
 !2 = !{}
 !3 = !{!4}
-!4 = !DISubprogram(name: "test", line: 1, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 2, file: !1, scope: !5, type: !6, function: void (i32*, i32*, i32)* @_Z4testPiS_i, variables: !2)
+!4 = distinct !DISubprogram(name: "test", line: 1, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 2, file: !1, scope: !5, type: !6, function: void (i32*, i32*, i32)* @_Z4testPiS_i, variables: !2)
 !5 = !DIFile(filename: "no_array_bounds.cpp", directory: ".")
 !6 = !DISubroutineType(types: !2)
 !7 = !{i32 2, !"Dwarf Version", i32 2}

@@ -460,6 +460,20 @@ struct MatchableInfo {
         TheDef->getValueAsBit("UseInstAsmMatchConverter")) {
   }
 
+  // Could remove this and the dtor if PointerUnion supported unique_ptr
+  // elements with a dynamic failure/assertion (like the one below) in the case
+  // where it was copied while being in an owning state.
+  MatchableInfo(const MatchableInfo &RHS)
+      : AsmVariantID(RHS.AsmVariantID), AsmString(RHS.AsmString),
+        TheDef(RHS.TheDef), DefRec(RHS.DefRec), ResOperands(RHS.ResOperands),
+        Mnemonic(RHS.Mnemonic), AsmOperands(RHS.AsmOperands),
+        RequiredFeatures(RHS.RequiredFeatures),
+        ConversionFnKind(RHS.ConversionFnKind),
+        HasDeprecation(RHS.HasDeprecation),
+        UseInstAsmMatchConverter(RHS.UseInstAsmMatchConverter) {
+    assert(!DefRec.is<const CodeGenInstAlias *>());
+  }
+
   ~MatchableInfo() {
     delete DefRec.dyn_cast<const CodeGenInstAlias*>();
   }
@@ -470,17 +484,11 @@ struct MatchableInfo {
 
   void initialize(const AsmMatcherInfo &Info,
                   SmallPtrSetImpl<Record*> &SingletonRegisters,
-                  int AsmVariantNo, std::string &RegisterPrefix);
+                  int AsmVariantNo, StringRef RegisterPrefix);
 
   /// validate - Return true if this matchable is a valid thing to match against
   /// and perform a bunch of validity checking.
   bool validate(StringRef CommentDelimiter, bool Hack) const;
-
-  /// extractSingletonRegisterForAsmOperand - Extract singleton register,
-  /// if present, from specified token.
-  void
-  extractSingletonRegisterForAsmOperand(unsigned i, const AsmMatcherInfo &Info,
-                                        std::string &RegisterPrefix);
 
   /// findAsmOperand - Find the AsmOperand with the specified name and
   /// suboperand index.
@@ -786,9 +794,41 @@ void MatchableInfo::formTwoOperandAlias(StringRef Constraint) {
   }
 }
 
+/// extractSingletonRegisterForAsmOperand - Extract singleton register,
+/// if present, from specified token.
+static void
+extractSingletonRegisterForAsmOperand(MatchableInfo::AsmOperand &Op,
+                                      const AsmMatcherInfo &Info,
+                                      StringRef RegisterPrefix) {
+  StringRef Tok = Op.Token;
+
+  // If this token is not an isolated token, i.e., it isn't separated from
+  // other tokens (e.g. with whitespace), don't interpret it as a register name.
+  if (!Op.IsIsolatedToken)
+    return;
+
+  if (RegisterPrefix.empty()) {
+    std::string LoweredTok = Tok.lower();
+    if (const CodeGenRegister *Reg = Info.Target.getRegisterByName(LoweredTok))
+      Op.SingletonReg = Reg->TheDef;
+    return;
+  }
+
+  if (!Tok.startswith(RegisterPrefix))
+    return;
+
+  StringRef RegName = Tok.substr(RegisterPrefix.size());
+  if (const CodeGenRegister *Reg = Info.Target.getRegisterByName(RegName))
+    Op.SingletonReg = Reg->TheDef;
+
+  // If there is no register prefix (i.e. "%" in "%eax"), then this may
+  // be some random non-register token, just ignore it.
+  return;
+}
+
 void MatchableInfo::initialize(const AsmMatcherInfo &Info,
                                SmallPtrSetImpl<Record*> &SingletonRegisters,
-                               int AsmVariantNo, std::string &RegisterPrefix) {
+                               int AsmVariantNo, StringRef RegisterPrefix) {
   AsmVariantID = AsmVariantNo;
   AsmString =
     CodeGenInstruction::FlattenAsmStringVariants(AsmString, AsmVariantNo);
@@ -796,16 +836,15 @@ void MatchableInfo::initialize(const AsmMatcherInfo &Info,
   tokenizeAsmString(Info);
 
   // Compute the require features.
-  std::vector<Record*> Predicates =TheDef->getValueAsListOfDefs("Predicates");
-  for (unsigned i = 0, e = Predicates.size(); i != e; ++i)
+  for (Record *Predicate : TheDef->getValueAsListOfDefs("Predicates"))
     if (const SubtargetFeatureInfo *Feature =
-            Info.getSubtargetFeature(Predicates[i]))
+            Info.getSubtargetFeature(Predicate))
       RequiredFeatures.push_back(Feature);
 
   // Collect singleton registers, if used.
-  for (unsigned i = 0, e = AsmOperands.size(); i != e; ++i) {
-    extractSingletonRegisterForAsmOperand(i, Info, RegisterPrefix);
-    if (Record *Reg = AsmOperands[i].SingletonReg)
+  for (MatchableInfo::AsmOperand &Op : AsmOperands) {
+    extractSingletonRegisterForAsmOperand(Op, Info, RegisterPrefix);
+    if (Record *Reg = Op.SingletonReg)
       SingletonRegisters.insert(Reg);
   }
 
@@ -833,9 +872,9 @@ void MatchableInfo::addAsmOperand(size_t Start, size_t End) {
 /// tokenizeAsmString - Tokenize a simplified assembly string.
 void MatchableInfo::tokenizeAsmString(const AsmMatcherInfo &Info) {
   StringRef String = AsmString;
-  unsigned Prev = 0;
+  size_t Prev = 0;
   bool InTok = true;
-  for (unsigned i = 0, e = String.size(); i != e; ++i) {
+  for (size_t i = 0, e = String.size(); i != e; ++i) {
     switch (String[i]) {
     case '[':
     case ']':
@@ -870,15 +909,16 @@ void MatchableInfo::tokenizeAsmString(const AsmMatcherInfo &Info) {
         InTok = false;
       }
 
-      // If this isn't "${", treat like a normal token.
+      // If this isn't "${", start new identifier looking like "$xxx"
       if (i + 1 == String.size() || String[i + 1] != '{') {
         Prev = i;
         break;
       }
 
-      StringRef::iterator End = std::find(String.begin() + i, String.end(),'}');
-      assert(End != String.end() && "Missing brace in operand reference!");
-      size_t EndPos = End - String.begin();
+      // If this is "${" find the next "}" and make an identifier like "${xxx}"
+      size_t EndPos = String.find('}', i);
+      assert(EndPos != StringRef::npos &&
+             "Missing brace in operand reference!");
       addAsmOperand(i, EndPos+1);
       Prev = EndPos + 1;
       i = EndPos;
@@ -972,38 +1012,6 @@ bool MatchableInfo::validate(StringRef CommentDelimiter, bool Hack) const {
   }
 
   return true;
-}
-
-/// extractSingletonRegisterForAsmOperand - Extract singleton register,
-/// if present, from specified token.
-void MatchableInfo::
-extractSingletonRegisterForAsmOperand(unsigned OperandNo,
-                                      const AsmMatcherInfo &Info,
-                                      std::string &RegisterPrefix) {
-  StringRef Tok = AsmOperands[OperandNo].Token;
-
-  // If this token is not an isolated token, i.e., it isn't separated from
-  // other tokens (e.g. with whitespace), don't interpret it as a register name.
-  if (!AsmOperands[OperandNo].IsIsolatedToken)
-    return;
-
-  if (RegisterPrefix.empty()) {
-    std::string LoweredTok = Tok.lower();
-    if (const CodeGenRegister *Reg = Info.Target.getRegisterByName(LoweredTok))
-      AsmOperands[OperandNo].SingletonReg = Reg->TheDef;
-    return;
-  }
-
-  if (!Tok.startswith(RegisterPrefix))
-    return;
-
-  StringRef RegName = Tok.substr(RegisterPrefix.size());
-  if (const CodeGenRegister *Reg = Info.Target.getRegisterByName(RegName))
-    AsmOperands[OperandNo].SingletonReg = Reg->TheDef;
-
-  // If there is no register prefix (i.e. "%" in "%eax"), then this may
-  // be some random non-register token, just ignore it.
-  return;
 }
 
 static std::string getEnumNameForToken(StringRef Str) {
@@ -1378,7 +1386,7 @@ void AsmMatcherInfo::buildInfo() {
       if (CGI->TheDef->getValueAsBit("isCodeGenOnly"))
         continue;
 
-      std::unique_ptr<MatchableInfo> II(new MatchableInfo(*CGI));
+      auto II = llvm::make_unique<MatchableInfo>(*CGI);
 
       II->initialize(*this, SingletonRegisters, AsmVariantNo, RegisterPrefix);
 
@@ -1405,7 +1413,7 @@ void AsmMatcherInfo::buildInfo() {
             .startswith( MatchPrefix))
         continue;
 
-      std::unique_ptr<MatchableInfo> II(new MatchableInfo(std::move(Alias)));
+      auto II = llvm::make_unique<MatchableInfo>(std::move(Alias));
 
       II->initialize(*this, SingletonRegisters, AsmVariantNo, RegisterPrefix);
 
@@ -1474,7 +1482,7 @@ void AsmMatcherInfo::buildInfo() {
         II->TheDef->getValueAsString("TwoOperandAliasConstraint");
       if (Constraint != "") {
         // Start by making a copy of the original matchable.
-        std::unique_ptr<MatchableInfo> AliasII(new MatchableInfo(*II));
+        auto AliasII = llvm::make_unique<MatchableInfo>(*II);
 
         // Adjust it to be a two-operand alias.
         AliasII->formTwoOperandAlias(Constraint);
@@ -1959,7 +1967,7 @@ static void emitConvertFuncs(CodeGenTarget &Target, StringRef ClassName,
       continue;
 
     // Add the row to the table.
-    ConversionTable.push_back(ConversionRow);
+    ConversionTable.push_back(std::move(ConversionRow));
   }
 
   // Finish up the converter driver function.
@@ -1979,10 +1987,8 @@ static void emitConvertFuncs(CodeGenTarget &Target, StringRef ClassName,
 
   // Output the instruction conversion kind enum.
   OS << "enum InstructionConversionKind {\n";
-  for (SetVector<std::string>::const_iterator
-         i = InstructionConversionKinds.begin(),
-         e = InstructionConversionKinds.end(); i != e; ++i)
-    OS << "  " << *i << ",\n";
+  for (const std::string &Signature : InstructionConversionKinds)
+    OS << "  " << Signature << ",\n";
   OS << "  CVT_NUM_SIGNATURES\n";
   OS << "};\n\n";
 

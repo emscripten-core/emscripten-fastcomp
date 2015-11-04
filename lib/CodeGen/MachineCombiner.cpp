@@ -10,6 +10,7 @@
 // The machine combiner pass uses machine trace metrics to ensure the combined
 // instructions does not lengthen the critical path or the resource depth.
 //===----------------------------------------------------------------------===//
+
 #define DEBUG_TYPE "machine-combiner"
 
 #include "llvm/ADT/Statistic.h"
@@ -122,7 +123,6 @@ unsigned
 MachineCombiner::getDepth(SmallVectorImpl<MachineInstr *> &InsInstrs,
                           DenseMap<unsigned, unsigned> &InstrIdxForVirtReg,
                           MachineTraceMetrics::Trace BlockTrace) {
-
   SmallVector<unsigned, 16> InstrDepth;
   assert(TSchedModel.hasInstrSchedModelOrItineraries() &&
          "Missing machine model\n");
@@ -181,7 +181,6 @@ MachineCombiner::getDepth(SmallVectorImpl<MachineInstr *> &InsInstrs,
 /// \returns Latency of \p NewRoot
 unsigned MachineCombiner::getLatency(MachineInstr *Root, MachineInstr *NewRoot,
                                      MachineTraceMetrics::Trace BlockTrace) {
-
   assert(TSchedModel.hasInstrSchedModelOrItineraries() &&
          "Missing machine model\n");
 
@@ -204,7 +203,7 @@ unsigned MachineCombiner::getLatency(MachineInstr *Root, MachineInstr *NewRoot,
           NewRoot, NewRoot->findRegisterDefOperandIdx(MO.getReg()), UseMO,
           UseMO->findRegisterUseOperandIdx(MO.getReg()));
     } else {
-      LatencyOp = TSchedModel.computeInstrLatency(NewRoot->getOpcode());
+      LatencyOp = TSchedModel.computeInstrLatency(NewRoot);
     }
     NewRootLatency = std::max(NewRootLatency, LatencyOp);
   }
@@ -229,7 +228,6 @@ bool MachineCombiner::improvesCriticalPathLen(
     SmallVectorImpl<MachineInstr *> &InsInstrs,
     DenseMap<unsigned, unsigned> &InstrIdxForVirtReg,
     bool NewCodeHasLessInsts) {
-
   assert(TSchedModel.hasInstrSchedModelOrItineraries() &&
          "Missing machine model\n");
   // NewRoot is the last instruction in the \p InsInstrs vector.
@@ -249,9 +247,9 @@ bool MachineCombiner::improvesCriticalPathLen(
                << " NewRootLatency: " << NewRootLatency << "\n";
         dbgs() << " RootDepth: " << RootDepth << " RootLatency: " << RootLatency
                << " RootSlack: " << RootSlack << "\n";
-        dbgs() << " NewRootDepth + NewRootLatency "
+        dbgs() << " NewRootDepth + NewRootLatency = "
                << NewRootDepth + NewRootLatency << "\n";
-        dbgs() << " RootDepth + RootLatency + RootSlack "
+        dbgs() << " RootDepth + RootLatency + RootSlack = "
                << RootDepth + RootLatency + RootSlack << "\n";);
 
   unsigned NewCycleCount = NewRootDepth + NewRootLatency;
@@ -274,6 +272,7 @@ void MachineCombiner::instr2instrSC(
     InstrsSC.push_back(SC);
   }
 }
+
 /// True when the new instructions do not increase resource length
 bool MachineCombiner::preservesResourceLen(
     MachineBasicBlock *MBB, MachineTraceMetrics::Trace BlockTrace,
@@ -425,9 +424,8 @@ bool MachineCombiner::runOnMachineFunction(MachineFunction &MF) {
   TSchedModel.init(SchedModel, &STI, TII);
   MRI = &MF.getRegInfo();
   Traces = &getAnalysis<MachineTraceMetrics>();
-  MinInstr = 0;
-
-  OptSize = MF.getFunction()->hasFnAttribute(Attribute::OptimizeForSize);
+  MinInstr = nullptr;
+  OptSize = MF.getFunction()->optForSize();
 
   DEBUG(dbgs() << getPassName() << ": " << MF.getName() << '\n');
   if (!TII->useMachineCombiner()) {

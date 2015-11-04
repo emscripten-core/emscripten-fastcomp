@@ -80,7 +80,7 @@ define internal void @"__24-[Main initWithContext:]_block_invoke_2"(i8* %.block_
 
 !llvm.dbg.cu = !{!0}
 !llvm.module.flags = !{!108}
-!0 = !DICompileUnit(language: DW_LANG_ObjC, producer: "clang version 3.3 ", isOptimized: false, runtimeVersion: 2, emissionKind: 0, file: !107, enums: !2, retainedTypes: !4, subprograms: !23, globals: !15, imports:  !15)
+!0 = distinct !DICompileUnit(language: DW_LANG_ObjC, producer: "clang version 3.3 ", isOptimized: false, runtimeVersion: 2, emissionKind: 0, file: !107, enums: !2, retainedTypes: !4, subprograms: !23, globals: !15, imports:  !15)
 !1 = !DIFile(filename: "llvm/tools/clang/test/CodeGenObjC/debug-info-block-captured-self.m", directory: "")
 !2 = !{!3}
 !3 = !DICompositeType(tag: DW_TAG_enumeration_type, line: 20, size: 32, align: 32, file: !107, elements: !4)
@@ -95,16 +95,16 @@ define internal void @"__24-[Main initWithContext:]_block_invoke_2"(i8* %.block_
 !32 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, baseType: !33)
 !33 = !DICompositeType(tag: DW_TAG_structure_type, name: "objc_class", flags: DIFlagFwdDecl, file: !107)
 !34 = !DICompositeType(tag: DW_TAG_structure_type, name: "Main", line: 23, flags: DIFlagArtificial | DIFlagObjectPointer, runtimeLang: DW_LANG_ObjC, file: !107)
-!38 = !DISubprogram(name: "__24-[Main initWithContext:]_block_invoke", line: 33, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 33, file: !1, scope: !1, type: !39, function: void (i8*, i8*)* @"__24-[Main initWithContext:]_block_invoke", variables: !15)
+!38 = distinct !DISubprogram(name: "__24-[Main initWithContext:]_block_invoke", line: 33, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 33, file: !1, scope: !1, type: !39, function: void (i8*, i8*)* @"__24-[Main initWithContext:]_block_invoke", variables: !15)
 !39 = !DISubroutineType(types: !40)
 !40 = !{null, !41, !27}
 !41 = !DIDerivedType(tag: DW_TAG_pointer_type, size: 64, align: 64, baseType: null)
-!42 = !DISubprogram(name: "__24-[Main initWithContext:]_block_invoke_2", line: 35, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 35, file: !1, scope: !1, type: !39, function: void (i8*, i8*)* @"__24-[Main initWithContext:]_block_invoke_2", variables: !15)
+!42 = distinct !DISubprogram(name: "__24-[Main initWithContext:]_block_invoke_2", line: 35, isLocal: true, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: false, scopeLine: 35, file: !1, scope: !1, type: !39, function: void (i8*, i8*)* @"__24-[Main initWithContext:]_block_invoke_2", variables: !15)
 !84 = !DILocation(line: 33, scope: !38)
-!86 = !DILocalVariable(tag: DW_TAG_auto_variable, name: "self", line: 41, scope: !38, file: !1, type: !34)
+!86 = !DILocalVariable(name: "self", line: 41, scope: !38, file: !1, type: !34)
 !87 = !DILocation(line: 41, scope: !38)
 !103 = !DILocation(line: 35, scope: !42)
-!105 = !DILocalVariable(tag: DW_TAG_auto_variable, name: "self", line: 40, scope: !42, file: !1, type: !34)
+!105 = !DILocalVariable(name: "self", line: 40, scope: !42, file: !1, type: !34)
 !106 = !DILocation(line: 40, scope: !42)
 !107 = !DIFile(filename: "llvm/tools/clang/test/CodeGenObjC/debug-info-block-captured-self.m", directory: "")
 !108 = !{i32 1, !"Debug Info Version", i32 3}
