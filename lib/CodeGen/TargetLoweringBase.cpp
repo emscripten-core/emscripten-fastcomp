@@ -758,9 +758,7 @@ TargetLoweringBase::TargetLoweringBase(const TargetMachine &tm) : TM(tm) {
   SelectIsExpensive = false;
   HasMultipleConditionRegisters = false;
   HasExtractBitsInsn = false;
-  IntDivIsCheap = false;
   FsqrtIsCheap = false;
-  Pow2SDivIsCheap = false;
   JumpIsExpensive = JumpIsExpensiveOverride;
   PredictableSelectIsExpensive = false;
   MaskAndBranchFoldingIsLegal = false;
@@ -814,6 +812,8 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::CONCAT_VECTORS, VT, Expand);
     setOperationAction(ISD::FMINNUM, VT, Expand);
     setOperationAction(ISD::FMAXNUM, VT, Expand);
+    setOperationAction(ISD::FMINNAN, VT, Expand);
+    setOperationAction(ISD::FMAXNAN, VT, Expand);
     setOperationAction(ISD::FMAD, VT, Expand);
     setOperationAction(ISD::SMIN, VT, Expand);
     setOperationAction(ISD::SMAX, VT, Expand);
@@ -844,6 +844,9 @@ void TargetLoweringBase::initActions() {
 
   // Most targets ignore the @llvm.prefetch intrinsic.
   setOperationAction(ISD::PREFETCH, MVT::Other, Expand);
+
+  // Most targets also ignore the @llvm.readcyclecounter intrinsic.
+  setOperationAction(ISD::READCYCLECOUNTER, MVT::i64, Expand);
 
   // ConstantFP nodes default to expand.  Targets can either change this to
   // Legal, in which case all fp constants are legal, or use isFPImmLegal()
@@ -1150,7 +1153,7 @@ TargetLoweringBase::emitPatchPoint(MachineInstr *MI,
       Flags |= MachineMemOperand::MOVolatile;
     }
     MachineMemOperand *MMO = MF.getMachineMemOperand(
-        MachinePointerInfo::getFixedStack(FI), Flags,
+        MachinePointerInfo::getFixedStack(MF, FI), Flags,
         MF.getDataLayout().getPointerSize(), MFI.getObjectAlignment(FI));
     MIB->addMemOperand(MF, MMO);
 
@@ -1571,6 +1574,7 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case Invoke:         return 0;
   case Resume:         return 0;
   case Unreachable:    return 0;
+  case CleanupEndPad:  return 0;
   case CleanupRet:     return 0;
   case CatchEndPad:  return 0;
   case CatchRet:       return 0;
@@ -1634,13 +1638,13 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   llvm_unreachable("Unknown instruction type encountered!");
 }
 
-std::pair<unsigned, MVT>
+std::pair<int, MVT>
 TargetLoweringBase::getTypeLegalizationCost(const DataLayout &DL,
                                             Type *Ty) const {
   LLVMContext &C = Ty->getContext();
   EVT MTy = getValueType(DL, Ty);
 
-  unsigned Cost = 1;
+  int Cost = 1;
   // We keep legalizing the type until we find a legal kind. We assume that
   // the only operation that costs anything is the split. After splitting
   // we need to handle two types.
@@ -1656,6 +1660,19 @@ TargetLoweringBase::getTypeLegalizationCost(const DataLayout &DL,
     // Keep legalizing the type.
     MTy = LK.second;
   }
+}
+
+Value *TargetLoweringBase::getSafeStackPointerLocation(IRBuilder<> &IRB) const {
+  if (!TM.getTargetTriple().isAndroid())
+    return nullptr;
+
+  // Android provides a libc function to retrieve the address of the current
+  // thread's unsafe stack pointer.
+  Module *M = IRB.GetInsertBlock()->getParent()->getParent();
+  Type *StackPtrTy = Type::getInt8PtrTy(M->getContext());
+  Value *Fn = M->getOrInsertFunction("__safestack_pointer_address",
+                                     StackPtrTy->getPointerTo(0), nullptr);
+  return IRB.CreateCall(Fn);
 }
 
 //===----------------------------------------------------------------------===//

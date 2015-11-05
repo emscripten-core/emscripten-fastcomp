@@ -276,9 +276,11 @@ def LEA_ADDiu64 : EffectiveAddress<"daddiu", GPR64Opnd>, LW_FM<0x19>;
 let isCodeGenOnly = 1 in
 def RDHWR64 : ReadHardware<GPR64Opnd, HWRegsOpnd>, RDHWR_FM;
 
-def DEXT : ExtBase<"dext", GPR64Opnd, uimm6, MipsExt>, EXT_FM<3>;
-def DEXTU : ExtBase<"dextu", GPR64Opnd, uimm6>, EXT_FM<2>;
-def DEXTM : ExtBase<"dextm", GPR64Opnd, uimm5>, EXT_FM<1>;
+let AdditionalPredicates = [NotInMicroMips] in {
+  def DEXT : ExtBase<"dext", GPR64Opnd, uimm6, MipsExt>, EXT_FM<3>;
+  def DEXTM : ExtBase<"dextm", GPR64Opnd, uimm5>, EXT_FM<1>;
+  def DEXTU : ExtBase<"dextu", GPR64Opnd, uimm6>, EXT_FM<2>;
+}
 
 def DINS : InsBase<"dins", GPR64Opnd, uimm6, MipsIns>, EXT_FM<7>;
 def DINSU : InsBase<"dinsu", GPR64Opnd, uimm6>, EXT_FM<6>;
@@ -345,7 +347,7 @@ class CBranchBitNum<string opstr, DAGOperand opnd, PatFrag cond_op,
   InstSE<(outs), (ins RO:$rs, uimm5_64:$p, opnd:$offset),
          !strconcat(opstr, "\t$rs, $p, $offset"),
          [(brcond (i32 (cond_op (and RO:$rs, (shl shift, immZExt5_64:$p)), 0)),
-                  bb:$offset)], IIBranch, FrmI, opstr> {
+                  bb:$offset)], II_BBIT, FrmI, opstr> {
   let isBranch = 1;
   let isTerminator = 1;
   let hasDelaySlot = 1;
@@ -500,14 +502,6 @@ def : MipsPat<(trunc (assertzext GPR64:$src)),
 def : MipsPat<(i32 (trunc GPR64:$src)),
               (SLL (EXTRACT_SUBREG GPR64:$src, sub_32), 0)>;
 
-// Bypass trunc nodes for bitwise ops.
-def : MipsPat<(i32 (trunc (and GPR64:$lhs, GPR64:$rhs))),
-              (EXTRACT_SUBREG (AND64 GPR64:$lhs, GPR64:$rhs), sub_32)>;
-def : MipsPat<(i32 (trunc (or GPR64:$lhs, GPR64:$rhs))),
-              (EXTRACT_SUBREG (OR64 GPR64:$lhs, GPR64:$rhs), sub_32)>;
-def : MipsPat<(i32 (trunc (xor GPR64:$lhs, GPR64:$rhs))),
-              (EXTRACT_SUBREG (XOR64 GPR64:$lhs, GPR64:$rhs), sub_32)>;
-
 // variable shift instructions patterns
 def : MipsPat<(shl GPR64:$rt, (i32 (trunc GPR64:$rs))),
               (DSLLV GPR64:$rt, (EXTRACT_SUBREG GPR64:$rs, sub_32))>;
@@ -555,6 +549,9 @@ def : MipsPat<(brcond (i32 (setne (and i64:$lhs, PowerOf2HI:$mask), 0)), bb:$dst
 //===----------------------------------------------------------------------===//
 // Instruction aliases
 //===----------------------------------------------------------------------===//
+def : MipsInstAlias<"move $dst, $src",
+                    (OR64 GPR64Opnd:$dst,  GPR64Opnd:$src, ZERO_64), 1>,
+      GPR_64;
 def : MipsInstAlias<"move $dst, $src",
                     (DADDu GPR64Opnd:$dst,  GPR64Opnd:$src, ZERO_64), 1>,
       GPR_64;
@@ -633,3 +630,8 @@ class LoadImmediate64<string instr_asm, Operand Od, RegisterOperand RO> :
   MipsAsmPseudoInst<(outs RO:$rt), (ins Od:$imm64),
                      !strconcat(instr_asm, "\t$rt, $imm64")> ;
 def LoadImm64 : LoadImmediate64<"dli", imm64, GPR64Opnd>;
+
+def LoadAddrReg64 : MipsAsmPseudoInst<(outs GPR64Opnd:$rt), (ins mem:$addr),
+                                       "dla\t$rt, $addr">;
+def LoadAddrImm64 : MipsAsmPseudoInst<(outs GPR64Opnd:$rt), (ins imm64:$imm64),
+                                       "dla\t$rt, $imm64">;

@@ -28,47 +28,6 @@ using namespace llvm;
 #define GET_INSTRUCTION_NAME
 #include "HexagonGenAsmWriter.inc"
 
-HexagonAsmInstPrinter::HexagonAsmInstPrinter(MCInstPrinter *RawPrinter)
-    : MCInstPrinter(*RawPrinter), RawPrinter(RawPrinter) {}
-
-void HexagonAsmInstPrinter::printInst(MCInst const *MI, raw_ostream &O,
-                                      StringRef Annot,
-                                      MCSubtargetInfo const &STI) {
-  assert(HexagonMCInstrInfo::isBundle(*MI));
-  assert(HexagonMCInstrInfo::bundleSize(*MI) <= HEXAGON_PACKET_SIZE);
-  std::string Buffer;
-  {
-    raw_string_ostream TempStream(Buffer);
-    RawPrinter->printInst(MI, TempStream, "", STI);
-  }
-  StringRef Contents(Buffer);
-  auto PacketBundle = Contents.rsplit('\n');
-  auto HeadTail = PacketBundle.first.split('\n');
-  auto Preamble = "\t{\n\t\t";
-  auto Separator = "";
-  while(!HeadTail.first.empty()) {
-    O << Separator;
-    StringRef Inst;
-    auto Duplex = HeadTail.first.split('\v');
-    if(!Duplex.second.empty()){
-      O << Duplex.first << "\n";
-      Inst = Duplex.second;
-    }
-    else
-      Inst = Duplex.first;
-    O << Preamble;
-    O << Inst;
-    HeadTail = HeadTail.second.split('\n');
-    Preamble = "";
-    Separator = "\n\t\t";
-  }
-  O << "\n\t}" << PacketBundle.second;
-}
-
-void HexagonAsmInstPrinter::printRegName(raw_ostream &O, unsigned RegNo) const {
-  RawPrinter->printRegName(O, RegNo);
-}
-
 // Return the minimum value that a constant extendable operand can have
 // without being extended.
 static int getMinValue(uint64_t TSFlags) {
@@ -217,6 +176,34 @@ void HexagonInstPrinter::printNegImmOperand(const MCInst *MI, unsigned OpNo,
 void HexagonInstPrinter::printNOneImmOperand(const MCInst *MI, unsigned OpNo,
                                              raw_ostream &O) const {
   O << -1;
+}
+
+void HexagonInstPrinter::prints3_6ImmOperand(MCInst const *MI, unsigned OpNo,
+                                             raw_ostream &O) const {
+  int64_t Imm = MI->getOperand(OpNo).getImm();
+  assert(((Imm & 0x3f) == 0) && "Lower 6 bits must be ZERO.");
+  O << formatImm(Imm/64);
+}
+
+void HexagonInstPrinter::prints3_7ImmOperand(MCInst const *MI, unsigned OpNo,
+                                             raw_ostream &O) const {
+  int64_t Imm = MI->getOperand(OpNo).getImm();
+  assert(((Imm & 0x7f) == 0) && "Lower 7 bits must be ZERO.");
+  O << formatImm(Imm/128);
+}
+
+void HexagonInstPrinter::prints4_6ImmOperand(MCInst const *MI, unsigned OpNo,
+                                             raw_ostream &O) const {
+  int64_t Imm = MI->getOperand(OpNo).getImm();
+  assert(((Imm & 0x3f) == 0) && "Lower 6 bits must be ZERO.");
+  O << formatImm(Imm/64);
+}
+
+void HexagonInstPrinter::prints4_7ImmOperand(MCInst const *MI, unsigned OpNo,
+                                             raw_ostream &O) const {
+  int64_t Imm = MI->getOperand(OpNo).getImm();
+  assert(((Imm & 0x7f) == 0) && "Lower 7 bits must be ZERO.");
+  O << formatImm(Imm/128);
 }
 
 void HexagonInstPrinter::printMEMriOperand(const MCInst *MI, unsigned OpNo,

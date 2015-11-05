@@ -26,6 +26,10 @@ class FunctionPass;
 FunctionPass *createWebAssemblyISelDag(WebAssemblyTargetMachine &TM,
                                        CodeGenOpt::Level OptLevel);
 
+FunctionPass *createWebAssemblyCFGStackify();
+
+FunctionPass *createWebAssemblyRelooper();
+
 } // end namespace llvm
 
 #endif

@@ -72,9 +72,9 @@
 //
 // For most functions, some of the frame areas are empty. For those functions,
 // it may not be necessary to set up fp or bp:
-// * A base pointer is definitly needed when there are both VLAs and local
+// * A base pointer is definitely needed when there are both VLAs and local
 //   variables with more-than-default alignment requirements.
-// * A frame pointer is definitly needed when there are local variables with
+// * A frame pointer is definitely needed when there are local variables with
 //   more-than-default alignment requirements.
 //
 // In some cases when a base pointer is not strictly needed, it is generated
@@ -634,14 +634,6 @@ void AArch64FrameLowering::emitEpilogue(MachineFunction &MF,
   if (NumBytes || MFI->hasVarSizedObjects())
     emitFrameOffset(MBB, LastPopI, DL, AArch64::SP, AArch64::FP,
                     -(NumRestores - 1) * 16, TII, MachineInstr::NoFlags);
-}
-
-/// getFrameIndexOffset - Returns the displacement from the frame register to
-/// the stack frame of the specified index.
-int AArch64FrameLowering::getFrameIndexOffset(const MachineFunction &MF,
-                                              int FI) const {
-  unsigned FrameReg;
-  return getFrameIndexReference(MF, FI, FrameReg);
 }
 
 /// getFrameIndexReference - Provide a base+offset reference to an FI slot for

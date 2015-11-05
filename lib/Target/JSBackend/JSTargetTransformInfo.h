@@ -36,7 +36,7 @@ class JSTTIImpl : public BasicTTIImplBase<JSTTIImpl> {
   const TargetLoweringBase *getTLI() const { return TLI; }
 
 public:
-  explicit JSTTIImpl(const JSTargetMachine *TM, Function &F)
+  explicit JSTTIImpl(const JSTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
         TLI(ST->getTargetLowering()) {}
 

@@ -251,10 +251,11 @@ typedef enum {
   LLVMLandingPad     = 59,
   LLVMCleanupRet     = 61,
   LLVMCatchRet       = 62,
-  LLVMCatchPad     = 63,
-  LLVMTerminatePad = 64,
-  LLVMCleanupPad   = 65,
-  LLVMCatchEndPad  = 66
+  LLVMCatchPad       = 63,
+  LLVMTerminatePad   = 64,
+  LLVMCleanupPad     = 65,
+  LLVMCatchEndPad    = 66,
+  LLVMCleanupEndPad  = 67
 
 } LLVMOpcode;
 
@@ -274,7 +275,8 @@ typedef enum {
   LLVMPointerTypeKind,     /**< Pointers */
   LLVMVectorTypeKind,      /**< SIMD 'packed' format, or other vector type */
   LLVMMetadataTypeKind,    /**< Metadata */
-  LLVMX86_MMXTypeKind      /**< X86 MMX */
+  LLVMX86_MMXTypeKind,     /**< X86 MMX */
+  LLVMTokenTypeKind        /**< Tokens */
 } LLVMTypeKind;
 
 typedef enum {
@@ -1227,6 +1229,7 @@ LLVMTypeRef LLVMX86MMXType(void);
         macro(CatchPadInst)               \
         macro(TerminatePadInst)           \
         macro(CatchEndPadInst)            \
+        macro(CleanupEndPadInst)            \
       macro(UnaryInstruction)               \
         macro(AllocaInst)                   \
         macro(CastInst)                     \
@@ -2792,6 +2795,8 @@ LLVMValueRef LLVMBuildGlobalStringPtr(LLVMBuilderRef B, const char *Str,
                                       const char *Name);
 LLVMBool LLVMGetVolatile(LLVMValueRef MemoryAccessInst);
 void LLVMSetVolatile(LLVMValueRef MemoryAccessInst, LLVMBool IsVolatile);
+LLVMAtomicOrdering LLVMGetOrdering(LLVMValueRef MemoryAccessInst);
+void LLVMSetOrdering(LLVMValueRef MemoryAccessInst, LLVMAtomicOrdering Ordering);
 
 /* Casts */
 LLVMValueRef LLVMBuildTrunc(LLVMBuilderRef, LLVMValueRef Val,

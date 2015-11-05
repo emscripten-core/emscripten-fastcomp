@@ -26,6 +26,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/GlobalsModRef.h"
+#include "llvm/Analysis/ValueTracking.h"
 #include "llvm/IR/CFG.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -81,20 +83,6 @@ namespace {
     unsigned Power;
 
     Factor(Value *Base, unsigned Power) : Base(Base), Power(Power) {}
-
-    /// \brief Sort factors by their Base.
-    struct BaseSorter {
-      bool operator()(const Factor &LHS, const Factor &RHS) {
-        return LHS.Base < RHS.Base;
-      }
-    };
-
-    /// \brief Compare factors for equal bases.
-    struct BaseEqual {
-      bool operator()(const Factor &LHS, const Factor &RHS) {
-        return LHS.Base == RHS.Base;
-      }
-    };
 
     /// \brief Sort factors in descending order by their power.
     struct PowerDescendingSorter {
@@ -172,6 +160,7 @@ namespace {
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
+      AU.addPreserved<GlobalsAAWrapperPass>();
     }
   private:
     void BuildRankMap(Function &F);
@@ -255,27 +244,6 @@ static BinaryOperator *isReassociableOp(Value *V, unsigned Opcode1,
   return nullptr;
 }
 
-static bool isUnmovableInstruction(Instruction *I) {
-  switch (I->getOpcode()) {
-  case Instruction::PHI:
-  case Instruction::LandingPad:
-  case Instruction::Alloca:
-  case Instruction::Load:
-  case Instruction::Invoke:
-  case Instruction::UDiv:
-  case Instruction::SDiv:
-  case Instruction::FDiv:
-  case Instruction::URem:
-  case Instruction::SRem:
-  case Instruction::FRem:
-    return true;
-  case Instruction::Call:
-    return !isa<DbgInfoIntrinsic>(I);
-  default:
-    return false;
-  }
-}
-
 void Reassociate::BuildRankMap(Function &F) {
   unsigned i = 2;
 
@@ -295,7 +263,7 @@ void Reassociate::BuildRankMap(Function &F) {
     // we cannot move.  This ensures that the ranks for these instructions are
     // all different in the block.
     for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I)
-      if (isUnmovableInstruction(I))
+      if (mayBeMemoryDependent(*I))
         ValueRankMap[&*I] = ++BBRank;
   }
 }
@@ -971,15 +939,16 @@ static Value *NegateValue(Value *V, Instruction *BI) {
     if (Instruction *InstInput = dyn_cast<Instruction>(V)) {
       if (InvokeInst *II = dyn_cast<InvokeInst>(InstInput)) {
         InsertPt = II->getNormalDest()->begin();
+      } else if (auto *CPI = dyn_cast<CatchPadInst>(InstInput)) {
+        InsertPt = CPI->getNormalDest()->begin();
       } else {
-        InsertPt = InstInput;
-        ++InsertPt;
+        InsertPt = ++InstInput->getIterator();
       }
       while (isa<PHINode>(InsertPt)) ++InsertPt;
     } else {
       InsertPt = TheNeg->getParent()->getParent()->getEntryBlock().begin();
     }
-    TheNeg->moveBefore(InsertPt);
+    TheNeg->moveBefore(&*InsertPt);
     if (TheNeg->getOpcode() == Instruction::Sub) {
       TheNeg->setHasNoUnsignedWrap(false);
       TheNeg->setHasNoSignedWrap(false);
@@ -1166,7 +1135,7 @@ Value *Reassociate::RemoveFactorFromExpression(Value *V, Value *Factor) {
     return nullptr;
   }
 
-  BasicBlock::iterator InsertPt = BO; ++InsertPt;
+  BasicBlock::iterator InsertPt = ++BO->getIterator();
 
   // If this was just a single multiply, remove the multiply and return the only
   // remaining operand.
@@ -1179,7 +1148,7 @@ Value *Reassociate::RemoveFactorFromExpression(Value *V, Value *Factor) {
   }
 
   if (NeedsNegate)
-    V = CreateNeg(V, "neg", InsertPt, BO);
+    V = CreateNeg(V, "neg", &*InsertPt, BO);
 
   return V;
 }
@@ -2250,10 +2219,10 @@ bool Reassociate::runOnFunction(Function &F) {
   for (Function::iterator BI = F.begin(), BE = F.end(); BI != BE; ++BI) {
     // Optimize every instruction in the basic block.
     for (BasicBlock::iterator II = BI->begin(), IE = BI->end(); II != IE; )
-      if (isInstructionTriviallyDead(II)) {
-        EraseInst(II++);
+      if (isInstructionTriviallyDead(&*II)) {
+        EraseInst(&*II++);
       } else {
-        OptimizeInst(II);
+        OptimizeInst(&*II);
         assert(II->getParent() == BI && "Moved to a different block!");
         ++II;
       }

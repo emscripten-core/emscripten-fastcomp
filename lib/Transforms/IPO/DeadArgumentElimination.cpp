@@ -35,6 +35,7 @@
 #include "llvm/Pass.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include <map>
 #include <set>
 #include <tuple>
@@ -198,6 +199,13 @@ bool DAE::DeleteDeadVarargs(Function &Fn) {
   if (Fn.hasAddressTaken())
     return false;
 
+  // Don't touch naked functions. The assembly might be using an argument, or
+  // otherwise rely on the frame layout in a way that this analysis will not
+  // see.
+  if (Fn.hasFnAttribute(Attribute::Naked)) {
+    return false;
+  }
+
   // Okay, we know we can transform this function if safe.  Scan its body
   // looking for calls marked musttail or calls to llvm.vastart.
   for (Function::iterator BB = Fn.begin(), E = Fn.end(); BB != E; ++BB) {
@@ -229,7 +237,7 @@ bool DAE::DeleteDeadVarargs(Function &Fn) {
   // Create the new function body and insert it into the module...
   Function *NF = Function::Create(NFTy, Fn.getLinkage());
   NF->copyAttributesFrom(&Fn);
-  Fn.getParent()->getFunctionList().insert(&Fn, NF);
+  Fn.getParent()->getFunctionList().insert(Fn.getIterator(), NF);
   NF->takeName(&Fn);
 
   // Loop over all of the callers of the function, transforming the call sites
@@ -296,8 +304,8 @@ bool DAE::DeleteDeadVarargs(Function &Fn) {
   for (Function::arg_iterator I = Fn.arg_begin(), E = Fn.arg_end(),
        I2 = NF->arg_begin(); I != E; ++I, ++I2) {
     // Move the name and users over to the new version.
-    I->replaceAllUsesWith(I2);
-    I2->takeName(I);
+    I->replaceAllUsesWith(&*I2);
+    I2->takeName(&*I);
   }
 
   // Patch the pointer to LLVM function in debug info descriptor.
@@ -345,16 +353,19 @@ bool DAE::RemoveDeadArgumentsFromCallers(Function &Fn)
   if (Fn.hasLocalLinkage() && !Fn.getFunctionType()->isVarArg())
     return false;
 
+  // Don't touch naked functions. The assembly might be using an argument, or
+  // otherwise rely on the frame layout in a way that this analysis will not
+  // see.
+  if (Fn.hasFnAttribute(Attribute::Naked))
+    return false;
+
   if (Fn.use_empty())
     return false;
 
   SmallVector<unsigned, 8> UnusedArgs;
-  for (Function::arg_iterator I = Fn.arg_begin(), E = Fn.arg_end(); 
-       I != E; ++I) {
-    Argument *Arg = I;
-
-    if (Arg->use_empty() && !Arg->hasByValOrInAllocaAttr())
-      UnusedArgs.push_back(Arg->getArgNo());
+  for (Argument &Arg : Fn.args()) {
+    if (Arg.use_empty() && !Arg.hasByValOrInAllocaAttr())
+      UnusedArgs.push_back(Arg.getArgNo());
   }
 
   if (UnusedArgs.empty())
@@ -543,6 +554,14 @@ void DAE::SurveyFunction(const Function &F) {
     return;
   }
 
+  // Don't touch naked functions. The assembly might be using an argument, or
+  // otherwise rely on the frame layout in a way that this analysis will not
+  // see.
+  if (F.hasFnAttribute(Attribute::Naked)) {
+    MarkLive(F);
+    return;
+  }
+
   unsigned RetCount = NumRetVals(&F);
   // Assume all return values are dead
   typedef SmallVector<Liveness, 5> RetVals;
@@ -648,7 +667,7 @@ void DAE::SurveyFunction(const Function &F) {
     } else {
       // See what the effect of this use is (recording any uses that cause
       // MaybeLive in MaybeLiveArgUses). 
-      Result = SurveyUses(AI, MaybeLiveArgUses);
+      Result = SurveyUses(&*AI, MaybeLiveArgUses);
     }
 
     // Mark the result.
@@ -878,7 +897,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
   NF->setAttributes(NewPAL);
   // Insert the new function before the old function, so we won't be processing
   // it again.
-  F->getParent()->getFunctionList().insert(F, NF);
+  F->getParent()->getFunctionList().insert(F->getIterator(), NF);
   NF->takeName(F);
 
   // Loop over all of the callers of the function, transforming the call sites
@@ -946,7 +965,7 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
     Instruction *New;
     if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {
       New = InvokeInst::Create(NF, II->getNormalDest(), II->getUnwindDest(),
-                               Args, "", Call);
+                               Args, "", Call->getParent());
       cast<InvokeInst>(New)->setCallingConv(CS.getCallingConv());
       cast<InvokeInst>(New)->setAttributes(NewCallPAL);
     } else {
@@ -976,9 +995,8 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
                " must have been a struct or an array!");
         Instruction *InsertPt = Call;
         if (InvokeInst *II = dyn_cast<InvokeInst>(Call)) {
-          BasicBlock::iterator IP = II->getNormalDest()->begin();
-          while (isa<PHINode>(IP)) ++IP;
-          InsertPt = IP;
+          BasicBlock *NewEdge = SplitEdge(New->getParent(), II->getNormalDest());
+          InsertPt = &*NewEdge->getFirstInsertionPt();
         }
 
         // We used to return a struct or array. Instead of doing smart stuff
@@ -1026,8 +1044,8 @@ bool DAE::RemoveDeadStuffFromFunction(Function *F) {
     if (ArgAlive[i]) {
       // If this is a live argument, move the name and users over to the new
       // version.
-      I->replaceAllUsesWith(I2);
-      I2->takeName(I);
+      I->replaceAllUsesWith(&*I2);
+      I2->takeName(&*I);
       ++I2;
     } else {
       // If this argument is dead, replace any uses of it with null constants
@@ -1119,7 +1137,7 @@ bool DAE::runOnModule(Module &M) {
   for (Module::iterator I = M.begin(), E = M.end(); I != E; ) {
     // Increment now, because the function will probably get removed (ie.
     // replaced by a new one).
-    Function *F = I++;
+    Function *F = &*I++;
     Changed |= RemoveDeadStuffFromFunction(F);
   }
 

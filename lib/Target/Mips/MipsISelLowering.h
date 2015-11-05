@@ -67,6 +67,10 @@ namespace llvm {
       // Return
       Ret,
 
+      // Interrupt, exception, error trap Return
+      ERet,
+
+      // Software Exception Return.
       EH_RETURN,
 
       // Node used to extract integer from accumulator.
@@ -258,16 +262,18 @@ namespace llvm {
     EmitInstrWithCustomInserter(MachineInstr *MI,
                                 MachineBasicBlock *MBB) const override;
 
-    struct LTStr {
-      bool operator()(const char *S1, const char *S2) const {
-        return strcmp(S1, S2) < 0;
-      }
-    };
-
     void HandleByVal(CCState *, unsigned &, unsigned) const override;
 
     unsigned getRegisterByName(const char* RegName, EVT VT,
                                SelectionDAG &DAG) const override;
+
+    /// Returns true if a cast between SrcAS and DestAS is a noop.
+    bool isNoopAddrSpaceCast(unsigned SrcAS, unsigned DestAS) const override {
+      // Mips doesn't have any special address spaces so we just reserve
+      // the first 256 for software use (e.g. OpenCL) and treat casts
+      // between them as noops.
+      return SrcAS < 256 && DestAS < 256;
+    }
 
   protected:
     SDValue getGlobalReg(SelectionDAG &DAG, EVT Ty) const;
@@ -282,9 +288,10 @@ namespace llvm {
       unsigned GOTFlag = IsN32OrN64 ? MipsII::MO_GOT_PAGE : MipsII::MO_GOT;
       SDValue GOT = DAG.getNode(MipsISD::Wrapper, DL, Ty, getGlobalReg(DAG, Ty),
                                 getTargetNode(N, Ty, DAG, GOTFlag));
-      SDValue Load = DAG.getLoad(Ty, DL, DAG.getEntryNode(), GOT,
-                                 MachinePointerInfo::getGOT(), false, false,
-                                 false, 0);
+      SDValue Load =
+          DAG.getLoad(Ty, DL, DAG.getEntryNode(), GOT,
+                      MachinePointerInfo::getGOT(DAG.getMachineFunction()),
+                      false, false, false, 0);
       unsigned LoFlag = IsN32OrN64 ? MipsII::MO_GOT_OFST : MipsII::MO_ABS_LO;
       SDValue Lo = DAG.getNode(MipsISD::Lo, DL, Ty,
                                getTargetNode(N, Ty, DAG, LoFlag));
@@ -478,6 +485,9 @@ namespace llvm {
                         const SmallVectorImpl<ISD::OutputArg> &Outs,
                         const SmallVectorImpl<SDValue> &OutVals,
                         SDLoc dl, SelectionDAG &DAG) const override;
+
+    SDValue LowerInterruptReturn(SmallVectorImpl<SDValue> &RetOps, SDLoc DL,
+                                 SelectionDAG &DAG) const;
 
     bool shouldSignExtendTypeInLibCall(EVT Type, bool IsSigned) const override;
 

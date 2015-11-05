@@ -358,7 +358,7 @@ public:
   ///
   /// Each emitted symbol will be tracked in the ordering table,
   /// so we can sort on them later.
-  void AssignSection(MCSymbol *Symbol, MCSection *Section);
+  void AssignFragment(MCSymbol *Symbol, MCFragment *Fragment);
 
   /// \brief Emit a label for \p Symbol into the current section.
   ///
@@ -522,10 +522,9 @@ public:
   /// match a native machine width.
   /// \param Loc - The location of the expression for error reporting.
   virtual void EmitValueImpl(const MCExpr *Value, unsigned Size,
-                             const SMLoc &Loc = SMLoc());
+                             SMLoc Loc = SMLoc());
 
-  void EmitValue(const MCExpr *Value, unsigned Size,
-                 const SMLoc &Loc = SMLoc());
+  void EmitValue(const MCExpr *Value, unsigned Size, SMLoc Loc = SMLoc());
 
   /// \brief Special case of EmitValue that avoids the client having
   /// to pass in a MCExpr for constant integers.
@@ -662,6 +661,7 @@ public:
   virtual void EmitCFIRelOffset(int64_t Register, int64_t Offset);
   virtual void EmitCFIAdjustCfaOffset(int64_t Adjustment);
   virtual void EmitCFIEscape(StringRef Values);
+  virtual void EmitCFIGnuArgsSize(int64_t Size);
   virtual void EmitCFISignalFrame();
   virtual void EmitCFIUndefined(int64_t Register);
   virtual void EmitCFIRegister(int64_t Register1, int64_t Register2);
@@ -705,9 +705,6 @@ public:
   /// specified string in the output .s file.  This capability is indicated by
   /// the hasRawTextSupport() predicate.  By default this aborts.
   void EmitRawText(const Twine &String);
-
-  /// \brief Causes any cached state to be written out.
-  virtual void Flush() {}
 
   /// \brief Streamer specific finalization.
   virtual void FinishImpl();

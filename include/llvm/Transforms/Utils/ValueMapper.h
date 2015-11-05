@@ -38,9 +38,14 @@ namespace llvm {
   /// to materialize Values on demand.
   class ValueMaterializer {
     virtual void anchor(); // Out of line method.
-  public:
-    virtual ~ValueMaterializer() {}
 
+  protected:
+    ~ValueMaterializer() = default;
+    ValueMaterializer() = default;
+    ValueMaterializer(const ValueMaterializer&) = default;
+    ValueMaterializer &operator=(const ValueMaterializer&) = default;
+
+  public:
     /// materializeValueFor - The client should implement this method if they
     /// want to generate a mapped Value on demand. For example, if linking
     /// lazily.
@@ -59,7 +64,11 @@ namespace llvm {
     /// RF_IgnoreMissingEntries - If this flag is set, the remapper ignores
     /// entries that are not in the value map.  If it is unset, it aborts if an
     /// operand is asked to be remapped which doesn't exist in the mapping.
-    RF_IgnoreMissingEntries = 2
+    RF_IgnoreMissingEntries = 2,
+
+    /// Instruct the remapper to move distinct metadata instead of duplicating
+    /// it when there are module-level changes.
+    RF_MoveDistinctMDs = 4,
   };
 
   static inline RemapFlags operator|(RemapFlags LHS, RemapFlags RHS) {

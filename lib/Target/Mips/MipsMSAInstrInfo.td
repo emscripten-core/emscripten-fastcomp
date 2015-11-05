@@ -63,6 +63,8 @@ def MipsVExtractSExt : SDNode<"MipsISD::VEXTRACT_SEXT_ELT",
 def MipsVExtractZExt : SDNode<"MipsISD::VEXTRACT_ZEXT_ELT",
     SDTypeProfile<1, 3, [SDTCisPtrTy<2>]>, []>;
 
+def immZExt1Ptr : ImmLeaf<iPTR, [{return isUInt<1>(Imm);}]>;
+def immZExt2Ptr : ImmLeaf<iPTR, [{return isUInt<2>(Imm);}]>;
 def immZExt4Ptr : ImmLeaf<iPTR, [{return isUInt<4>(Imm);}]>;
 def immZExt6Ptr : ImmLeaf<iPTR, [{return isUInt<6>(Imm);}]>;
 
@@ -639,7 +641,6 @@ class COPY_S_D_ENC : MSA_ELM_COPY_D_FMT<0b0010, 0b011001>;
 class COPY_U_B_ENC : MSA_ELM_COPY_B_FMT<0b0011, 0b011001>;
 class COPY_U_H_ENC : MSA_ELM_COPY_H_FMT<0b0011, 0b011001>;
 class COPY_U_W_ENC : MSA_ELM_COPY_W_FMT<0b0011, 0b011001>;
-class COPY_U_D_ENC : MSA_ELM_COPY_D_FMT<0b0011, 0b011001>;
 
 class CTCMSA_ENC : MSA_ELM_CTCMSA_FMT<0b0000111110, 0b011001>;
 
@@ -1479,7 +1480,7 @@ class MSA_CBRANCH_DESC_BASE<string instr_asm, RegisterOperand ROWD> {
   dag InOperandList = (ins ROWD:$wt, brtarget:$offset);
   string AsmString = !strconcat(instr_asm, "\t$wt, $offset");
   list<dag> Pattern = [];
-  InstrItinClass Itinerary = IIBranch;
+  InstrItinClass Itinerary = NoItinerary;
   bit isBranch = 1;
   bit isTerminator = 1;
   bit hasDelaySlot = 1;
@@ -1934,8 +1935,6 @@ class COPY_U_H_DESC : MSA_COPY_DESC_BASE<"copy_u.h", vextract_zext_i16, v8i16,
                                          GPR32Opnd, MSA128HOpnd>;
 class COPY_U_W_DESC : MSA_COPY_DESC_BASE<"copy_u.w", vextract_zext_i32, v4i32,
                                          GPR32Opnd, MSA128WOpnd>;
-class COPY_U_D_DESC : MSA_COPY_DESC_BASE<"copy_u.d", vextract_zext_i64, v2i64,
-                                         GPR64Opnd, MSA128DOpnd>;
 
 class COPY_FW_PSEUDO_DESC : MSA_COPY_PSEUDO_BASE<vector_extract, v4f32, FGR32,
                                                  MSA128W>;
@@ -2991,12 +2990,11 @@ def CLTI_U_D : CLTI_U_D_ENC, CLTI_U_D_DESC;
 def COPY_S_B : COPY_S_B_ENC, COPY_S_B_DESC;
 def COPY_S_H : COPY_S_H_ENC, COPY_S_H_DESC;
 def COPY_S_W : COPY_S_W_ENC, COPY_S_W_DESC;
-def COPY_S_D : COPY_S_D_ENC, COPY_S_D_DESC;
+def COPY_S_D : COPY_S_D_ENC, COPY_S_D_DESC, ASE_MSA64;
 
 def COPY_U_B : COPY_U_B_ENC, COPY_U_B_DESC;
 def COPY_U_H : COPY_U_H_ENC, COPY_U_H_DESC;
-def COPY_U_W : COPY_U_W_ENC, COPY_U_W_DESC;
-def COPY_U_D : COPY_U_D_ENC, COPY_U_D_DESC;
+def COPY_U_W : COPY_U_W_ENC, COPY_U_W_DESC, ASE_MSA64;
 
 def COPY_FW_PSEUDO : COPY_FW_PSEUDO_DESC;
 def COPY_FD_PSEUDO : COPY_FD_PSEUDO_DESC;
@@ -3108,7 +3106,7 @@ def FFQR_D : FFQR_D_ENC, FFQR_D_DESC;
 def FILL_B : FILL_B_ENC, FILL_B_DESC;
 def FILL_H : FILL_H_ENC, FILL_H_DESC;
 def FILL_W : FILL_W_ENC, FILL_W_DESC;
-def FILL_D : FILL_D_ENC, FILL_D_DESC;
+def FILL_D : FILL_D_ENC, FILL_D_DESC, ASE_MSA64;
 def FILL_FW_PSEUDO : FILL_FW_PSEUDO_DESC;
 def FILL_FD_PSEUDO : FILL_FD_PSEUDO_DESC;
 
@@ -3238,7 +3236,7 @@ def ILVR_D : ILVR_D_ENC, ILVR_D_DESC;
 def INSERT_B : INSERT_B_ENC, INSERT_B_DESC;
 def INSERT_H : INSERT_H_ENC, INSERT_H_DESC;
 def INSERT_W : INSERT_W_ENC, INSERT_W_DESC;
-def INSERT_D : INSERT_D_ENC, INSERT_D_DESC;
+def INSERT_D : INSERT_D_ENC, INSERT_D_DESC, ASE_MSA64;
 
 // INSERT_FW_PSEUDO defined after INSVE_W
 // INSERT_FD_PSEUDO defined after INSVE_D
@@ -3280,7 +3278,7 @@ def LDI_W : LDI_W_ENC, LDI_W_DESC;
 def LDI_D : LDI_D_ENC, LDI_D_DESC;
 
 def LSA : LSA_ENC, LSA_DESC;
-def DLSA : DLSA_ENC, DLSA_DESC;
+def DLSA : DLSA_ENC, DLSA_DESC, ASE_MSA64;
 
 def MADD_Q_H : MADD_Q_H_ENC, MADD_Q_H_DESC;
 def MADD_Q_W : MADD_Q_W_ENC, MADD_Q_W_DESC;
@@ -3786,6 +3784,28 @@ def SZ_D_PSEUDO : MSA_CBRANCH_PSEUDO_DESC_BASE<MipsVAllZero, v2i64,
                                                MSA128D, NoItinerary>;
 def SZ_V_PSEUDO : MSA_CBRANCH_PSEUDO_DESC_BASE<MipsVAnyZero, v16i8,
                                                MSA128B, NoItinerary>;
+
+// Vector extraction with fixed index.
+//
+// Extracting 32-bit values on MSA32 should always use COPY_S_W rather than
+// COPY_U_W, even for the zero-extended case. This is because our forward
+// compatibility strategy is to consider registers to be infinitely
+// sign-extended so that a MIPS64 can execute MIPS32 code without getting
+// different register values.
+def : MSAPat<(vextract_zext_i32 (v4i32 MSA128W:$ws), immZExt2Ptr:$idx),
+             (COPY_S_W MSA128W:$ws, immZExt2:$idx)>, ASE_MSA_NOT_MSA64;
+def : MSAPat<(vextract_zext_i32 (v4f32 MSA128W:$ws), immZExt2Ptr:$idx),
+             (COPY_S_W MSA128W:$ws, immZExt2:$idx)>, ASE_MSA_NOT_MSA64;
+
+// Extracting 64-bit values on MSA64 should always use COPY_S_D rather than
+// COPY_U_D, even for the zero-extended case. This is because our forward
+// compatibility strategy is to consider registers to be infinitely
+// sign-extended so that a hypothetical MIPS128 would be able to execute MIPS64
+// code without getting different register values.
+def : MSAPat<(vextract_zext_i64 (v2i64 MSA128D:$ws), immZExt1Ptr:$idx),
+             (COPY_S_D MSA128D:$ws, immZExt1:$idx)>, ASE_MSA64;
+def : MSAPat<(vextract_zext_i64 (v2f64 MSA128D:$ws), immZExt1Ptr:$idx),
+             (COPY_S_D MSA128D:$ws, immZExt1:$idx)>, ASE_MSA64;
 
 // Vector extraction with variable index
 def : MSAPat<(i32 (vextract_sext_i8 v16i8:$ws, i32:$idx)),

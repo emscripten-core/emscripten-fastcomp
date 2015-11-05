@@ -21,8 +21,10 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/Pass.h"
@@ -57,7 +59,7 @@ namespace {
     }
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
-      AU.addRequired<AliasAnalysis>();
+      AU.addRequired<AAResultsWrapperPass>();
       AU.setPreservesAll();
     }
 
@@ -81,7 +83,7 @@ namespace {
 char AAEval::ID = 0;
 INITIALIZE_PASS_BEGIN(AAEval, "aa-eval",
                 "Exhaustive Alias Analysis Precision Evaluator", false, true)
-INITIALIZE_AG_DEPENDENCY(AliasAnalysis)
+INITIALIZE_PASS_DEPENDENCY(AAResultsWrapperPass)
 INITIALIZE_PASS_END(AAEval, "aa-eval",
                 "Exhaustive Alias Analysis Precision Evaluator", false, true)
 
@@ -139,16 +141,17 @@ static inline bool isInterestingPointer(Value *V) {
 }
 
 bool AAEval::runOnFunction(Function &F) {
-  AliasAnalysis &AA = getAnalysis<AliasAnalysis>();
+  const DataLayout &DL = F.getParent()->getDataLayout();
+  AliasAnalysis &AA = getAnalysis<AAResultsWrapperPass>().getAAResults();
 
   SetVector<Value *> Pointers;
   SetVector<CallSite> CallSites;
   SetVector<Value *> Loads;
   SetVector<Value *> Stores;
 
-  for (Function::arg_iterator I = F.arg_begin(), E = F.arg_end(); I != E; ++I)
-    if (I->getType()->isPointerTy())    // Add all pointer arguments.
-      Pointers.insert(I);
+  for (auto &I : F.args())
+    if (I.getType()->isPointerTy())    // Add all pointer arguments.
+      Pointers.insert(&I);
 
   for (inst_iterator I = inst_begin(F), E = inst_end(F); I != E; ++I) {
     if (I->getType()->isPointerTy()) // Add all pointer instructions.
@@ -188,12 +191,12 @@ bool AAEval::runOnFunction(Function &F) {
        I1 != E; ++I1) {
     uint64_t I1Size = MemoryLocation::UnknownSize;
     Type *I1ElTy = cast<PointerType>((*I1)->getType())->getElementType();
-    if (I1ElTy->isSized()) I1Size = AA.getTypeStoreSize(I1ElTy);
+    if (I1ElTy->isSized()) I1Size = DL.getTypeStoreSize(I1ElTy);
 
     for (SetVector<Value *>::iterator I2 = Pointers.begin(); I2 != I1; ++I2) {
       uint64_t I2Size = MemoryLocation::UnknownSize;
       Type *I2ElTy =cast<PointerType>((*I2)->getType())->getElementType();
-      if (I2ElTy->isSized()) I2Size = AA.getTypeStoreSize(I2ElTy);
+      if (I2ElTy->isSized()) I2Size = DL.getTypeStoreSize(I2ElTy);
 
       switch (AA.alias(*I1, I1Size, *I2, I2Size)) {
       case NoAlias:
@@ -289,7 +292,7 @@ bool AAEval::runOnFunction(Function &F) {
          V != Ve; ++V) {
       uint64_t Size = MemoryLocation::UnknownSize;
       Type *ElTy = cast<PointerType>((*V)->getType())->getElementType();
-      if (ElTy->isSized()) Size = AA.getTypeStoreSize(ElTy);
+      if (ElTy->isSized()) Size = DL.getTypeStoreSize(ElTy);
 
       switch (AA.getModRefInfo(*C, *V, Size)) {
       case MRI_NoModRef:

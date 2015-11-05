@@ -25,7 +25,7 @@
 ; File, line, and column should match those specified in the metadata
 ; CHECK: remark: source.cpp:4:5: loop not vectorized: could not determine number of loop iterations
 ; CHECK: remark: source.cpp:4:5: loop not vectorized: use -Rpass-analysis=loop-vectorize for more info
-; CHECK: remark: source.cpp:13:5: loop not vectorized: vector width and interleave count are explicitly set to 1
+; CHECK: remark: source.cpp:13:5: loop not vectorized: vectorization and interleaving are explicitly disabled, or vectorize width and interleave count are both set to 1
 ; CHECK: remark: source.cpp:19:5: loop not vectorized: cannot identify array bounds
 ; CHECK: remark: source.cpp:19:5: loop not vectorized: use -Rpass-analysis=loop-vectorize for more info
 ; CHECK: warning: source.cpp:19:5: loop not vectorized: failed explicitly specified loop vectorization
@@ -122,15 +122,15 @@ attributes #0 = { nounwind }
 !llvm.module.flags = !{!9, !10}
 !llvm.ident = !{!11}
 
-!0 = !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0", isOptimized: true, runtimeVersion: 6, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
+!0 = distinct !DICompileUnit(language: DW_LANG_C_plus_plus, producer: "clang version 3.5.0", isOptimized: true, runtimeVersion: 6, emissionKind: 2, file: !1, enums: !2, retainedTypes: !2, subprograms: !3, globals: !2, imports: !2)
 !1 = !DIFile(filename: "source.cpp", directory: ".")
 !2 = !{}
 !3 = !{!4, !7, !8}
-!4 = !DISubprogram(name: "test", line: 1, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 1, file: !1, scope: !5, type: !6, function: void (i32*, i32)* @_Z4testPii, variables: !2)
+!4 = distinct !DISubprogram(name: "test", line: 1, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 1, file: !1, scope: !5, type: !6, function: void (i32*, i32)* @_Z4testPii, variables: !2)
 !5 = !DIFile(filename: "source.cpp", directory: ".")
 !6 = !DISubroutineType(types: !2)
-!7 = !DISubprogram(name: "test_disabled", line: 10, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 10, file: !1, scope: !5, type: !6, function: void (i32*, i32)* @_Z13test_disabledPii, variables: !2)
-!8 = !DISubprogram(name: "test_array_bounds", line: 16, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 16, file: !1, scope: !5, type: !6, function: void (i32*, i32*, i32)* @_Z17test_array_boundsPiS_i, variables: !2)
+!7 = distinct !DISubprogram(name: "test_disabled", line: 10, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 10, file: !1, scope: !5, type: !6, function: void (i32*, i32)* @_Z13test_disabledPii, variables: !2)
+!8 = distinct !DISubprogram(name: "test_array_bounds", line: 16, isLocal: false, isDefinition: true, virtualIndex: 6, flags: DIFlagPrototyped, isOptimized: true, scopeLine: 16, file: !1, scope: !5, type: !6, function: void (i32*, i32*, i32)* @_Z17test_array_boundsPiS_i, variables: !2)
 !9 = !{i32 2, !"Dwarf Version", i32 2}
 !10 = !{i32 2, !"Debug Info Version", i32 3}
 !11 = !{!"clang version 3.5.0"}

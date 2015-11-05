@@ -42,7 +42,7 @@ JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
 }
 
 TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis([this](Function &F) {
+  return TargetIRAnalysis([this](const Function &F) {
     return TargetTransformInfo(JSTTIImpl(this, F));
   });
 }
