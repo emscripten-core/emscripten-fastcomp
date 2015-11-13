@@ -158,7 +158,12 @@ namespace {
   typedef std::vector<unsigned char> HeapData;
   typedef std::map<int, HeapData> HeapDataMap;
   typedef std::vector<int> AlignedHeapStartMap;
-  typedef std::pair<unsigned, unsigned> Address;
+  struct Address {
+    unsigned Offset, Alignment;
+    bool ZeroInit;
+    Address() {}
+    Address(unsigned Offset, unsigned Alignment, bool ZeroInit) : Offset(Offset), Alignment(Alignment), ZeroInit(ZeroInit) {}
+  };
   typedef std::map<std::string, Type *> VarMap;
   typedef std::map<std::string, Address> GlobalAddressMap;
   typedef std::vector<std::string> FunctionTable;
@@ -181,7 +186,8 @@ namespace {
     VarMap UsedVars;
     AllocaManager Allocas;
     HeapDataMap GlobalDataMap;
-    AlignedHeapStartMap AlignedHeapStarts;
+    std::vector<int> ZeroInitSizes; // alignment => used offset in the zeroinit zone
+    AlignedHeapStartMap AlignedHeapStarts, ZeroInitStarts;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
     NameSet Declares; // funcs
@@ -210,6 +216,7 @@ namespace {
     bool StackBumped;
     int GlobalBasePadding;
     int MaxGlobalAlign;
+    int StaticBump;
 
     #include "CallHandlers.h"
 
@@ -269,8 +276,16 @@ namespace {
       assert(isPowerOf2_32(Alignment) && Alignment > 0);
       HeapData* GlobalData = &GlobalDataMap[Alignment];
       ensureAligned(Alignment, GlobalData);
-      GlobalAddresses[Name] = Address(GlobalData->size(), Alignment*8);
+      GlobalAddresses[Name] = Address(GlobalData->size(), Alignment*8, false);
       return GlobalData;
+    }
+
+    void allocateZeroInitAddress(const std::string& Name, unsigned Alignment, unsigned Size) {
+      assert(isPowerOf2_32(Alignment) && Alignment > 0);
+      while (ZeroInitSizes.size() <= Alignment) ZeroInitSizes.push_back(0);
+      GlobalAddresses[Name] = Address(ZeroInitSizes[Alignment], Alignment*8, true);
+      ZeroInitSizes[Alignment] += Size;
+      while (ZeroInitSizes[Alignment] & (Alignment-1)) ZeroInitSizes[Alignment]++;
     }
 
     // return the absolute offset of a global
@@ -280,9 +295,10 @@ namespace {
         report_fatal_error("cannot find global address " + Twine(s));
       }
       Address a = I->second;
-      int Alignment = a.second/8;
+      int Alignment = a.Alignment/8;
       assert(AlignedHeapStarts.size() > (unsigned)Alignment);
-      int Ret = a.first + AlignedHeapStarts[Alignment];
+      int Ret = a.Offset + (a.ZeroInit ? ZeroInitStarts[Alignment] : AlignedHeapStarts[Alignment]);
+      assert(Alignment < (int)(a.ZeroInit ? ZeroInitStarts.size() : AlignedHeapStarts.size()));
       assert(Ret % Alignment == 0);
       return Ret;
     }
@@ -293,7 +309,7 @@ namespace {
         report_fatal_error("cannot find global address " + Twine(s));
       }
       Address a = I->second;
-      return a.first;
+      return a.Offset;
     }
     char getFunctionSignatureLetter(Type *T) {
       if (T->isVoidTy()) return 'v';
@@ -2928,10 +2944,12 @@ void JSWriter::processConstants() {
     if (Alignment > MaxGlobalAlign) MaxGlobalAlign = Alignment;
     ensureAligned(Alignment, &GlobalDataMap[Alignment]);
   }
+  if (int(ZeroInitSizes.size()-1) > MaxGlobalAlign) MaxGlobalAlign = ZeroInitSizes.size()-1; // highest index in ZeroInitSizes is the largest zero-init alignment
   if (!Relocatable && MaxGlobalAlign > 0) {
     while ((GlobalBase+GlobalBasePadding) % MaxGlobalAlign != 0) GlobalBasePadding++;
   }
   while (AlignedHeapStarts.size() <= (unsigned)MaxGlobalAlign) AlignedHeapStarts.push_back(0);
+  while (ZeroInitStarts.size() <= (unsigned)MaxGlobalAlign) ZeroInitStarts.push_back(0);
   for (auto& GI : GlobalDataMap) {
     int Alignment = GI.first;
     int Curr = GlobalBase + GlobalBasePadding;
@@ -2942,6 +2960,22 @@ void JSWriter::processConstants() {
     }
     AlignedHeapStarts[Alignment] = Curr;
   }
+
+  unsigned ZeroInitStart = GlobalBase + GlobalBasePadding;
+  for (auto& GI : GlobalDataMap) {
+    ZeroInitStart += GI.second.size();
+  }
+  if (!ZeroInitSizes.empty()) {
+    while (ZeroInitStart & (MaxGlobalAlign-1)) ZeroInitStart++; // fully align zero init area
+    for (int Alignment = ZeroInitSizes.size() - 1; Alignment > 0; Alignment--) {
+      if (ZeroInitSizes[Alignment] == 0) continue;
+      assert((ZeroInitStart & (Alignment-1)) == 0);
+      ZeroInitStarts[Alignment] = ZeroInitStart;
+      ZeroInitStart += ZeroInitSizes[Alignment];
+    }
+  }
+  StaticBump = ZeroInitStart; // total size of all the data section
+
   // Second, allocate their contents
   for (Module::const_global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
@@ -3095,6 +3129,8 @@ void JSWriter::printModuleBody() {
   // Emit metadata for emcc driver
   Out << "\n\n// EMSCRIPTEN_METADATA\n";
   Out << "{\n";
+
+  Out << "\"staticBump\": " << StaticBump << ",\n";
 
   Out << "\"declares\": [";
   bool first = true;
@@ -3370,12 +3406,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (calculate) {
       unsigned Bytes = DL->getTypeStoreSize(CV->getType());
-      HeapData *GlobalData = allocateAddress(name, Alignment);
-      ensureAligned(Alignment, GlobalData);
-      for (unsigned i = 0; i < Bytes; ++i) {
-        GlobalData->push_back(0);
-      }
-      // FIXME: create a zero section at the end, avoid filling meminit with zeros
+      allocateZeroInitAddress(name, Alignment, Bytes);
     }
   } else if (const ConstantArray *CA = dyn_cast<ConstantArray>(CV)) {
     if (calculate) {
