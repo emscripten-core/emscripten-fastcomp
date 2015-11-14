@@ -87,6 +87,16 @@ struct InsertOrderedSet
   }
 
   size_t count(const T& val) const { return Map.count(val); }
+
+  InsertOrderedSet() {}
+  InsertOrderedSet(const InsertOrderedSet& other) {
+    for (auto i : other.List) {
+      insert(i); // inserting manually creates proper iterators
+    }
+  }
+  InsertOrderedSet& operator=(const InsertOrderedSet& other) {
+    abort(); // TODO, watch out for iterators
+  }
 };
 
 // like std::map, except that begin() -> end() iterates in the
@@ -127,6 +137,14 @@ struct InsertOrderedMap
 
   size_t size() const { return Map.size(); }
   size_t count(const Key& k) const { return Map.count(k); }
+
+  InsertOrderedMap() {}
+  InsertOrderedMap(InsertOrderedMap& other) {
+    abort(); // TODO, watch out for iterators
+  }
+  InsertOrderedMap& operator=(const InsertOrderedMap& other) {
+    abort(); // TODO, watch out for iterators
+  }
 };
 
 
