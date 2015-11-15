@@ -332,13 +332,6 @@ struct Relooper {
 
 typedef InsertOrderedMap<Block*, BlockSet> BlockBlockSetMap;
 
-#if DEBUG
-struct Debugging {
-  static void Dump(BlockSet &Blocks, const char *prefix=NULL);
-  static void Dump(Shape *S, const char *prefix=NULL);
-};
-#endif
-
 #endif // __cplusplus
 
 // C API - useful for binding to other languages

@@ -10,6 +10,7 @@
 #include <list>
 #include <stack>
 #include <string>
+#include <vector>
 
 // uncomment these out to get LLVM errs() debugging support
 //#include <llvm/Support/raw_ostream.h>
@@ -19,7 +20,13 @@ template <class T, class U> static bool contains(const T& container, const U& co
   return container.count(contained);
 }
 
+#define DEBUG 1
+
 #if DEBUG
+struct Debugging {
+  static void Dump(BlockSet &Blocks, const char *prefix=NULL);
+  static void Dump(Shape *S, const char *prefix=NULL);
+};
 static void PrintDebug(const char *Format, ...);
 #define DebugDump(x, ...) Debugging::Dump(x, __VA_ARGS__)
 #else
@@ -617,9 +624,12 @@ void Relooper::Calculate(Block *Entry) {
     }
 
     Shape *MakeLoop(BlockSet &Blocks, BlockSet& Entries, BlockSet &NextEntries) {
+      // Just hoist everything into the loop, to avoid label variable usages
+      BlockSet InnerBlocks = Blocks;
+      Blocks.clear();
+#if 0
       // Find the inner blocks in this loop. Proceed backwards from the entries until
       // you reach a seen block, collecting as you go.
-      BlockSet InnerBlocks;
       BlockSet Queue = Entries;
       while (Queue.size() > 0) {
         Block *Curr = *(Queue.begin());
@@ -702,6 +712,7 @@ void Relooper::Calculate(Block *Entry) {
           IndependentGroups.erase(Min);
         }
       }
+#endif
 #endif
 
       PrintDebug("creating loop block:\n", 0);
@@ -853,6 +864,17 @@ void Relooper::Calculate(Block *Entry) {
       bool Fused = !!(Shape::IsSimple(Prev));
       MultipleShape *Multiple = new MultipleShape();
       Notice(Multiple);
+      // Add entries not handled as next entries, they are deferred. We can
+      // reach them with a break on the multiple.
+      for (BlockSet::iterator iter = Entries.begin(); iter != Entries.end(); iter++) {
+        Block *Entry = *iter;
+        if (!contains(IndependentGroups, Entry)) {
+          NextEntries.insert(Entry);
+          for (BlockBlockSetMap::iterator iter = IndependentGroups.begin(); iter != IndependentGroups.end(); iter++) {
+            Solipsize(Entry, Branch::Break, Multiple, iter->second);
+          }
+        }
+      }
       BlockSet CurrEntries;
       for (BlockBlockSetMap::iterator iter = IndependentGroups.begin(); iter != IndependentGroups.end(); iter++) {
         Block *CurrEntry = iter->first;
@@ -873,6 +895,7 @@ void Relooper::Calculate(Block *Entry) {
             Next++;
             if (!contains(CurrBlocks, CurrTarget)) {
               NextEntries.insert(CurrTarget);
+assert(!contains(NextEntries, CurrTarget));
               Solipsize(CurrTarget, Branch::Break, Multiple, CurrBlocks); 
             }
             iter = Next; // increment carefully because Solipsize can remove us
@@ -885,19 +908,77 @@ void Relooper::Calculate(Block *Entry) {
         }
       }
       DebugDump(Blocks, "  remaining blocks after multiple:");
-      // Add entries not handled as next entries, they are deferred
-      for (BlockSet::iterator iter = Entries.begin(); iter != Entries.end(); iter++) {
-        Block *Entry = *iter;
-        if (!contains(IndependentGroups, Entry)) {
-          NextEntries.insert(Entry);
-        }
-      }
       // The multiple has been created, we can decide how to implement it
       if (Multiple->InnerMap.size() >= 10) {
         Multiple->UseSwitch = true;
         Multiple->Breaks++; // switch captures breaks
       }
       return Multiple;
+    }
+
+    // Find which blocks we must reach, no matter which entry we come from, and which we
+    // only might reach. Note: the entries themselves are always in MaybeReach.
+    void FindReachabilities(BlockSet& Entries, BlockSet& MustReach, BlockSet& MaybeReach) {
+      BlockBlockSetMap ReachableFrom; // block -> which entries can reach it
+      struct WorkItem {
+        Block *Origin; // which entry we are arriving from
+        Block *Curr; // where we arriving at when we process this
+        WorkItem(Block *Origin, Block *Curr) : Origin(Origin), Curr(Curr) {}
+      };
+      std::vector<WorkItem> Queue;
+      for (auto iter : Entries) { // start at the entries
+        Queue.emplace_back(iter, iter);
+      }
+      while (Queue.size() > 0) {
+        WorkItem Curr = *(Queue.begin());
+        Queue.erase(Queue.begin());
+        if (contains(ReachableFrom[Curr.Curr], Curr.Origin)) continue; // if we already saw we could reach this one from there, continue
+        ReachableFrom[Curr.Curr].insert(Curr.Origin);
+        for (auto iter : Curr.Origin->BranchesOut) {
+          Block *Target = iter.first;
+          Queue.emplace_back(Curr.Origin, Target);
+        }
+      }
+      unsigned NumEntries = Entries.size();
+      for (auto iter : ReachableFrom) {
+        Block *Curr = iter.first;
+        BlockSet& CanReach = iter.second;
+        if (CanReach.size() == NumEntries && !contains(Entries, Curr)) {
+PrintDebug("must reach %d\n", Curr->Id);
+          MustReach.insert(Curr);
+        } else {
+PrintDebug("maybe reach %d\n", Curr->Id);
+          MaybeReach.insert(Curr);
+        }
+      }
+    }
+
+    // We use a Loop for this, but it will never hit the continue state, as it will break out
+    Shape *MakeOneTimeLoop(BlockSet &Blocks, BlockSet& Inside, BlockSet& Entries, BlockSet& NextEntries) {
+      for (auto iter : Inside) {
+        Blocks.erase(iter);
+        for (auto out : iter->BranchesOut) {
+          Block *Target = out.first;
+          if (!contains(Inside, Target)) {
+            NextEntries.insert(Target);
+          }
+        }
+      }
+
+      PrintDebug("creating one-time loop block:\n", 0);
+      DebugDump(Inside, "  Inside:");
+      DebugDump(Entries, "  inner entries:");
+
+      LoopShape *Loop = new LoopShape();
+      Notice(Loop);
+
+      // Branches to outside the loop (a next entry) become breaks on this shape
+      for (BlockSet::iterator iter = NextEntries.begin(); iter != NextEntries.end(); iter++) {
+        Solipsize(*iter, Branch::Break, Loop, Inside);
+      }
+      // Finish up
+      Loop->Inner = Process(Inside, Entries, NULL);
+      return Loop;
     }
 
     // Main function.
@@ -943,9 +1024,16 @@ void Relooper::Calculate(Block *Entry) {
           Make(MakeLoop(Blocks, *Entries, *NextEntries));
         }
 
-        // More than one entry, try to eliminate through a Multiple groups of
-        // independent blocks from an entry/ies. It is important to remove through
-        // multiples as opposed to looping since the former is more performant.
+        // More than one entry. We need to use a Multiple or a Loop. First, we
+        // see if there are blocks we *must* reach. We can put everything else in a loop, and reach
+        // the must-reach blocks using a break
+        BlockSet MustReach, MaybeReach;
+        FindReachabilities(*Entries, MustReach, MaybeReach);
+        PrintDebug("reachabilities: must reach %d, maybe reach (including entries) %d\n", MustReach.size(), MaybeReach.size());
+        if (MustReach.size() > 0) {
+          Make(MakeOneTimeLoop(Blocks, MaybeReach, *Entries, *NextEntries));
+        }
+
         BlockBlockSetMap IndependentGroups;
         FindIndependentGroups(*Entries, IndependentGroups);
 
