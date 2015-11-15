@@ -859,7 +859,7 @@ void Relooper::Calculate(Block *Entry) {
 #endif
     }
 
-    void CalculateNextEntriesForMultiple(BlockSet &Blocks, BlockSet& Entries, BlockBlockSetMap& IndependentGroups, Shape *Prev, BlockSet &NextEntries) {
+    void CalculateNextEntriesForMultiple(BlockSet& Entries, BlockBlockSetMap& IndependentGroups, BlockSet &NextEntries) {
       // Any entry that is not an independent group is a next entry
       for (auto Entry : Entries) {
         if (!contains(IndependentGroups, Entry)) {
@@ -1005,7 +1005,29 @@ assert(!contains(NextEntries, CurrTarget));
             Make(MakeEmulated(Blocks, Curr, *NextEntries));
           }
           if (Curr->BranchesIn.size() == 0) {
-            // One entry, no looping ==> Simple
+            // One entry, no looping ==> Simple. Unless we might cause
+            // multiple next entries, which can happen if the next block is
+            // going to be a Multiple. If we need a one-time loop for the
+            // Multiple, we should do it now, to not break fusing.
+            if (Curr->BranchesOut.size() > 1) {
+              // Look for a block we can put at the very end, reachable via a break in a one-time loop.
+              // If there is one, then we can check if it would be dangerous to make a Multiple after this Simple.
+              Block *Last = FindLastBlock(Blocks);
+              if (Last) {
+                // Check what would happen if we made a Multiple after us
+                BlockSet TempEntries;
+                for (auto iter : Curr->BranchesOut) {
+                  TempEntries.insert(iter.first);
+                }
+                BlockBlockSetMap IndependentGroups;
+                FindIndependentGroups(TempEntries, IndependentGroups);
+                BlockSet PossibleNextEntries;
+                CalculateNextEntriesForMultiple(TempEntries, IndependentGroups, PossibleNextEntries);
+                if (PossibleNextEntries.size() > 1) {
+                  Make(MakeOneTimeLoop(Blocks, *Entries, Last, *NextEntries));
+                }
+              }
+            }
             Make(MakeSimple(Blocks, Curr, *NextEntries));
           }
           // One entry, looping ==> Loop
@@ -1087,7 +1109,7 @@ assert(!contains(NextEntries, CurrTarget));
             // Some groups removable, probably we should do a Multiple. But, if it
             // would cause multiple next entries, then we should try to avoid that
             BlockSet PossibleNextEntries;
-            CalculateNextEntriesForMultiple(Blocks, *Entries, IndependentGroups, Prev, PossibleNextEntries);
+            CalculateNextEntriesForMultiple(*Entries, IndependentGroups, PossibleNextEntries);
             if (PossibleNextEntries.size() > 1) {
               // Look for a block we can put at the very end, reachable via a break in a one-time loop
               Block *Last = FindLastBlock(Blocks);
