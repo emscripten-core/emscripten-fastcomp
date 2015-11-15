@@ -859,6 +859,27 @@ void Relooper::Calculate(Block *Entry) {
 #endif
     }
 
+    void CalculateNextEntriesForMultiple(BlockSet &Blocks, BlockSet& Entries, BlockBlockSetMap& IndependentGroups, Shape *Prev, BlockSet &NextEntries) {
+      // Any entry that is not an independent group is a next entry
+      for (auto Entry : Entries) {
+        if (!contains(IndependentGroups, Entry)) {
+          NextEntries.insert(Entry);
+        }
+      }
+      // Any block that an independent group can reach, that is not in the group, is a next entry
+      for (auto iter : IndependentGroups) {
+        BlockSet &CurrBlocks = iter.second;
+        for (auto CurrInner : CurrBlocks) {
+          for (auto iter : CurrInner->BranchesOut) {
+            Block *CurrTarget = iter.first;
+            if (!contains(CurrBlocks, CurrTarget)) {
+              NextEntries.insert(CurrTarget);
+            }
+          }
+        }
+      }
+    }
+
     Shape *MakeMultiple(BlockSet &Blocks, BlockSet& Entries, BlockBlockSetMap& IndependentGroups, Shape *Prev, BlockSet &NextEntries) {
       PrintDebug("creating multiple block with %d inner groups\n", IndependentGroups.size());
       bool Fused = !!(Shape::IsSimple(Prev));
@@ -916,54 +937,22 @@ assert(!contains(NextEntries, CurrTarget));
       return Multiple;
     }
 
-    // Find which blocks we must reach, no matter which entry we come from, and which we
-    // only might reach. Note: the entries themselves are always in MaybeReach.
-    void FindReachabilities(BlockSet& Entries, BlockSet& MustReach, BlockSet& MaybeReach) {
-      BlockBlockSetMap ReachableFrom; // block -> which entries can reach it
-      struct WorkItem {
-        Block *Origin; // which entry we are arriving from
-        Block *Curr; // where we arriving at when we process this
-        WorkItem(Block *Origin, Block *Curr) : Origin(Origin), Curr(Curr) {}
-      };
-      std::vector<WorkItem> Queue;
-      for (auto iter : Entries) { // start at the entries
-        Queue.emplace_back(iter, iter);
+    Block *FindLastBlock(BlockSet& Blocks) {
+      for (auto Curr : Blocks) {
+        if (Curr->BranchesOut.size() == 0) return Curr;
       }
-      while (Queue.size() > 0) {
-        WorkItem Curr = *(Queue.begin());
-        Queue.erase(Queue.begin());
-        if (contains(ReachableFrom[Curr.Curr], Curr.Origin)) continue; // if we already saw we could reach this one from there, continue
-        ReachableFrom[Curr.Curr].insert(Curr.Origin);
-        for (auto iter : Curr.Origin->BranchesOut) {
-          Block *Target = iter.first;
-          Queue.emplace_back(Curr.Origin, Target);
-        }
-      }
-      unsigned NumEntries = Entries.size();
-      for (auto iter : ReachableFrom) {
-        Block *Curr = iter.first;
-        BlockSet& CanReach = iter.second;
-        if (CanReach.size() == NumEntries && !contains(Entries, Curr)) {
-PrintDebug("must reach %d\n", Curr->Id);
-          MustReach.insert(Curr);
-        } else {
-PrintDebug("maybe reach %d\n", Curr->Id);
-          MaybeReach.insert(Curr);
-        }
-      }
+      return nullptr;
     }
 
     // We use a Loop for this, but it will never hit the continue state, as it will break out
-    Shape *MakeOneTimeLoop(BlockSet &Blocks, BlockSet& Inside, BlockSet& Entries, BlockSet& NextEntries) {
-      for (auto iter : Inside) {
-        Blocks.erase(iter);
-        for (auto out : iter->BranchesOut) {
-          Block *Target = out.first;
-          if (!contains(Inside, Target)) {
-            NextEntries.insert(Target);
-          }
-        }
-      }
+    Shape *MakeOneTimeLoop(BlockSet &Blocks, BlockSet& Entries, Block* Last, BlockSet& NextEntries) {
+      // Take all the blocks but Last
+      BlockSet Inside = Blocks;
+      Inside.erase(Last);
+      // Leave just Last on the outside
+      Blocks.clear();
+      Blocks.insert(Last);
+      NextEntries.insert(Last);
 
       PrintDebug("creating one-time loop block:\n", 0);
       DebugDump(Inside, "  Inside:");
@@ -972,10 +961,9 @@ PrintDebug("maybe reach %d\n", Curr->Id);
       LoopShape *Loop = new LoopShape();
       Notice(Loop);
 
-      // Branches to outside the loop (a next entry) become breaks on this shape
-      for (BlockSet::iterator iter = NextEntries.begin(); iter != NextEntries.end(); iter++) {
-        Solipsize(*iter, Branch::Break, Loop, Inside);
-      }
+      // Branches to Last become breaks on this shape
+      Solipsize(Last, Branch::Break, Loop, Inside);
+
       // Finish up
       Loop->Inner = Process(Inside, Entries, NULL);
       return Loop;
@@ -1024,15 +1012,7 @@ PrintDebug("maybe reach %d\n", Curr->Id);
           Make(MakeLoop(Blocks, *Entries, *NextEntries));
         }
 
-        // More than one entry. We need to use a Multiple or a Loop. First, we
-        // see if there are blocks we *must* reach. We can put everything else in a loop, and reach
-        // the must-reach blocks using a break
-        BlockSet MustReach, MaybeReach;
-        FindReachabilities(*Entries, MustReach, MaybeReach);
-        PrintDebug("reachabilities: must reach %d, maybe reach (including entries) %d\n", MustReach.size(), MaybeReach.size());
-        if (MustReach.size() > 0) {
-          Make(MakeOneTimeLoop(Blocks, MaybeReach, *Entries, *NextEntries));
-        }
+        // More than one entry. We need to use a Multiple or a Loop.
 
         BlockBlockSetMap IndependentGroups;
         FindIndependentGroups(*Entries, IndependentGroups);
@@ -1104,7 +1084,17 @@ PrintDebug("maybe reach %d\n", Curr->Id);
           PrintDebug("Handleable independent groups: %d\n", IndependentGroups.size());
 
           if (IndependentGroups.size() > 0) {
-            // Some groups removable ==> Multiple
+            // Some groups removable, probably we should do a Multiple. But, if it
+            // would cause multiple next entries, then we should try to avoid that
+            BlockSet PossibleNextEntries;
+            CalculateNextEntriesForMultiple(Blocks, *Entries, IndependentGroups, Prev, PossibleNextEntries);
+            if (PossibleNextEntries.size() > 1) {
+              // Look for a block we can put at the very end, reachable via a break in a one-time loop
+              Block *Last = FindLastBlock(Blocks);
+              if (Last) {
+                Make(MakeOneTimeLoop(Blocks, *Entries, Last, *NextEntries));
+              }
+            }
             Make(MakeMultiple(Blocks, *Entries, IndependentGroups, Prev, *NextEntries));
           }
         }
