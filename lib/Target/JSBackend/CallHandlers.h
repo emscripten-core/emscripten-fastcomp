@@ -75,7 +75,7 @@ DEF_CALL_HANDLER(__default__, {
       // function pointer call
       ensureFunctionTable(FT);
       if (!Invoke) {
-        Sig = getFunctionSignature(FT, &Name);
+        Sig = getFunctionSignature(FT);
         if (!EmulatedFunctionPointers) {
           Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
           NeedCasts = false; // function table call, so stays in asm module
@@ -113,7 +113,7 @@ DEF_CALL_HANDLER(__default__, {
   }
 
   if (Invoke) {
-    Sig = getFunctionSignature(FT, &Name);
+    Sig = getFunctionSignature(FT);
     Name = "invoke_" + Sig;
     NeedCasts = true;
   }
@@ -550,9 +550,13 @@ DEF_CALL_HANDLER(emscripten_float32x4_store2, {
 
 std::string handleAsmConst(const Instruction *CI) {
   unsigned Num = getNumArgOperands(CI);
-  unsigned Arity = Num - 1; // ignore the first argument, which is a pointer to the code
-  std::string func = "emscripten_asm_const_" + utostr(Arity);
-  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), Arity));
+  std::string Sig;
+  Sig += getFunctionSignatureLetter(CI->getType());
+  for (unsigned i = 1; i < Num; i++) {
+    Sig += getFunctionSignatureLetter(CI->getOperand(i)->getType());
+  }
+  std::string func = "emscripten_asm_const_" + Sig;
+  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), Sig));
   for (unsigned i = 1; i < Num; i++) {
     ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }

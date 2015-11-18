@@ -174,6 +174,10 @@ namespace {
   typedef std::map<const BasicBlock*, unsigned> BlockIndexMap;
   typedef std::map<const Function*, BlockIndexMap> BlockAddressMap;
   typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
+  struct AsmConstInfo {
+    int Id;
+    std::set<std::string> Sigs;
+  };
 
   /// JSWriter - This class is the main chunk of code that converts an LLVM
   /// module to JavaScript.
@@ -200,8 +204,7 @@ namespace {
     std::vector<std::string> Exports; // additional exports
     StringMap Aliases;
     BlockAddressMap BlockAddresses;
-    NameIntMap AsmConsts;
-    IntIntSetMap AsmConstArities;
+    std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
@@ -330,7 +333,7 @@ namespace {
         return 'i';
       }
     }
-    std::string getFunctionSignature(const FunctionType *F, const std::string *Name=NULL) {
+    std::string getFunctionSignature(const FunctionType *F) {
       std::string Ret;
       Ret += getFunctionSignatureLetter(F->getReturnType());
       for (FunctionType::param_iterator AI = F->param_begin(),
@@ -348,7 +351,7 @@ namespace {
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
-      std::string Sig = getFunctionSignature(F->getFunctionType(), &Name);
+      std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
       if (NoAliasingFunctionPointers) {
         while (Table.size() < NextFunctionIndex) Table.push_back("0");
@@ -455,7 +458,7 @@ namespace {
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
-    unsigned getAsmConstId(const Value *V, int Arity) {
+    unsigned getAsmConstId(const Value *V, std::string Sig) {
       V = resolveFully(V);
       const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
       std::string code;
@@ -482,15 +485,18 @@ namespace {
           }
         }
       }
-      unsigned id;
+      unsigned Id;
       if (AsmConsts.count(code) > 0) {
-        id = AsmConsts[code];
+        auto& Info = AsmConsts[code];
+        Id = Info.Id;
+        Info.Sigs.insert(Sig);
       } else {
-        id = AsmConsts.size();
-        AsmConsts[code] = id;
+        AsmConstInfo Info;
+        Info.Id = Id = AsmConsts.size();
+        Info.Sigs.insert(Sig);
+        AsmConsts[code] = Info;
       }
-      AsmConstArities[id].insert(Arity);
-      return id;
+      return Id;
     }
 
     // Test whether the given value is known to be an absolute value or one we turn into an absolute value
@@ -3301,44 +3307,24 @@ void JSWriter::printModuleBody() {
 
   Out << "\"asmConsts\": {";
   first = true;
-  for (NameIntMap::const_iterator I = AsmConsts.begin(), E = AsmConsts.end(); I != E; ++I) {
+  for (auto& I : AsmConsts) {
     if (first) {
       first = false;
     } else {
       Out << ", ";
     }
-    Out << "\"" << utostr(I->second) << "\": \"" << I->first.c_str() << "\"";
-  }
-  Out << "},";
-
-  // Output a structure like:
-  // "asmConstArities": {
-  //   "<ASM_CONST_ID_1>": [<ARITY>, <ARITY>],
-  //   "<ASM_CONST_ID_2>": [<ARITY>]
-  // }
-  // Each ASM_CONST_ID represents a single EM_ASM_* block in the code and each
-  // ARITY represents the number of arguments defined in the block in compiled
-  // output (which may vary, if the EM_ASM_* block is used inside a template).
-  Out << "\"asmConstArities\": {";
-  first = true;
-  for (IntIntSetMap::const_iterator I = AsmConstArities.begin(), E = AsmConstArities.end();
-       I != E; ++I) {
-    if (!first) {
-      Out << ", ";
-    }
-    Out << "\"" << utostr(I->first) << "\": [";
-    first = true;
-    for (IntSet::const_iterator J = I->second.begin(), F = I->second.end();
-         J != F; ++J) {
-      if (first) {
-        first = false;
+    Out << "\"" << utostr(I.second.Id) << "\": [\"" << I.first.c_str() << "\", [";
+    auto& Sigs = I.second.Sigs;
+    bool innerFirst = true;
+    for (auto& Sig : Sigs) {
+      if (innerFirst) {
+        innerFirst = false;
       } else {
         Out << ", ";
       }
-      Out << utostr(*J);
+      Out << "\"" << Sig << "\"";
     }
-    first = false;
-    Out << "]";
+    Out << "]]";
   }
   Out << "}";
 
