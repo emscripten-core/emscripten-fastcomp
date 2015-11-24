@@ -220,6 +220,7 @@ namespace {
     int GlobalBasePadding;
     int MaxGlobalAlign;
     int StaticBump;
+    const Instruction* CurrInstruction;
 
     #include "CallHandlers.h"
 
@@ -229,7 +230,8 @@ namespace {
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
         UsesSIMDInt8x16(false), UsesSIMDInt16x8(false), UsesSIMDInt32x4(false),
         UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), InvokeState(0),
-        OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0) {}
+        OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
+        CurrInstruction(nullptr) {}
 
     const char *getPassName() const override { return "JavaScript backend"; }
 
@@ -545,6 +547,19 @@ namespace {
       return S;
     }
 
+    static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
+      auto &Loc = I->getDebugLoc();
+      if (Loc) {
+        unsigned Line = Loc.getLine();
+        auto *Scope = cast_or_null<DIScope>(Loc.getScope());
+        if (Scope) {
+          StringRef File = Scope->getFilename();
+          if (Line > 0)
+            Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+        }
+      }
+    }
+
     std::string ftostr(const ConstantFP *CFP, AsmCast sign) {
       const APFloat &flt = CFP->getValueAPF();
 
@@ -557,6 +572,11 @@ namespace {
           // this a build error in order to not break people's existing code, so issue a warning instead.
           if (WarnOnNoncanonicalNans) {
             errs() << "emcc: warning: cannot represent a NaN literal '" << CFP << "' with custom bit pattern in NaN-canonicalizing JS engines (e.g. Firefox and Safari) without erasing bits!\n";
+            if (CurrInstruction) {
+              errs() << "  in " << *CurrInstruction << " in " << CurrInstruction->getParent()->getParent()->getName() << "() ";
+              emitDebugInfo(errs(), CurrInstruction);
+              errs() << '\n';
+            }
           }
         }
         return ensureCast("nan", CFP->getType(), sign);
@@ -750,19 +770,6 @@ static inline std::string ensureFloat(const std::string &value, bool wrap) {
     return "Math_fround(" + value + ')';
   }
   return value;
-}
-
-static void emitDebugInfo(raw_ostream& Code, const Instruction *I) {
-  auto &Loc = I->getDebugLoc();
-  if (Loc) {
-    unsigned Line = Loc.getLine();
-    auto *Scope = cast_or_null<DIScope>(Loc.getScope());
-    if (Scope) {
-      StringRef File = Scope->getFilename();
-      if (Line > 0)
-        Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
-    }
-  }
 }
 
 void JSWriter::error(const std::string& msg) {
@@ -2688,9 +2695,11 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
        I != E; ++I) {
     if (I->stripPointerCasts() == I) {
+      CurrInstruction = I;
       generateExpression(I, CodeStream);
     }
   }
+  CurrInstruction = nullptr;
   CodeStream.flush();
   const Value* Condition = considerConditionVar(BB->getTerminator());
   Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
