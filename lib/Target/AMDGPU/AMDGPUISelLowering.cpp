@@ -394,6 +394,16 @@ AMDGPUTargetLowering::AMDGPUTargetLowering(TargetMachine &TM,
 
   setFsqrtIsCheap(true);
 
+  // We want to find all load dependencies for long chains of stores to enable
+  // merging into very wide vectors. The problem is with vectors with > 4
+  // elements. MergeConsecutiveStores will attempt to merge these because x8/x16
+  // vectors are a legal type, even though we have to split the loads
+  // usually. When we can more precisely specify load legality per address
+  // space, we should be able to make FindBetterChain/MergeConsecutiveStores
+  // smarter so that they can figure out what to do in 2 iterations without all
+  // N > 4 stores on the same chain.
+  GatherAllAliasesMaxDepth = 16;
+
   // FIXME: Need to really handle these.
   MaxStoresPerMemcpy  = 4096;
   MaxStoresPerMemmove = 4096;
@@ -1474,7 +1484,7 @@ SDValue AMDGPUTargetLowering::LowerSTORE(SDValue Op, SelectionDAG &DAG) const {
   if ((Store->getAddressSpace() == AMDGPUAS::LOCAL_ADDRESS ||
        Store->getAddressSpace() == AMDGPUAS::PRIVATE_ADDRESS) &&
       Store->getValue().getValueType().isVector()) {
-    return ScalarizeVectorStore(Op, DAG);
+    return SplitVectorStore(Op, DAG);
   }
 
   EVT MemVT = Store->getMemoryVT();
@@ -2601,20 +2611,14 @@ bool AMDGPUTargetLowering::isHWTrueValue(SDValue Op) const {
   if (ConstantFPSDNode * CFP = dyn_cast<ConstantFPSDNode>(Op)) {
     return CFP->isExactlyValue(1.0);
   }
-  if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-    return C->isAllOnesValue();
-  }
-  return false;
+  return isAllOnesConstant(Op);
 }
 
 bool AMDGPUTargetLowering::isHWFalseValue(SDValue Op) const {
   if (ConstantFPSDNode * CFP = dyn_cast<ConstantFPSDNode>(Op)) {
     return CFP->getValueAPF().isZero();
   }
-  if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op)) {
-    return C->isNullValue();
-  }
-  return false;
+  return isNullConstant(Op);
 }
 
 SDValue AMDGPUTargetLowering::CreateLiveInRegister(SelectionDAG &DAG,
@@ -2842,8 +2846,7 @@ unsigned AMDGPUTargetLowering::ComputeNumSignBitsForTargetNode(
       return 1;
 
     unsigned SignBits = 32 - Width->getZExtValue() + 1;
-    ConstantSDNode *Offset = dyn_cast<ConstantSDNode>(Op.getOperand(1));
-    if (!Offset || !Offset->isNullValue())
+    if (!isNullConstant(Op.getOperand(1)))
       return SignBits;
 
     // TODO: Could probably figure something out with non-0 offsets.

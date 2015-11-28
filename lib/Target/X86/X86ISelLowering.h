@@ -399,10 +399,14 @@ namespace llvm {
       VREDUCE,
       // RndScale - Round FP Values To Include A Given Number Of Fraction Bits
       VRNDSCALE,
-      // VFPCLASS - Tests Types Of a FP Values
+      // VFPCLASS - Tests Types Of a FP Values for packed types.
       VFPCLASS, 
+      // VFPCLASSS - Tests Types Of a FP Values for scalar types.
+      VFPCLASSS, 
       // Broadcast scalar to vector
       VBROADCAST,
+      // Broadcast mask to vector
+      VBROADCASTM,
       // Broadcast subvector to vector
       SUBV_BROADCAST,
       // Insert/Extract vector element
@@ -889,6 +893,16 @@ namespace llvm {
     unsigned getRegisterByName(const char* RegName, EVT VT,
                                SelectionDAG &DAG) const override;
 
+    /// If a physical register, this returns the register that receives the
+    /// exception address on entry to an EH pad.
+    unsigned
+    getExceptionPointerRegister(const Constant *PersonalityFn) const override;
+
+    /// If a physical register, this returns the register that receives the
+    /// exception typeid on entry to a landing pad.
+    unsigned
+    getExceptionSelectorRegister(const Constant *PersonalityFn) const override;
+
     /// This method returns a target specific FastISel object,
     /// or null if the target does not support "fast" ISel.
     FastISel *createFastISel(FunctionLoweringInfo &funcInfo,
@@ -1011,6 +1025,7 @@ namespace llvm {
     SDValue LowerToBT(SDValue And, ISD::CondCode CC,
                       SDLoc dl, SelectionDAG &DAG) const;
     SDValue LowerSETCC(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerSETCCE(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSELECT(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerBRCOND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerJumpTable(SDValue Op, SelectionDAG &DAG) const;
@@ -1087,6 +1102,12 @@ namespace llvm {
 
     MachineBasicBlock *EmitLoweredWinAlloca(MachineInstr *MI,
                                               MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitLoweredCatchRet(MachineInstr *MI,
+                                           MachineBasicBlock *BB) const;
+
+    MachineBasicBlock *EmitLoweredCatchPad(MachineInstr *MI,
+                                           MachineBasicBlock *BB) const;
 
     MachineBasicBlock *EmitLoweredSegAlloca(MachineInstr *MI,
                                             MachineBasicBlock *BB) const;

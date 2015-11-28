@@ -90,8 +90,7 @@ private:
   typedef DenseMap<const llvm::Function *, DISubprogram *> DebugMap;
   TypeMap TypeMapper;
 
-  bool ensureCompliantSignature(LLVMContext &Ctx, Function *OldFct, Module &M,
-                                DebugMap &DISubprogramMap);
+  bool ensureCompliantSignature(LLVMContext &Ctx, Function *OldFct, Module &M);
 };
 } // anonymous namespace
 
@@ -638,7 +637,7 @@ static bool processFunction(Function &F, DataLayout &DL) {
   bool Modified = false; // XXX Emscripten: Fixed use of an uninitialized variable.
   for (auto FI = F.begin(), FE = F.end(); FI != FE; ++FI) {
     for (auto BBI = FI->begin(), BBE = FI->end(); BBI != BBE;) {
-      Instruction *Inst = BBI++;
+      Instruction *Inst = &*BBI++;
       // Only attempt to convert an instruction if its result or any of its
       // operands are illegal.
       bool ShouldConvert = shouldConvert(Inst);
@@ -661,8 +660,7 @@ static bool processFunction(Function &F, DataLayout &DL) {
 }
 
 bool PromoteIntegers::ensureCompliantSignature(
-    LLVMContext &Ctx, Function *OldFct, Module &M,
-    DenseMap<const llvm::Function *, DISubprogram *> &DISubprogramMap) {
+    LLVMContext &Ctx, Function *OldFct, Module &M) {
 
   auto *NewFctType = cast<FunctionType>(
       TypeMapper.getSimpleType(Ctx, OldFct->getFunctionType()));
@@ -685,11 +683,11 @@ bool PromoteIntegers::ensureCompliantSignature(
 
   NewFct->getBasicBlockList().splice(NewFct->begin(),
                                      OldFct->getBasicBlockList());
-  IRBuilder<> Builder(NewFct->getEntryBlock().getFirstInsertionPt());
+  IRBuilder<> Builder(&*NewFct->getEntryBlock().getFirstInsertionPt());
 
   auto OldArgIter = OldFct->getArgumentList().begin();
   for (auto &NewArg : NewFct->getArgumentList()) {
-    Argument *OldArg = OldArgIter++;
+    Argument *OldArg = &*OldArgIter++;
 
     if (OldArg->getType() != NewArg.getType()) {
       if (NewArg.getType()->isIntegerTy()) {
@@ -713,10 +711,6 @@ bool PromoteIntegers::ensureCompliantSignature(
     }
   }
 
-  auto Found = DISubprogramMap.find(OldFct);
-  if (Found != DISubprogramMap.end())
-    Found->second->replaceFunction(NewFct);
-
   return true;
 }
 
@@ -724,12 +718,11 @@ bool PromoteIntegers::runOnModule(Module &M) {
   DataLayout DL(&M);
   LLVMContext &Ctx = M.getContext();
   bool Modified = false;
-  auto DISubprogramMap = makeSubprogramMap(M);
 
   // Change function signatures first.
   for (auto I = M.begin(), E = M.end(); I != E;) {
-    Function *F = I++;
-    bool Changed = ensureCompliantSignature(Ctx, F, M, DISubprogramMap);
+    Function *F = &*I++;
+    bool Changed = ensureCompliantSignature(Ctx, F, M);
     if (Changed)
       F->eraseFromParent();
     Modified |= Changed;

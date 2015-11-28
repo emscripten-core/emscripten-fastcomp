@@ -129,8 +129,7 @@ private:
   DenseMap<Function *, Function *> FunctionMap;
 
   bool
-  simplifyFunction(LLVMContext &Ctx, Function *OldFunc,
-                   DenseMap<const Function *, DISubprogram *> &DISubprogramMap);
+  simplifyFunction(LLVMContext &Ctx, Function *OldFunc);
 
   void scheduleInstructionsForCleanup(Function *NewFunc);
 
@@ -189,7 +188,7 @@ static void UpdateArgNames(Function *OldFunc, Function *NewFunc) {
   }
 
   for (const Argument &OldArg : OldFunc->args()) {
-    Argument *NewArg = NewArgIter++;
+    Argument *NewArg = &*NewArgIter++;
     NewArg->setName(OldArg.getName() +
                     (OldArg.getType()->isAggregateType() ? ".ptr" : ""));
   }
@@ -226,13 +225,13 @@ static void ConvertArgumentValue(Value *Old, Value *New,
 // Fix returns. Return true if fixes were needed.
 static void FixReturn(Function *OldFunc, Function *NewFunc) {
 
-  Argument *FirstNewArg = NewFunc->getArgumentList().begin();
+  Argument *FirstNewArg = &*NewFunc->getArgumentList().begin();
 
   for (auto BIter = NewFunc->begin(), LastBlock = NewFunc->end();
        LastBlock != BIter;) {
-    BasicBlock *BB = BIter++;
+    BasicBlock *BB = &*BIter++;
     for (auto IIter = BB->begin(), LastI = BB->end(); LastI != IIter;) {
-      Instruction *Instr = IIter++;
+      Instruction *Instr = &*IIter++;
       if (ReturnInst *Ret = dyn_cast<ReturnInst>(Instr)) {
         auto RetVal = Ret->getReturnValue();
         IRBuilder<> Builder(Ret);
@@ -280,10 +279,10 @@ static AllocaInst *InsertAllocaAtLocation(IRBuilder<> &Builder,
                                           BasicBlock::iterator &AllocaInsPoint,
                                           Type *ValType) {
   auto SavedInsPoint = Builder.GetInsertPoint();
-  Builder.SetInsertPoint(AllocaInsPoint);
+  Builder.SetInsertPoint(&*AllocaInsPoint);
   auto *Alloca = Builder.CreateAlloca(ValType);
   AllocaInsPoint = Builder.GetInsertPoint();
-  Builder.SetInsertPoint(SavedInsPoint);
+  Builder.SetInsertPoint(&*SavedInsPoint);
   return Alloca;
 }
 
@@ -320,7 +319,7 @@ void SimplifyStructRegSignatures::fixCallSite(LLVMContext &Ctx, TCall *OldCall,
                                               NewType, AllocaInsPoint, Alloca);
     assert(NewCall);
     if (auto *Invoke = dyn_cast<InvokeInst>(OldCall))
-      Builder.SetInsertPoint(Invoke->getNormalDest()->getFirstInsertionPt());
+      Builder.SetInsertPoint(&*Invoke->getNormalDest()->getFirstInsertionPt());
 
     auto *Load = Builder.CreateLoad(Alloca, Alloca->getName() + ".sreg");
     Load->setAlignment(Alloca->getAlignment());
@@ -427,7 +426,7 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
 
   bool returnWasFixed = OldFunc->getReturnType()->isAggregateType();
 
-  Instruction *InsPoint = NewFunc->begin()->begin();
+  Instruction *InsPoint = &*NewFunc->begin()->begin();
   auto NewArgIter = NewFunc->arg_begin();
   // Advance one more if we used to return a struct register.
   if (returnWasFixed)
@@ -436,8 +435,8 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
   // Wire new parameters in.
   for (auto ArgIter = OldFunc->arg_begin(), E = OldFunc->arg_end();
        E != ArgIter;) {
-    Argument *OldArg = ArgIter++;
-    Argument *NewArg = NewArgIter++;
+    Argument *OldArg = &*ArgIter++;
+    Argument *NewArg = &*NewArgIter++;
     ConvertArgumentValue(OldArg, NewArg, InsPoint);
   }
 
@@ -447,9 +446,9 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
   // first (so that calls have valid targets)
   for (auto BBIter = NewFunc->begin(), LBlock = NewFunc->end();
        LBlock != BBIter;) {
-    auto Block = BBIter++;
+    auto Block = &*BBIter++;
     for (auto IIter = Block->begin(), LIns = Block->end(); LIns != IIter;) {
-      auto Instr = IIter++;
+      auto Instr = &*IIter++;
       Instr->mutateType(Mapper.getSimpleType(Ctx, Instr->getType()));
     }
   }
@@ -460,8 +459,7 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
 // Ensure function is simplified, returning true if the function
 // had to be changed.
 bool SimplifyStructRegSignatures::simplifyFunction(
-    LLVMContext &Ctx, Function *OldFunc,
-    DenseMap<const Function *, DISubprogram *> &DISubprogramMap) {
+    LLVMContext &Ctx, Function *OldFunc) {
   auto *OldFT = OldFunc->getFunctionType();
   auto *NewFT = cast<FunctionType>(Mapper.getSimpleType(Ctx, OldFT));
 
@@ -471,7 +469,7 @@ bool SimplifyStructRegSignatures::simplifyFunction(
     AssociatedFctLoc = NewFunc;
 
     NewFunc->copyAttributesFrom(OldFunc);
-    OldFunc->getParent()->getFunctionList().insert(OldFunc, NewFunc);
+    OldFunc->getParent()->getFunctionList().insert(OldFunc->getIterator(), NewFunc);
     NewFunc->takeName(OldFunc);
 
     UpdateArgNames(OldFunc, NewFunc);
@@ -482,9 +480,6 @@ bool SimplifyStructRegSignatures::simplifyFunction(
 
     fixFunctionBody(Ctx, OldFunc, NewFunc);
     FunctionsToDelete.insert(OldFunc);
-    auto Found = DISubprogramMap.find(OldFunc);
-    if (Found != DISubprogramMap.end())
-      Found->second->replaceFunction(NewFunc);
   } else {
     AssociatedFctLoc = OldFunc;
   }
@@ -499,15 +494,14 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   PreferredAlignment = M.getDataLayout().getStackAlignment();
 
   LLVMContext &Ctx = M.getContext();
-  auto DISubprogramMap = makeSubprogramMap(M);
 
   // Change function signatures and fix a changed function body by
   // wiring the new arguments. Call sites are unchanged at this point.
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E;) {
-    Function *Func = Iter++;
+    Function *Func = &*Iter++;
     if(Func->isIntrinsic()) { continue; } // Can't rewrite the intrinsics.
     checkNoUnsupportedInstructions(Ctx, Func);
-    Changed |= simplifyFunction(Ctx, Func, DISubprogramMap);
+    Changed |= simplifyFunction(Ctx, Func);
   }
 
   // Fix call sites.

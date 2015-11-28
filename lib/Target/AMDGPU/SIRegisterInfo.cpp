@@ -73,26 +73,32 @@ BitVector SIRegisterInfo::getReservedRegs(const MachineFunction &MF) const {
 
 unsigned SIRegisterInfo::getRegPressureSetLimit(const MachineFunction &MF,
                                                 unsigned Idx) const {
-
   const AMDGPUSubtarget &STI = MF.getSubtarget<AMDGPUSubtarget>();
   // FIXME: We should adjust the max number of waves based on LDS size.
   unsigned SGPRLimit = getNumSGPRsAllowed(STI.getGeneration(),
                                           STI.getMaxWavesPerCU());
   unsigned VGPRLimit = getNumVGPRsAllowed(STI.getMaxWavesPerCU());
 
+  unsigned VSLimit = SGPRLimit + VGPRLimit;
+
   for (regclass_iterator I = regclass_begin(), E = regclass_end();
        I != E; ++I) {
+    const TargetRegisterClass *RC = *I;
 
-    unsigned NumSubRegs = std::max((int)(*I)->getSize() / 4, 1);
+    unsigned NumSubRegs = std::max((int)RC->getSize() / 4, 1);
     unsigned Limit;
 
-    if (isSGPRClass(*I)) {
+    if (isPseudoRegClass(RC)) {
+      // FIXME: This is a hack. We should never be considering the pressure of
+      // these since no virtual register should ever have this class.
+      Limit = VSLimit;
+    } else if (isSGPRClass(RC)) {
       Limit = SGPRLimit / NumSubRegs;
     } else {
       Limit = VGPRLimit / NumSubRegs;
     }
 
-    const int *Sets = getRegClassPressureSets(*I);
+    const int *Sets = getRegClassPressureSets(RC);
     assert(Sets);
     for (unsigned i = 0; Sets[i] != -1; ++i) {
       if (Sets[i] == (int)Idx)
@@ -504,6 +510,7 @@ bool SIRegisterInfo::opCanUseInlineConstant(unsigned OpType) const {
 unsigned SIRegisterInfo::getPreloadedValue(const MachineFunction &MF,
                                            enum PreloadedValue Value) const {
 
+  const AMDGPUSubtarget &ST = MF.getSubtarget<AMDGPUSubtarget>();
   const SIMachineFunctionInfo *MFI = MF.getInfo<SIMachineFunctionInfo>();
   switch (Value) {
   case SIRegisterInfo::TGID_X:
@@ -519,6 +526,11 @@ unsigned SIRegisterInfo::getPreloadedValue(const MachineFunction &MF,
   case SIRegisterInfo::SCRATCH_PTR:
     return AMDGPU::SGPR2_SGPR3;
   case SIRegisterInfo::INPUT_PTR:
+    if (ST.isAmdHsaOS())
+      return MFI->hasDispatchPtr() ? AMDGPU::SGPR2_SGPR3 : AMDGPU::SGPR0_SGPR1;
+    return AMDGPU::SGPR0_SGPR1;
+  case SIRegisterInfo::DISPATCH_PTR:
+    assert(MFI->hasDispatchPtr());
     return AMDGPU::SGPR0_SGPR1;
   case SIRegisterInfo::TIDIG_X:
     return AMDGPU::VGPR0;

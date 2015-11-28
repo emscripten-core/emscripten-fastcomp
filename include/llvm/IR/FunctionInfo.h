@@ -194,10 +194,17 @@ public:
     return FunctionMap[FuncName];
   }
 
+  /// Get the list of function info objects for a given function.
+  const const_funcinfo_iterator findFunctionInfoList(StringRef FuncName) const {
+    return FunctionMap.find(FuncName);
+  }
+
   /// Add a function info for a function of the given name.
   void addFunctionInfo(StringRef FuncName, std::unique_ptr<FunctionInfo> Info) {
-    if (ExportingModule) {
-      assert(Info->functionSummary());
+    // Update the HasExportedFunctions flag, but only if we had a function
+    // summary (i.e. we aren't parsing them lazily or have a bitcode file
+    // without a function summary section).
+    if (ExportingModule && Info->functionSummary()) {
       if (ExportingModule->getModuleIdentifier() ==
           Info->functionSummary()->modulePath())
         HasExportedFunctions = true;
@@ -242,7 +249,7 @@ public:
 
   /// Check if the given Module has any functions available for exporting
   /// in the index.
-  bool hasExportedFunctions(const Module *M) {
+  bool hasExportedFunctions(const Module *M) const {
     assert(M == ExportingModule &&
            "Checking for exported functions on unexpected module");
     return HasExportedFunctions;

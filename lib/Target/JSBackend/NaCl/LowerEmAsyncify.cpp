@@ -148,14 +148,14 @@ bool LowerEmAsyncify::runOnModule(Module &M) {
       if (WhiteList.count(FI->getName())) continue;
 
       bool has_indirect_call = false;
-      for (inst_iterator I = inst_begin(FI), E = inst_end(FI); I != E; ++I) {
+      for (inst_iterator I = inst_begin(&*FI), E = inst_end(&*FI); I != E; ++I) {
         if (IsFunctionPointerCall(&*I)) {
           has_indirect_call = true;
-          AsyncFunctionCalls[FI].push_back(&*I);
+          AsyncFunctionCalls[&*FI].push_back(&*I);
         }
       }
 
-      if (has_indirect_call) AsyncFunctionsPending.push_back(FI);
+      if (has_indirect_call) AsyncFunctionsPending.push_back(&*FI);
     }
 
     while (!AsyncFunctionsPending.empty()) {
@@ -543,7 +543,7 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     std::vector<LoadInst *> LoadedAsyncVars;
     {
       Type *AsyncCtxAddrTy = CurEntry.ContextStructType->getPointerTo();
-      BitCastInst *AsyncCtxAddr = new BitCastInst(CurCallbackFunc->arg_begin(), AsyncCtxAddrTy, "AsyncCtx", EntryBlock);
+      BitCastInst *AsyncCtxAddr = new BitCastInst(&*CurCallbackFunc->arg_begin(), AsyncCtxAddrTy, "AsyncCtx", EntryBlock);
       SmallVector<Value*, 2> Indices;
       for (size_t i = 0; i < CurEntry.ContextVariables.size(); ++i) {
         Indices.clear();
@@ -559,8 +559,8 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
 
     // we don't need any argument, just leave dummy entries there to cheat CloneFunctionInto
     for (Function::const_arg_iterator AI = F.arg_begin(), AE = F.arg_end(); AI != AE; ++AI) {
-      if (VMap.count(AI) == 0)
-        VMap[AI] = Constant::getNullValue(AI->getType());
+      if (VMap.count(&*AI) == 0)
+        VMap[&*AI] = Constant::getNullValue(AI->getType());
     }
 
     // Clone the function

@@ -58,7 +58,7 @@ INITIALIZE_PASS(ExpandInsertExtractElement, "expand-insert-extract-elements",
 bool ExpandInsertExtractElement::runOnFunction(Function &F) {
   Changed = false;
 
-  Instruction *Entry = F.getEntryBlock().begin();
+  Instruction *Entry = &*F.getEntryBlock().begin();
   Type *Int32 = Type::getInt32Ty(F.getContext());
   Constant *Zero = ConstantInt::get(Int32, 0);
   for (inst_iterator I = inst_begin(&F), E = inst_end(&F); I != E; ) {

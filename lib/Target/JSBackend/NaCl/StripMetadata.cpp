@@ -130,8 +130,8 @@ static bool DoStripMetadata(Module &M, bool StripModuleFlags) {
   SmallVector<NamedMDNode*, 8> ToErase;
   for (Module::NamedMDListType::iterator I = M.named_metadata_begin(),
            E = M.named_metadata_end(); I != E; ++I) {
-    if (!IsWhitelistedMetadata(I, StripModuleFlags))
-      ToErase.push_back(I);
+    if (!IsWhitelistedMetadata(&*I, StripModuleFlags))
+      ToErase.push_back(&*I);
   }
   for (size_t i = 0; i < ToErase.size(); ++i)
     M.eraseNamedMetadata(ToErase[i]);
@@ -159,26 +159,5 @@ bool StripDanglingDISubprograms::runOnModule(Module &M) {
   if (!CU_Nodes)
     return false;
 
-  bool Changed = false;
-  for (MDNode *N : CU_Nodes->operands()) {
-    auto *CUNode = cast<DICompileUnit>(N);
-    for (auto *SP : CUNode->getSubprograms()) {
-      // For each subprogram in the debug info, check its function for dbg
-      // attachments. The allocas and some other stuff in the entry block
-      // typically do not have attachments but everything else usually does.
-      // In the worst case this walks the whole function (if there are no
-      // attachments) but this only happens in the (uncommon) bad case that
-      // we want to fix; i.e. there is a DISubprogram but no attachments).
-      // Usually either there will be no DISubprograms or we will have to
-      // check just a few instructions per function.
-      Function *F = SP->getFunction();
-      if (F && !functionHasDbgAttachment(*F)) {
-        // Can't really delete it, just remove the reference to the Function.
-        SP->replaceFunction(nullptr);
-        Changed = true;
-      }
-    }
-  }
-
-  return Changed;
+  return false; // TODO: we don't need this anymore
 }

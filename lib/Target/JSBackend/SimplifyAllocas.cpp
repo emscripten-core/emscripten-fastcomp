@@ -51,7 +51,7 @@ bool SimplifyAllocas::runOnFunction(Function &Func) {
   std::vector<Instruction*> ToRemove; // removing can invalidate our iterators, so do it all at the end
   for (Function::iterator B = Func.begin(), E = Func.end(); B != E; ++B) {
     for (BasicBlock::iterator BI = B->begin(), BE = B->end(); BI != BE; ) {
-      Instruction *I = BI++;
+      Instruction *I = &*BI++;
       AllocaInst *AI = dyn_cast<AllocaInst>(I);
       if (!AI) continue;
       if (!isa<ConstantInt>(AI->getArraySize())) continue;

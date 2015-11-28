@@ -4188,6 +4188,7 @@ else
   arm64*-*)               llvm_cv_target_arch="AArch64" ;;
   arm*-*)                 llvm_cv_target_arch="ARM" ;;
   aarch64*-*)             llvm_cv_target_arch="AArch64" ;;
+  avr-*)                  llvm_cv_target_arch="AVR" ;;
   mips-* | mips64-*)      llvm_cv_target_arch="Mips" ;;
   mipsel-* | mips64el-*)  llvm_cv_target_arch="Mips" ;;
   xcore-*)                llvm_cv_target_arch="XCore" ;;
@@ -4226,6 +4227,7 @@ case $host in
   arm64*-*)               host_arch="AArch64" ;;
   arm*-*)                 host_arch="ARM" ;;
   aarch64*-*)             host_arch="AArch64" ;;
+  avr-*)                  host_arch="AVR" ;;
   mips-* | mips64-*)      host_arch="Mips" ;;
   mipsel-* | mips64el-*)  host_arch="Mips" ;;
   xcore-*)                host_arch="XCore" ;;
@@ -5147,6 +5149,8 @@ else
     x86_64)      TARGET_HAS_JIT=1
  ;;
     ARM)         TARGET_HAS_JIT=1
+ ;;
+    AVR)         TARGET_HAS_JIT=0
  ;;
     Mips)        TARGET_HAS_JIT=1
  ;;
@@ -8894,6 +8898,87 @@ if test $ac_cv_lib_shell32_main = yes; then
 _ACEOF
 
   LIBS="-lshell32 $LIBS"
+
+fi
+
+
+{ echo "$as_me:$LINENO: checking for main in -luuid" >&5
+echo $ECHO_N "checking for main in -luuid... $ECHO_C" >&6; }
+if test "${ac_cv_lib_uuid_main+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-luuid  $LIBS"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+
+int
+main ()
+{
+return main ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (ac_try="$ac_link"
+case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_link") 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+    { ac_try='test -z "$ac_c_werror_flag" || test ! -s conftest.err'
+  { (case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_try") 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+    { ac_try='test -s conftest$ac_exeext'
+  { (case "(($ac_try" in
+  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
+  *) ac_try_echo=$ac_try;;
+esac
+eval "echo \"\$as_me:$LINENO: $ac_try_echo\"") >&5
+  (eval "$ac_try") 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_lib_uuid_main=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+   ac_cv_lib_uuid_main=no
+fi
+
+rm -f core conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ echo "$as_me:$LINENO: result: $ac_cv_lib_uuid_main" >&5
+echo "${ECHO_T}$ac_cv_lib_uuid_main" >&6; }
+if test $ac_cv_lib_uuid_main = yes; then
+  cat >>confdefs.h <<_ACEOF
+#define HAVE_LIBUUID 1
+_ACEOF
+
+  LIBS="-luuid $LIBS"
 
 fi
 
@@ -19380,3 +19465,14 @@ echo "$as_me: error: $ac_sub_configure failed for $ac_dir" >&2;}
   done
 fi
 
+echo ""
+echo ""
+echo "################################################################################"
+echo "################################################################################"
+echo "The LLVM project has deprecated building with configure & make."
+echo "The autoconf-based makefile build system will be removed in the 3.9 release."
+echo ""
+echo "Please migrate to the CMake-based build system."
+echo "For more information see: http://llvm.org/docs/CMake.html"
+echo "################################################################################"
+echo "################################################################################"

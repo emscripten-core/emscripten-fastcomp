@@ -3626,6 +3626,7 @@ ScalarEvolution::ForgetSymbolicName(Instruction *PN, const SCEV *SymName) {
   }
 }
 
+namespace {
 class SCEVInitRewriter : public SCEVRewriteVisitor<SCEVInitRewriter> {
 public:
   static const SCEV *rewrite(const SCEV *Scev, const Loop *L,
@@ -3690,6 +3691,7 @@ private:
   const Loop *L;
   bool Valid;
 };
+} // end anonymous namespace
 
 const SCEV *ScalarEvolution::createAddRecFromPHI(PHINode *PN) {
   const Loop *L = LI.getLoopFor(PN->getParent());
@@ -6124,22 +6126,22 @@ const SCEV *ScalarEvolution::computeExitCountExhaustively(const Loop *L,
 /// In the case that a relevant loop exit value cannot be computed, the
 /// original value V is returned.
 const SCEV *ScalarEvolution::getSCEVAtScope(const SCEV *V, const Loop *L) {
+  SmallVector<std::pair<const Loop *, const SCEV *>, 2> &Values =
+      ValuesAtScopes[V];
   // Check to see if we've folded this expression at this loop before.
-  SmallVector<std::pair<const Loop *, const SCEV *>, 2> &Values = ValuesAtScopes[V];
-  for (unsigned u = 0; u < Values.size(); u++) {
-    if (Values[u].first == L)
-      return Values[u].second ? Values[u].second : V;
-  }
-  Values.push_back(std::make_pair(L, static_cast<const SCEV *>(nullptr)));
+  for (auto &LS : Values)
+    if (LS.first == L)
+      return LS.second ? LS.second : V;
+
+  Values.emplace_back(L, nullptr);
+
   // Otherwise compute it.
   const SCEV *C = computeSCEVAtScope(V, L);
-  SmallVector<std::pair<const Loop *, const SCEV *>, 2> &Values2 = ValuesAtScopes[V];
-  for (unsigned u = Values2.size(); u > 0; u--) {
-    if (Values2[u - 1].first == L) {
-      Values2[u - 1].second = C;
+  for (auto &LS : reverse(ValuesAtScopes[V]))
+    if (LS.first == L) {
+      LS.second = C;
       break;
     }
-  }
   return C;
 }
 
@@ -7043,16 +7045,14 @@ bool ScalarEvolution::SimplifyICmpOperands(ICmpInst::Predicate &Pred,
       Pred = ICmpInst::ICMP_ULT;
       Changed = true;
     } else if (!getUnsignedRange(LHS).getUnsignedMin().isMinValue()) {
-      LHS = getAddExpr(getConstant(RHS->getType(), (uint64_t)-1, true), LHS,
-                       SCEV::FlagNUW);
+      LHS = getAddExpr(getConstant(RHS->getType(), (uint64_t)-1, true), LHS);
       Pred = ICmpInst::ICMP_ULT;
       Changed = true;
     }
     break;
   case ICmpInst::ICMP_UGE:
     if (!getUnsignedRange(RHS).getUnsignedMin().isMinValue()) {
-      RHS = getAddExpr(getConstant(RHS->getType(), (uint64_t)-1, true), RHS,
-                       SCEV::FlagNUW);
+      RHS = getAddExpr(getConstant(RHS->getType(), (uint64_t)-1, true), RHS);
       Pred = ICmpInst::ICMP_UGT;
       Changed = true;
     } else if (!getUnsignedRange(LHS).getUnsignedMax().isMaxValue()) {
@@ -7385,6 +7385,7 @@ bool ScalarEvolution::isKnownPredicateViaNoOverflow(ICmpInst::Predicate Pred,
     if (MatchBinaryAddToConst(LHS, RHS, C, SCEV::FlagNSW) &&
         !C.isStrictlyPositive())
       return true;
+    break;
 
   case ICmpInst::ICMP_SGT:
     std::swap(LHS, RHS);
@@ -7397,6 +7398,7 @@ bool ScalarEvolution::isKnownPredicateViaNoOverflow(ICmpInst::Predicate Pred,
     // (X + C)<nsw> s< X if C < 0
     if (MatchBinaryAddToConst(LHS, RHS, C, SCEV::FlagNSW) && C.isNegative())
       return true;
+    break;
   }
 
   return false;
@@ -7419,12 +7421,9 @@ bool ScalarEvolution::isKnownPredicateViaSplitting(ICmpInst::Predicate Pred,
   // expensive; and using isKnownNonNegative(RHS) is sufficient for most of the
   // interesting cases seen in practice.  We can consider "upgrading" L >= 0 to
   // use isKnownPredicate later if needed.
-  if (isKnownNonNegative(RHS) &&
-      isKnownPredicate(CmpInst::ICMP_SGE, LHS, getZero(LHS->getType())) &&
-      isKnownPredicate(CmpInst::ICMP_SLT, LHS, RHS))
-    return true;
-
-  return false;
+  return isKnownNonNegative(RHS) &&
+         isKnownPredicate(CmpInst::ICMP_SGE, LHS, getZero(LHS->getType())) &&
+         isKnownPredicate(CmpInst::ICMP_SLT, LHS, RHS);
 }
 
 /// isLoopBackedgeGuardedByCond - Test whether the backedge of the loop is
@@ -8459,15 +8458,13 @@ const SCEV *SCEVAddRecExpr::getNumIterationsInRange(ConstantRange Range,
                                              FlagAnyWrap);
 
     // Next, solve the constructed addrec
-    std::pair<const SCEV *,const SCEV *> Roots =
-      SolveQuadraticEquation(cast<SCEVAddRecExpr>(NewAddRec), SE);
+    auto Roots = SolveQuadraticEquation(cast<SCEVAddRecExpr>(NewAddRec), SE);
     const SCEVConstant *R1 = dyn_cast<SCEVConstant>(Roots.first);
     const SCEVConstant *R2 = dyn_cast<SCEVConstant>(Roots.second);
     if (R1) {
       // Pick the smallest positive root value.
-      if (ConstantInt *CB =
-          dyn_cast<ConstantInt>(ConstantExpr::getICmp(ICmpInst::ICMP_ULT,
-                         R1->getValue(), R2->getValue()))) {
+      if (ConstantInt *CB = dyn_cast<ConstantInt>(ConstantExpr::getICmp(
+              ICmpInst::ICMP_ULT, R1->getValue(), R2->getValue()))) {
         if (!CB->getZExtValue())
           std::swap(R1, R2);   // R1 is the minimum root now.
 
@@ -9268,9 +9265,8 @@ ScalarEvolution::computeLoopDisposition(const SCEV *S, const Loop *L) {
 
     // This recurrence is variant w.r.t. L if any of its operands
     // are variant.
-    for (SCEVAddRecExpr::op_iterator I = AR->op_begin(), E = AR->op_end();
-         I != E; ++I)
-      if (!isLoopInvariant(*I, L))
+    for (auto *Op : AR->operands())
+      if (!isLoopInvariant(Op, L))
         return LoopVariant;
 
     // Otherwise it's loop-invariant.
@@ -9280,11 +9276,9 @@ ScalarEvolution::computeLoopDisposition(const SCEV *S, const Loop *L) {
   case scMulExpr:
   case scUMaxExpr:
   case scSMaxExpr: {
-    const SCEVNAryExpr *NAry = cast<SCEVNAryExpr>(S);
     bool HasVarying = false;
-    for (SCEVNAryExpr::op_iterator I = NAry->op_begin(), E = NAry->op_end();
-         I != E; ++I) {
-      LoopDisposition D = getLoopDisposition(*I, L);
+    for (auto *Op : cast<SCEVNAryExpr>(S)->operands()) {
+      LoopDisposition D = getLoopDisposition(Op, L);
       if (D == LoopVariant)
         return LoopVariant;
       if (D == LoopComputable)
@@ -9308,7 +9302,7 @@ ScalarEvolution::computeLoopDisposition(const SCEV *S, const Loop *L) {
     // invariant if they are not contained in the specified loop.
     // Instructions are never considered invariant in the function body
     // (null loop) because they are defined within the "loop".
-    if (Instruction *I = dyn_cast<Instruction>(cast<SCEVUnknown>(S)->getValue()))
+    if (auto *I = dyn_cast<Instruction>(cast<SCEVUnknown>(S)->getValue()))
       return (L && !L->contains(I)) ? LoopInvariant : LoopVariant;
     return LoopInvariant;
   case scCouldNotCompute:
@@ -9615,6 +9609,7 @@ ScalarEvolution::getEqualPredicate(const SCEVUnknown *LHS,
   return Eq;
 }
 
+namespace {
 class SCEVPredicateRewriter : public SCEVRewriteVisitor<SCEVPredicateRewriter> {
 public:
   static const SCEV *rewrite(const SCEV *Scev, ScalarEvolution &SE,
@@ -9639,6 +9634,7 @@ public:
 private:
   SCEVUnionPredicate &P;
 };
+} // end anonymous namespace
 
 const SCEV *ScalarEvolution::rewriteUsingPredicate(const SCEV *Scev,
                                                    SCEVUnionPredicate &Preds) {

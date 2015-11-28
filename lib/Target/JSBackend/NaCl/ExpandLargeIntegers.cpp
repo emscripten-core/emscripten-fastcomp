@@ -472,7 +472,7 @@ static void convertInstruction(Instruction *Inst, ConversionState &State,
   // Set the insert point *after* Inst, so that any instructions inserted here
   // will be visited again. That allows iterative expansion of types > i128.
   BasicBlock::iterator InsertPos(Inst);
-  IRBuilder<> IRB(++InsertPos);
+  IRBuilder<> IRB(&*++InsertPos);
   StringRef Name = Inst->getName();
 
   if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {

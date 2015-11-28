@@ -75,7 +75,7 @@ static bool SplitUpPHINode(PHINode *Phi) {
   StructType *STy = cast<StructType>(Phi->getType());
 
   Value *NewStruct = UndefValue::get(STy);
-  Instruction *NewStructInsertPt = Phi->getParent()->getFirstInsertionPt();
+  Instruction *NewStructInsertPt = &*Phi->getParent()->getFirstInsertionPt();
 
   bool NeedsAnotherPass = false;
 
@@ -397,7 +397,7 @@ static bool ExpandExtractValues(Function &Func) {
 
   for (auto &BB : Func) {
     for (BasicBlock::iterator Iter = BB.begin(), E = BB.end(); Iter != E;) {
-      Instruction *Inst = Iter++;
+      Instruction *Inst = &*Iter++;
       if (ExtractValueInst *EV = dyn_cast<ExtractValueInst>(Inst)) {
         Changed |= ExpandExtractValue(EV, &ToErase);
       } else if (isa<InsertValueInst>(Inst)) {
@@ -434,7 +434,7 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
     // instructions which we will expand out later.
     for (Function::iterator BB = Func.begin(), E = Func.end(); BB != E; ++BB) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E;) {
-        Instruction *Inst = Iter++;
+        Instruction *Inst = &*Iter++;
         if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
           if (Store->getValueOperand()->getType()->isStructTy()) {
             NeedsAnotherPass |= SplitUpStore(Store, DL);

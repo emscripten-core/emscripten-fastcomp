@@ -2692,8 +2692,9 @@ static const Value *considerConditionVar(const Instruction *I) {
 void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
   std::string Code;
   raw_string_ostream CodeStream(Code);
-  for (BasicBlock::const_iterator I = BB->begin(), E = BB->end();
-       I != E; ++I) {
+  for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
+       II != E; ++II) {
+    auto I = &*II;
     if (I->stripPointerCasts() == I) {
       CurrInstruction = I;
       generateExpression(I, CodeStream);
@@ -2725,8 +2726,9 @@ void JSWriter::printFunctionBody(const Function *F) {
   // Create relooper blocks with their contents. TODO: We could optimize
   // indirectbr by emitting indexed blocks first, so their indexes
   // match up with the label index.
-  for (Function::const_iterator BI = F->begin(), BE = F->end();
-       BI != BE; ++BI) {
+  for (Function::const_iterator I = F->begin(), BE = F->end();
+       I != BE; ++I) {
+    auto BI = &*I;
     InvokeState = 0; // each basic block begins in state 0; the previous may not have cleared it, if e.g. it had a throw in the middle and the rest of it was decapitated
     addBlock(BI, R, LLVMToRelooper);
     if (!Entry) Entry = LLVMToRelooper[BI];
@@ -2734,8 +2736,9 @@ void JSWriter::printFunctionBody(const Function *F) {
   assert(Entry);
 
   // Create branchings
-  for (Function::const_iterator BI = F->begin(), BE = F->end();
-       BI != BE; ++BI) {
+  for (Function::const_iterator I = F->begin(), BE = F->end();
+       I != BE; ++I) {
+    auto BI = &*I;
     const TerminatorInst *TI = BI->getTerminator();
     switch (TI->getOpcode()) {
       default: {
@@ -2999,8 +3002,9 @@ void JSWriter::processConstants() {
     }
   }
   if (Relocatable) {
-    for (Module::const_global_iterator I = TheModule->global_begin(),
-           E = TheModule->global_end(); I != E; ++I) {
+    for (Module::const_global_iterator II = TheModule->global_begin(),
+           E = TheModule->global_end(); II != E; ++II) {
+      auto I = &*II;
       if (I->hasInitializer() && !I->hasInternalLinkage()) {
         std::string Name = I->getName().str();
         if (GlobalAddresses.find(Name) != GlobalAddresses.end()) {
@@ -3038,12 +3042,13 @@ void JSWriter::printFunction(const Function *F) {
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
     if (AI != F->arg_begin()) Out << ",";
-    Out << getJSName(AI);
+    Out << getJSName(&*AI);
   }
   Out << ") {";
   nl(Out);
-  for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
-       AI != AE; ++AI) {
+  for (Function::const_arg_iterator II = F->arg_begin(), AE = F->arg_end();
+       II != AE; ++II) {
+    auto AI = &*II;
     std::string name = getJSName(AI);
     Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
     nl(Out);
@@ -3071,8 +3076,9 @@ void JSWriter::printModuleBody() {
 
   // Emit function bodies.
   nl(Out) << "// EMSCRIPTEN_START_FUNCTIONS"; nl(Out);
-  for (Module::const_iterator I = TheModule->begin(), E = TheModule->end();
-       I != E; ++I) {
+  for (Module::const_iterator II = TheModule->begin(), E = TheModule->end();
+       II != E; ++II) {
+    auto I = &*II;
     if (!I->isDeclaration()) printFunction(I);
   }
   // Emit postSets, split up into smaller functions to avoid one massive one that is slow to compile (more likely to occur in dynamic linking, as more postsets)
@@ -3559,7 +3565,8 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
 void JSWriter::calculateNativizedVars(const Function *F) {
   NativizedVars.clear();
 
-  for (Function::const_iterator BI = F->begin(), BE = F->end(); BI != BE; ++BI) {
+  for (Function::const_iterator I = F->begin(), BE = F->end(); I != BE; ++I) {
+    auto BI = &*I;
     for (BasicBlock::const_iterator II = BI->begin(), E = BI->end(); II != E; ++II) {
       const Instruction *I = &*II;
       if (const AllocaInst *AI = dyn_cast<const AllocaInst>(I)) {

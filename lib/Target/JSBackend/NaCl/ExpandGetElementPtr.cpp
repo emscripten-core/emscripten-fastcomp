@@ -137,7 +137,7 @@ bool ExpandGetElementPtr::runOnBasicBlock(BasicBlock &BB) {
 
   for (BasicBlock::InstListType::iterator Iter = BB.begin();
        Iter != BB.end(); ) {
-    Instruction *Inst = Iter++;
+    Instruction *Inst = &*Iter++;
     if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Inst)) {
       Modified = true;
       ExpandGEP(GEP, &DL, PtrType);

@@ -240,7 +240,7 @@ Value *FuncRewriter::createSetjmpWrappedCall(InvokeInst *Invoke) {
   // Create the helper function.
   Function *HelperFunc = Function::Create(
       FTy, GlobalValue::InternalLinkage, Func->getName() + "_setjmp_caller");
-  Func->getParent()->getFunctionList().insertAfter(Func, HelperFunc);
+  Func->getParent()->getFunctionList().insertAfter(Func->getIterator(), HelperFunc);
   BasicBlock *EntryBB = BasicBlock::Create(Func->getContext(), "", HelperFunc);
   BasicBlock *NormalBB = BasicBlock::Create(Func->getContext(), "normal",
                                             HelperFunc);
@@ -252,10 +252,10 @@ Value *FuncRewriter::createSetjmpWrappedCall(InvokeInst *Invoke) {
   SmallVector<Value *, 10> InnerCallArgs;
   for (unsigned I = 0, E = Invoke->getNumArgOperands(); I < E; ++I) {
     ArgIter->setName("arg");
-    InnerCallArgs.push_back(ArgIter++);
+    InnerCallArgs.push_back(&*ArgIter++);
   }
-  Argument *CalleeArg = ArgIter++;
-  Argument *JmpBufArg = ArgIter++;
+  Argument *CalleeArg = &*ArgIter++;
+  Argument *JmpBufArg = &*ArgIter++;
   CalleeArg->setName("func_ptr");
   JmpBufArg->setName("jmp_buf");
 
@@ -280,7 +280,7 @@ Value *FuncRewriter::createSetjmpWrappedCall(InvokeInst *Invoke) {
   InnerCall->setCallingConv(Invoke->getCallingConv());
   if (ResultAlloca) {
     InnerCall->setName("result");
-    Argument *ResultArg = ArgIter++;
+    Argument *ResultArg = &*ArgIter++;
     ResultArg->setName("result_ptr");
     CopyDebug(new StoreInst(InnerCall, ResultArg, NormalBB), Invoke);
   }
@@ -405,7 +405,7 @@ void FuncRewriter::expandFunc() {
   // all the invokes have been processed.
   for (Function::iterator BB = Func->begin(), E = Func->end(); BB != E; ++BB) {
     for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E; ) {
-      Instruction *Inst = Iter++;
+      Instruction *Inst = &*Iter++;
       if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Inst)) {
         expandInvokeInst(Invoke);
       } else if (ResumeInst *Resume = dyn_cast<ResumeInst>(Inst)) {
@@ -423,7 +423,7 @@ void FuncRewriter::expandFunc() {
   }
   for (Function::iterator BB = Func->begin(), E = Func->end(); BB != E; ++BB) {
     for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E; ) {
-      Instruction *Inst = Iter++;
+      Instruction *Inst = &*Iter++;
       if (LandingPadInst *LP = dyn_cast<LandingPadInst>(Inst)) {
         initializeFrame();
         Value *LPPtr = new BitCastInst(
@@ -453,7 +453,7 @@ bool PNaClSjLjEH::runOnModule(Module &M) {
 
   ExceptionInfoWriter ExcInfoWriter(&M.getContext());
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
-    FuncRewriter Rewriter(ExceptionFrameTy, &ExcInfoWriter, Func);
+    FuncRewriter Rewriter(ExceptionFrameTy, &ExcInfoWriter, &*Func);
     Rewriter.expandFunc();
   }
   ExcInfoWriter.defineGlobalVariables(&M);

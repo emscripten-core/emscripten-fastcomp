@@ -254,7 +254,7 @@ static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
     NewFunc->addAttributes(j, AttributeSet::get(F->getContext(), j, AB));
   }
 
-  F->getParent()->getFunctionList().insert(F, NewFunc);
+  F->getParent()->getFunctionList().insert(F->getIterator(), NewFunc);
   NewFunc->takeName(F);
   NewFunc->getBasicBlockList().splice(NewFunc->begin(),
                                       F->getBasicBlockList());
@@ -288,8 +288,8 @@ void ExpandI64::ensureLegalFunc(Function *F) {
   for (Function::arg_iterator Arg = F->arg_begin(), E = F->arg_end(), NewArg = NF->arg_begin();
        Arg != E; ++Arg) {
     if (Arg->getType() == NewArg->getType()) {
-      NewArg->takeName(Arg);
-      Arg->replaceAllUsesWith(NewArg);
+      NewArg->takeName(&*Arg);
+      Arg->replaceAllUsesWith(&*NewArg);
       NewArg++;
     } else {
       // This was legalized
@@ -1123,14 +1123,14 @@ bool ExpandI64::runOnModule(Module &M) {
 
   // pre pass - legalize functions
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
+    Function *Func = &*Iter++;
     ensureLegalFunc(Func);
   }
 
   // first pass - split
   DeadVec Dead;
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ++Iter) {
-    Function *Func = Iter;
+    Function *Func = &*Iter;
     if (Func->isDeclaration()) {
       continue;
     }
@@ -1144,7 +1144,7 @@ bool ExpandI64::runOnModule(Module &M) {
       BasicBlock *BB = *RI;
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
-        Instruction *I = Iter++;
+        Instruction *I = &*Iter++;
         if (!isLegalInstruction(I)) {
           if (splitInst(I)) {
             Changed = true;
@@ -1198,7 +1198,7 @@ bool ExpandI64::runOnModule(Module &M) {
   // post pass - clean up illegal functions that were legalized. We do this
   // after the full walk of the functions so that all uses are replaced first.
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
+    Function *Func = &*Iter++;
     removeIllegalFunc(Func);
   }
 

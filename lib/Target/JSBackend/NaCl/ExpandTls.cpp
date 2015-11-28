@@ -134,9 +134,9 @@ static StructType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
       }
       if (!GV->getInitializer()->isNullValue()) {
         addVarToTlsTemplate(&State, &FieldInitTypes,
-                            &FieldInitValues, GV);
+                            &FieldInitValues, &*GV);
         VarInfo Info;
-        Info.TlsVar = GV;
+        Info.TlsVar = &*GV;
         Info.IsBss = false;
         Info.TemplateIndex = FieldInitTypes.size() - 1;
         TlsVars->push_back(Info);
@@ -149,9 +149,9 @@ static StructType *buildTlsTemplate(Module &M, std::vector<VarInfo> *TlsVars) {
        GV != M.global_end();
        ++GV) {
     if (GV->isThreadLocal() && GV->getInitializer()->isNullValue()) {
-      addVarToTlsTemplate(&State, &FieldBssTypes, NULL, GV);
+      addVarToTlsTemplate(&State, &FieldBssTypes, NULL, &*GV);
       VarInfo Info;
-      Info.TlsVar = GV;
+      Info.TlsVar = &*GV;
       Info.IsBss = true;
       Info.TemplateIndex = FieldBssTypes.size() - 1;
       TlsVars->push_back(Info);
@@ -310,7 +310,7 @@ static void defineTlsLayoutFunctions(Module &M) {
   NewFunc = Function::Create(FuncType, GlobalValue::InternalLinkage,
                              "nacl_tp_tls_offset", &M);
   BB = BasicBlock::Create(M.getContext(), "entry", NewFunc);
-  Value *Arg = NewFunc->arg_begin();
+  Value *Arg = &*NewFunc->arg_begin();
   Arg->setName("size");
   Value *Result = BinaryOperator::CreateNeg(Arg, "result", BB);
   ReturnInst::Create(M.getContext(), Result, BB);

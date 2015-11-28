@@ -74,7 +74,7 @@ void doRegToMem(Function &F) { // see Reg2Mem.cpp
   CastInst *AllocaInsertionPoint =
     new BitCastInst(Constant::getNullValue(Type::getInt32Ty(F.getContext())),
                     Type::getInt32Ty(F.getContext()),
-                    "reg2mem alloca point", I);
+                    "reg2mem alloca point", &*I);
 
   // Find the escaped instructions. But don't create stack slots for
   // allocas in entry block.
@@ -84,7 +84,7 @@ void doRegToMem(Function &F) { // see Reg2Mem.cpp
     for (BasicBlock::iterator iib = ibb->begin(), iie = ibb->end();
          iib != iie; ++iib) {
       if (!(isa<AllocaInst>(iib) && iib->getParent() == BBEntry) &&
-          valueEscapes(iib)) {
+          valueEscapes(&*iib)) {
         WorkList.push_front(&*iib);
       }
     }
@@ -246,14 +246,14 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
     Function *F = I->first;
     Phis& P = I->second;
 
-    CallInst::Create(PrepSetjmp, "", F->begin()->begin());
+    CallInst::Create(PrepSetjmp, "", &*F->begin()->begin());
 
     // Update each call that can longjmp so it can return to a setjmp where relevant
 
     for (Function::iterator BBI = F->begin(), E = F->end(); BBI != E; ) {
-      BasicBlock *BB = BBI++;
+      BasicBlock *BB = &*BBI++;
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E; ) {
-        Instruction *I = Iter++;
+        Instruction *I = &*Iter++;
         CallInst *CI;
         if ((CI = dyn_cast<CallInst>(I))) {
           Value *V = CI->getCalledValue();
@@ -266,9 +266,9 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           Instruction *Check = NULL;
           if (Iter != E && (After = dyn_cast<CallInst>(Iter)) && After->getCalledValue() == PostInvoke) {
             // use the pre|postinvoke that exceptions lowering already made
-            Check = Iter++;
+            Check = &*Iter++;
           }
-          BasicBlock *Tail = SplitBlock(BB, Iter); // Iter already points to the next instruction, as we need
+          BasicBlock *Tail = SplitBlock(BB, &*Iter); // Iter already points to the next instruction, as we need
           TerminatorInst *TI = BB->getTerminator();
           if (!Check) {
             // no existing pre|postinvoke, create our own
@@ -315,7 +315,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
     // add a cleanup before each return
     for (Function::iterator BBI = F->begin(), E = F->end(); BBI != E; ) {
-      BasicBlock *BB = BBI++;
+      BasicBlock *BB = &*BBI++;
       TerminatorInst *TI = BB->getTerminator();
       if (isa<ReturnInst>(TI)) {
         CallInst::Create(CleanupSetjmp, "", TI);

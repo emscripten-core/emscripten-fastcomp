@@ -83,12 +83,12 @@ bool GlobalCleanup::runOnModule(Module &M) {
   }
 
   for (auto I = M.global_begin(), E = M.global_end(); I != E;) {
-    GlobalVariable *GV = I++;
+    GlobalVariable *GV = &*I++;
     Modified |= CleanUpLinkage(GV);
   }
 
   for (auto I = M.begin(), E = M.end(); I != E;) {
-    Function *F = I++;
+    Function *F = &*I++;
     Modified |= CleanUpLinkage(F);
   }
 
@@ -105,7 +105,7 @@ bool ResolveAliases::runOnModule(Module &M) {
   bool Modified = false;
 
   for (auto I = M.alias_begin(), E = M.alias_end(); I != E;) {
-    GlobalAlias *Alias = I++;
+    GlobalAlias *Alias = &*I++;
     Alias->replaceAllUsesWith(Alias->getAliasee());
     Alias->eraseFromParent();
     Modified = true;

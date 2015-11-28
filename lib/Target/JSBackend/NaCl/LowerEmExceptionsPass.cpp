@@ -130,7 +130,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   bool Changed = false;
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *F = Iter++;
+    Function *F = &*Iter++;
 
     std::vector<Instruction*> ToErase;
     std::set<LandingPadInst*> LandingPads;
@@ -188,7 +188,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
           BranchInst::Create(II->getNormalDest(), II);
 
           // Remove any PHI node entries from the exception destination.
-          II->getUnwindDest()->removePredecessor(BB);
+          II->getUnwindDest()->removePredecessor(&*BB);
         }
 
         Changed = true;
@@ -196,7 +196,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
       // scan the body of the basic block for resumes
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
-        Instruction *I = Iter++;
+        Instruction *I = &*Iter++;
         if (ResumeInst *R = dyn_cast<ResumeInst>(I)) {
           // split the input into legal values
           Value *Input = R->getValue();

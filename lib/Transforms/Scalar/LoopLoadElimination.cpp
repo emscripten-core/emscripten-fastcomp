@@ -41,6 +41,12 @@ static cl::opt<unsigned> CheckPerElim(
     cl::desc("Max number of memchecks allowed per eliminated load on average"),
     cl::init(1));
 
+static cl::opt<unsigned> LoadElimSCEVCheckThreshold(
+    "loop-load-elimination-scev-check-threshold", cl::init(8), cl::Hidden,
+    cl::desc("The maximum number of SCEV checks allowed for Loop "
+             "Load Elimination"));
+
+
 STATISTIC(NumLoopLoadEliminted, "Number of loads eliminated by LLE");
 
 namespace {
@@ -373,7 +379,7 @@ public:
     Value *Initial =
         new LoadInst(InitialPtr, "load_initial", PH->getTerminator());
     PHINode *PHI = PHINode::Create(Initial->getType(), 2, "store_forwarded",
-                                   L->getHeader()->begin());
+                                   &L->getHeader()->front());
     PHI->addIncoming(Initial, PH);
     PHI->addIncoming(Cand.Store->getOperand(0), L->getLoopLatch());
 
@@ -453,10 +459,17 @@ public:
       return false;
     }
 
+    if (LAI.Preds.getComplexity() > LoadElimSCEVCheckThreshold) {
+      DEBUG(dbgs() << "Too many SCEV run-time checks needed.\n");
+      return false;
+    }
+
     // Point of no-return, start the transformation.  First, version the loop if
     // necessary.
-    if (!Checks.empty()) {
-      LoopVersioning LV(std::move(Checks), LAI, L, LI, DT);
+    if (!Checks.empty() || !LAI.Preds.isAlwaysTrue()) {
+      LoopVersioning LV(LAI, L, LI, DT, SE, false);
+      LV.setAliasChecks(std::move(Checks));
+      LV.setSCEVChecks(LAI.Preds);
       LV.versionLoop();
     }
 

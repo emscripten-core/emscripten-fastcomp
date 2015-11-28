@@ -110,7 +110,7 @@ bool ExpandConstantExpr::runOnFunction(Function &Func) {
     for (BasicBlock::InstListType::iterator Inst = BB->begin(), E = BB->end();
          Inst != E;
          ++Inst) {
-      Modified |= expandInstruction(Inst);
+      Modified |= expandInstruction(&*Inst);
     }
   }
   return Modified;

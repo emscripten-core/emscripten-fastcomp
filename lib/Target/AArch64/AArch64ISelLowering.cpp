@@ -196,11 +196,6 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::STACKRESTORE, MVT::Other, Expand);
   setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i64, Expand);
 
-  // Exception handling.
-  // FIXME: These are guesses. Has this been defined yet?
-  setExceptionPointerRegister(AArch64::X0);
-  setExceptionSelectorRegister(AArch64::X1);
-
   // Constant pool entries
   setOperationAction(ISD::ConstantPool, MVT::i64, Custom);
 
@@ -494,6 +489,8 @@ AArch64TargetLowering::AArch64TargetLowering(const TargetMachine &TM,
   setTargetDAGCombine(ISD::BITCAST);
   setTargetDAGCombine(ISD::CONCAT_VECTORS);
   setTargetDAGCombine(ISD::STORE);
+  if (Subtarget->supportsAddressTopByteIgnored())
+    setTargetDAGCombine(ISD::LOAD);
 
   setTargetDAGCombine(ISD::MUL);
 
@@ -1187,8 +1184,7 @@ static SDValue emitComparison(SDValue LHS, SDValue RHS, ISD::CondCode CC,
   // register to WZR/XZR if it ends up being unused.
   unsigned Opcode = AArch64ISD::SUBS;
 
-  if (RHS.getOpcode() == ISD::SUB && isa<ConstantSDNode>(RHS.getOperand(0)) &&
-      cast<ConstantSDNode>(RHS.getOperand(0))->getZExtValue() == 0 &&
+  if (RHS.getOpcode() == ISD::SUB && isNullConstant(RHS.getOperand(0)) &&
       (CC == ISD::SETEQ || CC == ISD::SETNE)) {
     // We'd like to combine a (CMP op1, (sub 0, op2) into a CMN instruction on
     // the grounds that "op1 - (-op2) == op1 + op2". However, the C and V flags
@@ -1202,8 +1198,7 @@ static SDValue emitComparison(SDValue LHS, SDValue RHS, ISD::CondCode CC,
     // the absence of information about op2.
     Opcode = AArch64ISD::ADDS;
     RHS = RHS.getOperand(1);
-  } else if (LHS.getOpcode() == ISD::AND && isa<ConstantSDNode>(RHS) &&
-             cast<ConstantSDNode>(RHS)->getZExtValue() == 0 &&
+  } else if (LHS.getOpcode() == ISD::AND && isNullConstant(RHS) &&
              !isUnsignedIntSetCC(CC)) {
     // Similarly, (CMP (and X, Y), 0) can be implemented with a TST
     // (a.k.a. ANDS) except that the flags are only guaranteed to work for one
@@ -1268,8 +1263,7 @@ static SDValue emitConditionalComparison(SDValue LHS, SDValue RHS,
     Opcode = AArch64ISD::FCCMP;
   else if (RHS.getOpcode() == ISD::SUB) {
     SDValue SubOp0 = RHS.getOperand(0);
-    if (const ConstantSDNode *SubOp0C = dyn_cast<ConstantSDNode>(SubOp0))
-      if (SubOp0C->isNullValue() && (CC == ISD::SETEQ || CC == ISD::SETNE)) {
+    if (isNullConstant(SubOp0) && (CC == ISD::SETEQ || CC == ISD::SETNE)) {
         // See emitComparison() on why we can only do this for SETEQ and SETNE.
         Opcode = AArch64ISD::CCMN;
         RHS = RHS.getOperand(1);
@@ -3585,8 +3579,7 @@ SDValue AArch64TargetLowering::LowerBR_CC(SDValue Op, SelectionDAG &DAG) const {
   // Optimize {s|u}{add|sub|mul}.with.overflow feeding into a branch
   // instruction.
   unsigned Opc = LHS.getOpcode();
-  if (LHS.getResNo() == 1 && isa<ConstantSDNode>(RHS) &&
-      cast<ConstantSDNode>(RHS)->isOne() &&
+  if (LHS.getResNo() == 1 && isOneConstant(RHS) &&
       (Opc == ISD::SADDO || Opc == ISD::UADDO || Opc == ISD::SSUBO ||
        Opc == ISD::USUBO || Opc == ISD::SMULO || Opc == ISD::UMULO)) {
     assert((CC == ISD::SETEQ || CC == ISD::SETNE) &&
@@ -3890,7 +3883,13 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(ISD::CondCode CC, SDValue LHS,
     }
   }
 
-  // Handle integers first.
+  // Also handle f16, for which we need to do a f32 comparison.
+  if (LHS.getValueType() == MVT::f16) {
+    LHS = DAG.getNode(ISD::FP_EXTEND, dl, MVT::f32, LHS);
+    RHS = DAG.getNode(ISD::FP_EXTEND, dl, MVT::f32, RHS);
+  }
+
+  // Next, handle integers.
   if (LHS.getValueType().isInteger()) {
     assert((LHS.getValueType() == RHS.getValueType()) &&
            (LHS.getValueType() == MVT::i32 || LHS.getValueType() == MVT::i64));
@@ -3913,9 +3912,7 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(ISD::CondCode CC, SDValue LHS,
     } else if (TVal.getOpcode() == ISD::XOR) {
       // If TVal is a NOT we want to swap TVal and FVal so that we can match
       // with a CSINV rather than a CSEL.
-      ConstantSDNode *CVal = dyn_cast<ConstantSDNode>(TVal.getOperand(1));
-
-      if (CVal && CVal->isAllOnesValue()) {
+      if (isAllOnesConstant(TVal.getOperand(1))) {
         std::swap(TVal, FVal);
         std::swap(CTVal, CFVal);
         CC = ISD::getSetCCInverse(CC, true);
@@ -3923,9 +3920,7 @@ SDValue AArch64TargetLowering::LowerSELECT_CC(ISD::CondCode CC, SDValue LHS,
     } else if (TVal.getOpcode() == ISD::SUB) {
       // If TVal is a negation (SUB from 0) we want to swap TVal and FVal so
       // that we can match with a CSNEG rather than a CSEL.
-      ConstantSDNode *CVal = dyn_cast<ConstantSDNode>(TVal.getOperand(0));
-
-      if (CVal && CVal->isNullValue()) {
+      if (isNullConstant(TVal.getOperand(0))) {
         std::swap(TVal, FVal);
         std::swap(CTVal, CFVal);
         CC = ISD::getSetCCInverse(CC, true);
@@ -4638,8 +4633,7 @@ void AArch64TargetLowering::LowerAsmOperandForConstraint(
   // Validate and return a target constant for them if we can.
   case 'z': {
     // 'z' maps to xzr or wzr so it needs an input of 0.
-    ConstantSDNode *C = dyn_cast<ConstantSDNode>(Op);
-    if (!C || C->getZExtValue() != 0)
+    if (!isNullConstant(Op))
       return;
 
     if (Op.getValueType() == MVT::i64)
@@ -6400,24 +6394,11 @@ SDValue AArch64TargetLowering::LowerEXTRACT_SUBVECTOR(SDValue Op,
   unsigned Val = Cst->getZExtValue();
 
   unsigned Size = Op.getValueType().getSizeInBits();
-  if (Val == 0) {
-    switch (Size) {
-    case 8:
-      return DAG.getTargetExtractSubreg(AArch64::bsub, dl, Op.getValueType(),
-                                        Op.getOperand(0));
-    case 16:
-      return DAG.getTargetExtractSubreg(AArch64::hsub, dl, Op.getValueType(),
-                                        Op.getOperand(0));
-    case 32:
-      return DAG.getTargetExtractSubreg(AArch64::ssub, dl, Op.getValueType(),
-                                        Op.getOperand(0));
-    case 64:
-      return DAG.getTargetExtractSubreg(AArch64::dsub, dl, Op.getValueType(),
-                                        Op.getOperand(0));
-    default:
-      llvm_unreachable("Unexpected vector type in extract_subvector!");
-    }
-  }
+
+  // This will get lowered to an appropriate EXTRACT_SUBREG in ISel.
+  if (Val == 0)
+    return Op;
+
   // If this is extracting the upper 64-bits of a 128-bit vector, we match
   // that directly.
   if (Size == 64 && Val * VT.getVectorElementType().getSizeInBits() == 64)
@@ -8573,10 +8554,9 @@ static SDValue replaceSplatVectorStore(SelectionDAG &DAG, StoreSDNode *St) {
   return NewST1;
 }
 
-static SDValue performSTORECombine(SDNode *N,
-                                   TargetLowering::DAGCombinerInfo &DCI,
-                                   SelectionDAG &DAG,
-                                   const AArch64Subtarget *Subtarget) {
+static SDValue split16BStores(SDNode *N, TargetLowering::DAGCombinerInfo &DCI,
+                              SelectionDAG &DAG,
+                              const AArch64Subtarget *Subtarget) {
   if (!DCI.isBeforeLegalize())
     return SDValue();
 
@@ -8738,7 +8718,39 @@ static SDValue performPostLD1Combine(SDNode *N,
   return SDValue();
 }
 
-/// This function handles the log2-shuffle pattern produced by the
+/// Simplify \Addr given that the top byte of it is ignored by HW during
+/// address translation.
+static bool performTBISimplification(SDValue Addr,
+                                     TargetLowering::DAGCombinerInfo &DCI,
+                                     SelectionDAG &DAG) {
+  APInt DemandedMask = APInt::getLowBitsSet(64, 56);
+  APInt KnownZero, KnownOne;
+  TargetLowering::TargetLoweringOpt TLO(DAG, DCI.isBeforeLegalize(),
+                                        DCI.isBeforeLegalizeOps());
+  const TargetLowering &TLI = DAG.getTargetLoweringInfo();
+  if (TLI.SimplifyDemandedBits(Addr, DemandedMask, KnownZero, KnownOne, TLO)) {
+    DCI.CommitTargetLoweringOpt(TLO);
+    return true;
+  }
+  return false;
+}
+
+static SDValue performSTORECombine(SDNode *N,
+                                   TargetLowering::DAGCombinerInfo &DCI,
+                                   SelectionDAG &DAG,
+                                   const AArch64Subtarget *Subtarget) {
+  SDValue Split = split16BStores(N, DCI, DAG, Subtarget);
+  if (Split.getNode())
+    return Split;
+
+  if (Subtarget->supportsAddressTopByteIgnored() &&
+      performTBISimplification(N->getOperand(2), DCI, DAG))
+    return SDValue(N, 0);
+
+  return SDValue();
+}
+
+  /// This function handles the log2-shuffle pattern produced by the
 /// LoopVectorizer for the across vector reduction. It consists of
 /// log2(NumVectorElements) steps and, in each step, 2^(s) elements
 /// are reduced, where s is an induction variable from 0 to
@@ -8941,18 +8953,15 @@ performAcrossLaneMinMaxReductionCombine(SDNode *N, SelectionDAG &DAG,
     return SDValue();
 
   // Expect to check only lane 0 from the vector SETCC.
-  if (!isa<ConstantSDNode>(N0.getOperand(1)) ||
-      cast<ConstantSDNode>(N0.getOperand(1))->getZExtValue() != 0)
+  if (!isNullConstant(N0.getOperand(1)))
     return SDValue();
 
   // Expect to extract the true value from lane 0.
-  if (!isa<ConstantSDNode>(IfTrue.getOperand(1)) ||
-      cast<ConstantSDNode>(IfTrue.getOperand(1))->getZExtValue() != 0)
+  if (!isNullConstant(IfTrue.getOperand(1)))
     return SDValue();
 
   // Expect to extract the false value from lane 1.
-  if (!isa<ConstantSDNode>(IfFalse.getOperand(1)) ||
-      cast<ConstantSDNode>(IfFalse.getOperand(1))->getZExtValue() != 1)
+  if (!isOneConstant(IfFalse.getOperand(1)))
     return SDValue();
 
   return tryMatchAcrossLaneShuffleForReduction(N, SetCC, Op, DAG);
@@ -8985,7 +8994,7 @@ performAcrossLaneAddReductionCombine(SDNode *N, SelectionDAG &DAG,
 
   // The vector extract idx must constant zero because we only expect the final
   // result of the reduction is placed in lane 0.
-  if (!isa<ConstantSDNode>(N1) || cast<ConstantSDNode>(N1)->getZExtValue() != 0)
+  if (!isNullConstant(N1))
     return SDValue();
 
   EVT VTy = N0.getValueType();
@@ -9427,10 +9436,10 @@ static SDValue performBRCONDCombine(SDNode *N,
   if (LHS.getValueType() != MVT::i32 && LHS.getValueType() != MVT::i64)
     return SDValue();
 
-  if (isa<ConstantSDNode>(LHS) && cast<ConstantSDNode>(LHS)->isNullValue())
+  if (isNullConstant(LHS))
     std::swap(LHS, RHS);
 
-  if (!isa<ConstantSDNode>(RHS) || !cast<ConstantSDNode>(RHS)->isNullValue())
+  if (!isNullConstant(RHS))
     return SDValue();
 
   if (LHS.getOpcode() == ISD::SHL || LHS.getOpcode() == ISD::SRA ||
@@ -9593,6 +9602,10 @@ SDValue AArch64TargetLowering::PerformDAGCombine(SDNode *N,
   }
   case ISD::VSELECT:
     return performVSelectCombine(N, DCI.DAG);
+  case ISD::LOAD:
+    if (performTBISimplification(N->getOperand(1), DCI, DAG))
+      return SDValue(N, 0);
+    break;
   case ISD::STORE:
     return performSTORECombine(N, DCI, DAG, Subtarget);
   case AArch64ISD::BRCOND:

@@ -502,7 +502,7 @@ static void CleanUpFunction(Function *Func, Type *IntPtrType) {
        BB != E; ++BB) {
     for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
          Iter != E; ) {
-      SimplifyCasts(Iter++, IntPtrType);
+      SimplifyCasts(&*Iter++, IntPtrType);
     }
   }
   // Cleanup pass.
@@ -510,7 +510,7 @@ static void CleanUpFunction(Function *Func, Type *IntPtrType) {
        BB != E; ++BB) {
     for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
          Iter != E; ) {
-      Instruction *Inst = Iter++;
+      Instruction *Inst = &*Iter++;
       // Add names to inttoptrs to make the output more readable.  The
       // placeholder values get in the way of doing this earlier when
       // the inttoptrs are created.
@@ -530,11 +530,10 @@ INITIALIZE_PASS(ReplacePtrsWithInts, "replace-ptrs-with-ints",
 
 bool ReplacePtrsWithInts::runOnModule(Module &M) {
   DataLayout DL(&M);
-  DenseMap<const Function *, DISubprogram *> FunctionDIs = makeSubprogramMap(M);
   Type *IntPtrType = DL.getIntPtrType(M.getContext());
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *OldFunc = Iter++;
+    Function *OldFunc = &*Iter++;
     // Intrinsics' types must be left alone.
     if (OldFunc->isIntrinsic())
       continue;
@@ -549,8 +548,8 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
     for (Function::arg_iterator Arg = OldFunc->arg_begin(),
              E = OldFunc->arg_end(), NewArg = NewFunc->arg_begin();
          Arg != E; ++Arg, ++NewArg) {
-      FC.recordConverted(Arg, NewArg);
-      NewArg->takeName(Arg);
+      FC.recordConverted(&*Arg, &*NewArg);
+      NewArg->takeName(&*Arg);
     }
 
     // invariant.end calls refer to invariant.start calls, so we must
@@ -571,22 +570,17 @@ bool ReplacePtrsWithInts::runOnModule(Module &M) {
          BB != E; ++BB) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
-        ConvertInstruction(&DL, IntPtrType, &FC, Iter++);
+        ConvertInstruction(&DL, IntPtrType, &FC, &*Iter++);
       }
     }
     FC.eraseReplacedInstructions();
-
-    // Patch the pointer to LLVM function in debug info descriptor.
-    auto DI = FunctionDIs.find(OldFunc);
-    if (DI != FunctionDIs.end())
-      DI->second->replaceFunction(NewFunc);
 
     OldFunc->eraseFromParent();
   }
   // Now that all functions have their normalized types, we can remove
   // various casts.
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
-    CleanUpFunction(Func, IntPtrType);
+    CleanUpFunction(&*Func, IntPtrType);
     // Delete the now-unused bitcast ConstantExprs that we created so
     // that they don't interfere with StripDeadPrototypes.
     Func->removeDeadConstantUsers();

@@ -41,6 +41,9 @@ private:
 
   void swapOperands(MachineBasicBlock::iterator Inst) const;
 
+  void lowerScalarAbs(SmallVectorImpl<MachineInstr *> &Worklist,
+                      MachineInstr *Inst) const;
+
   void splitScalar64BitUnaryOp(SmallVectorImpl<MachineInstr *> &Worklist,
                                MachineInstr *Inst, unsigned Opcode) const;
 
@@ -432,6 +435,12 @@ public:
   const MachineOperand *getNamedOperand(const MachineInstr &MI,
                                         unsigned OpName) const {
     return getNamedOperand(const_cast<MachineInstr &>(MI), OpName);
+  }
+
+  /// Get required immediate operand
+  int64_t getNamedImmOperand(const MachineInstr &MI, unsigned OpName) const {
+    int Idx = AMDGPU::getNamedOperandIdx(MI.getOpcode(), OpName);
+    return MI.getOperand(Idx).getImm();
   }
 
   uint64_t getDefaultRsrcDataFormat() const;

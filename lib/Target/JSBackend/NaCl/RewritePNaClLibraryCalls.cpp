@@ -426,7 +426,7 @@ void RewritePNaClLibraryCalls::populateWrapperCommon(
     const char *ArgName = va_arg(ap, const char *);
     if (!ArgName)
       break;
-    Value *Arg = FuncArgs++;
+    Value *Arg = &*FuncArgs++;
     Arg->setName(ArgName);
     Args.push_back(Arg);
   }

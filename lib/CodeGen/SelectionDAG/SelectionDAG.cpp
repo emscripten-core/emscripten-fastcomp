@@ -2833,6 +2833,16 @@ bool SelectionDAG::isEqualTo(SDValue A, SDValue B) const {
   return false;
 }
 
+bool SelectionDAG::haveNoCommonBitsSet(SDValue A, SDValue B) const {
+  assert(A.getValueType() == B.getValueType() &&
+         "Values must have the same type");
+  APInt AZero, AOne;
+  APInt BZero, BOne;
+  computeKnownBits(A, AZero, AOne);
+  computeKnownBits(B, BZero, BOne);
+  return (AZero | BZero).isAllOnesValue();
+}
+
 /// getNode - Gets or creates the specified node.
 ///
 SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT) {
@@ -3308,21 +3318,22 @@ SDValue SelectionDAG::FoldConstantVectorArithmetic(unsigned Opcode, SDLoc DL,
 
   unsigned NumElts = VT.getVectorNumElements();
 
-  auto IsSameVectorSize = [&](const SDValue &Op) {
-    return Op.getValueType().isVector() &&
+  auto IsScalarOrSameVectorSize = [&](const SDValue &Op) {
+    return !Op.getValueType().isVector() ||
            Op.getValueType().getVectorNumElements() == NumElts;
   };
 
   auto IsConstantBuildVectorOrUndef = [&](const SDValue &Op) {
     BuildVectorSDNode *BV = dyn_cast<BuildVectorSDNode>(Op);
-    return (Op.getOpcode() == ISD::UNDEF) || (BV && BV->isConstant());
+    return (Op.getOpcode() == ISD::UNDEF) ||
+           (Op.getOpcode() == ISD::CONDCODE) || (BV && BV->isConstant());
   };
 
   // All operands must be vector types with the same number of elements as
   // the result type and must be either UNDEF or a build vector of constant
   // or UNDEF scalars.
   if (!std::all_of(Ops.begin(), Ops.end(), IsConstantBuildVectorOrUndef) ||
-      !std::all_of(Ops.begin(), Ops.end(), IsSameVectorSize))
+      !std::all_of(Ops.begin(), Ops.end(), IsScalarOrSameVectorSize))
     return SDValue();
 
   // Find legal integer scalar type for constant promotion and
@@ -3343,8 +3354,11 @@ SDValue SelectionDAG::FoldConstantVectorArithmetic(unsigned Opcode, SDLoc DL,
       EVT InSVT = Op.getValueType().getScalarType();
       BuildVectorSDNode *InBV = dyn_cast<BuildVectorSDNode>(Op);
       if (!InBV) {
-        // We've checked that this is UNDEF above.
-        ScalarOps.push_back(getUNDEF(InSVT));
+        // We've checked that this is UNDEF or a constant of some kind.
+        if (Op.isUndef())
+          ScalarOps.push_back(getUNDEF(InSVT));
+        else
+          ScalarOps.push_back(Op);
         continue;
       }
 
@@ -3908,6 +3922,10 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT,
   case ISD::SETCC: {
     // Use FoldSetCC to simplify SETCC's.
     if (SDValue V = FoldSetCC(VT, N1, N2, cast<CondCodeSDNode>(N3)->get(), DL))
+      return V;
+    // Vector constant folding.
+    SDValue Ops[] = {N1, N2, N3};
+    if (SDValue V = FoldConstantVectorArithmetic(Opcode, DL, VT, Ops))
       return V;
     break;
   }
@@ -6651,6 +6669,26 @@ void SelectionDAG::TransferDbgValues(SDValue From, SDValue To) {
 //===----------------------------------------------------------------------===//
 //                              SDNode Class
 //===----------------------------------------------------------------------===//
+
+bool llvm::isNullConstant(SDValue V) {
+  ConstantSDNode *Const = dyn_cast<ConstantSDNode>(V);
+  return Const != nullptr && Const->isNullValue();
+}
+
+bool llvm::isNullFPConstant(SDValue V) {
+  ConstantFPSDNode *Const = dyn_cast<ConstantFPSDNode>(V);
+  return Const != nullptr && Const->isZero() && !Const->isNegative();
+}
+
+bool llvm::isAllOnesConstant(SDValue V) {
+  ConstantSDNode *Const = dyn_cast<ConstantSDNode>(V);
+  return Const != nullptr && Const->isAllOnesValue();
+}
+
+bool llvm::isOneConstant(SDValue V) {
+  ConstantSDNode *Const = dyn_cast<ConstantSDNode>(V);
+  return Const != nullptr && Const->isOne();
+}
 
 HandleSDNode::~HandleSDNode() {
   DropOperands();

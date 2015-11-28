@@ -55,7 +55,7 @@ bool InsertDivideCheck::runOnFunction(Function &F) {
   // BasicBlock, so that if there is more than one DIV/REM in the same block,
   // all are visited.
   for (Function::iterator I = F.begin(); I != F.end(); I++) {
-    BasicBlock *BB = I;
+    BasicBlock *BB = &*I;
 
     for (BasicBlock::iterator BI = BB->begin(), BE = BB->end();
          BI != BE; BI++) {

@@ -256,8 +256,10 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   setLibcallName(RTLIB::SRL_I128, nullptr);
   setLibcallName(RTLIB::SRA_I128, nullptr);
 
-  if (Subtarget->isAAPCS_ABI() && !Subtarget->isTargetMachO() &&
-      !Subtarget->isTargetWindows()) {
+  // RTLIB
+  if (Subtarget->isAAPCS_ABI() &&
+      (Subtarget->isTargetAEABI() || Subtarget->isTargetGNUAEABI() ||
+       Subtarget->isTargetAndroid())) {
     static const struct {
       const RTLIB::Libcall Op;
       const char * const Name;
@@ -345,12 +347,6 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
       { RTLIB::UDIV_I16, "__aeabi_uidiv",    CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
       { RTLIB::UDIV_I32, "__aeabi_uidiv",    CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
       { RTLIB::UDIV_I64, "__aeabi_uldivmod", CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
-
-      // Memory operations
-      // RTABI chapter 4.3.4
-      { RTLIB::MEMCPY,  "__aeabi_memcpy",  CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
-      { RTLIB::MEMMOVE, "__aeabi_memmove", CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
-      { RTLIB::MEMSET,  "__aeabi_memset",  CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
     };
 
     for (const auto &LC : LibraryCalls) {
@@ -358,6 +354,30 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
       setLibcallCallingConv(LC.Op, LC.CC);
       if (LC.Cond != ISD::SETCC_INVALID)
         setCmpLibcallCC(LC.Op, LC.Cond);
+    }
+
+    // EABI dependent RTLIB
+    if (TM.Options.EABIVersion == EABI::EABI4 ||
+        TM.Options.EABIVersion == EABI::EABI5) {
+      static const struct {
+        const RTLIB::Libcall Op;
+        const char *const Name;
+        const CallingConv::ID CC;
+        const ISD::CondCode Cond;
+      } MemOpsLibraryCalls[] = {
+        // Memory operations
+        // RTABI chapter 4.3.4
+        { RTLIB::MEMCPY,  "__aeabi_memcpy",  CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
+        { RTLIB::MEMMOVE, "__aeabi_memmove", CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
+        { RTLIB::MEMSET,  "__aeabi_memset",  CallingConv::ARM_AAPCS, ISD::SETCC_INVALID },
+      };
+
+      for (const auto &LC : MemOpsLibraryCalls) {
+        setLibcallName(LC.Op, LC.Name);
+        setLibcallCallingConv(LC.Op, LC.CC);
+        if (LC.Cond != ISD::SETCC_INVALID)
+          setCmpLibcallCC(LC.Op, LC.Cond);
+      }
     }
   }
 
@@ -375,6 +395,10 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
       { RTLIB::SINTTOFP_I64_F64, "__i64tod", CallingConv::ARM_AAPCS_VFP },
       { RTLIB::UINTTOFP_I64_F32, "__u64tos", CallingConv::ARM_AAPCS_VFP },
       { RTLIB::UINTTOFP_I64_F64, "__u64tod", CallingConv::ARM_AAPCS_VFP },
+      { RTLIB::SDIV_I32, "__rt_sdiv",   CallingConv::ARM_AAPCS_VFP },
+      { RTLIB::UDIV_I32, "__rt_udiv",   CallingConv::ARM_AAPCS_VFP },
+      { RTLIB::SDIV_I64, "__rt_sdiv64", CallingConv::ARM_AAPCS_VFP },
+      { RTLIB::UDIV_I64, "__rt_udiv64", CallingConv::ARM_AAPCS_VFP },
     };
 
     for (const auto &LC : LibraryCalls) {
@@ -725,6 +749,9 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     setOperationAction(ISD::SUBE,    MVT::i32, Custom);
   }
 
+  if (!Subtarget->isThumb1Only())
+    setOperationAction(ISD::BITREVERSE, MVT::i32, Legal);
+
   // ARM does not have ROTL.
   setOperationAction(ISD::ROTL, MVT::i32, Expand);
   for (MVT VT : MVT::vector_valuetypes()) {
@@ -756,14 +783,6 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
     // These are expanded into libcalls if the cpu doesn't have HW divider.
     setOperationAction(ISD::SDIV,  MVT::i32, LibCall);
     setOperationAction(ISD::UDIV,  MVT::i32, LibCall);
-  }
-
-  if (Subtarget->isTargetWindows() && !Subtarget->hasDivide()) {
-    setOperationAction(ISD::SDIV, MVT::i32, Custom);
-    setOperationAction(ISD::UDIV, MVT::i32, Custom);
-
-    setOperationAction(ISD::SDIV, MVT::i64, Custom);
-    setOperationAction(ISD::UDIV, MVT::i64, Custom);
   }
 
   setOperationAction(ISD::SREM,  MVT::i32, Expand);
@@ -812,13 +831,6 @@ ARMTargetLowering::ARMTargetLowering(const TargetMachine &TM,
   setOperationAction(ISD::VAEND,              MVT::Other, Expand);
   setOperationAction(ISD::STACKSAVE,          MVT::Other, Expand);
   setOperationAction(ISD::STACKRESTORE,       MVT::Other, Expand);
-
-  if (!Subtarget->useSjLjEH()) {
-    // Platforms which do not use SjLj EH may return values in these registers
-    // via the personality function.
-    setExceptionPointerRegister(ARM::R0);
-    setExceptionSelectorRegister(ARM::R1);
-  }
 
   if (Subtarget->getTargetTriple().isWindowsItaniumEnvironment())
     setOperationAction(ISD::DYNAMIC_STACKALLOC, MVT::i32, Custom);
@@ -1115,8 +1127,6 @@ const char *ARMTargetLowering::getTargetNodeName(unsigned Opcode) const {
   case ARMISD::FMSTAT:        return "ARMISD::FMSTAT";
 
   case ARMISD::CMOV:          return "ARMISD::CMOV";
-
-  case ARMISD::RBIT:          return "ARMISD::RBIT";
 
   case ARMISD::SRL_FLAG:      return "ARMISD::SRL_FLAG";
   case ARMISD::SRA_FLAG:      return "ARMISD::SRA_FLAG";
@@ -2784,7 +2794,7 @@ ARMTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op, SelectionDAG &DAG,
   case Intrinsic::arm_rbit: {
     assert(Op.getOperand(1).getValueType() == MVT::i32 &&
            "RBIT intrinsic must have i32 type!");
-    return DAG.getNode(ARMISD::RBIT, dl, MVT::i32, Op.getOperand(1));
+    return DAG.getNode(ISD::BITREVERSE, dl, MVT::i32, Op.getOperand(1));
   }
   case Intrinsic::arm_thread_pointer: {
     EVT PtrVT = getPointerTy(DAG.getDataLayout());
@@ -3273,13 +3283,9 @@ static bool isFloatingPointZero(SDValue Op) {
     // Handle (ISD::BITCAST (ARMISD::VMOVIMM (ISD::TargetConstant 0)) MVT::f64)
     // created by LowerConstantFP().
     SDValue BitcastOp = Op->getOperand(0);
-    if (BitcastOp->getOpcode() == ARMISD::VMOVIMM) {
-      SDValue MoveOp = BitcastOp->getOperand(0);
-      if (MoveOp->getOpcode() == ISD::TargetConstant &&
-          cast<ConstantSDNode>(MoveOp)->getZExtValue() == 0) {
-        return true;
-      }
-    }
+    if (BitcastOp->getOpcode() == ARMISD::VMOVIMM &&
+        isNullConstant(BitcastOp->getOperand(0)))
+      return true;
   }
   return false;
 }
@@ -4363,7 +4369,7 @@ static SDValue LowerCTTZ(SDNode *N, SelectionDAG &DAG,
   if (!ST->hasV6T2Ops())
     return SDValue();
 
-  SDValue rbit = DAG.getNode(ARMISD::RBIT, dl, VT, N->getOperand(0));
+  SDValue rbit = DAG.getNode(ISD::BITREVERSE, dl, VT, N->getOperand(0));
   return DAG.getNode(ISD::CTLZ, dl, VT, rbit);
 }
 
@@ -4524,8 +4530,7 @@ static SDValue Expand64BitShift(SDNode *N, SelectionDAG &DAG,
          "Unknown shift to lower!");
 
   // We only lower SRA, SRL of 1 here, all others use generic lowering.
-  if (!isa<ConstantSDNode>(N->getOperand(1)) ||
-      cast<ConstantSDNode>(N->getOperand(1))->getZExtValue() != 1)
+  if (!isOneConstant(N->getOperand(1)))
     return SDValue();
 
   // If we are in thumb mode, we don't have RRX.
@@ -5407,16 +5412,14 @@ SDValue ARMTargetLowering::LowerBUILD_VECTOR(SDValue Op, SelectionDAG &DAG,
       // just use VDUPLANE. We can only do this if the lane being extracted
       // is at a constant index, as the VDUP from lane instructions only have
       // constant-index forms.
+      ConstantSDNode *constIndex;
       if (Value->getOpcode() == ISD::EXTRACT_VECTOR_ELT &&
-          isa<ConstantSDNode>(Value->getOperand(1))) {
+          (constIndex = dyn_cast<ConstantSDNode>(Value->getOperand(1)))) {
         // We need to create a new undef vector to use for the VDUPLANE if the
         // size of the vector from which we get the value is different than the
         // size of the vector that we need to create. We will insert the element
         // such that the register coalescer will remove unnecessary copies.
         if (VT != Value->getOperand(0).getValueType()) {
-          ConstantSDNode *constIndex;
-          constIndex = dyn_cast<ConstantSDNode>(Value->getOperand(1));
-          assert(constIndex && "The index is not a constant!");
           unsigned index = constIndex->getAPIntValue().getLimitedValue() %
                              VT.getVectorNumElements();
           N =  DAG.getNode(ARMISD::VDUPLANE, dl, VT,
@@ -6821,14 +6824,8 @@ SDValue ARMTargetLowering::LowerOperation(SDValue Op, SelectionDAG &DAG) const {
   case ISD::CONCAT_VECTORS: return LowerCONCAT_VECTORS(Op, DAG);
   case ISD::FLT_ROUNDS_:   return LowerFLT_ROUNDS_(Op, DAG);
   case ISD::MUL:           return LowerMUL(Op, DAG);
-  case ISD::SDIV:
-    if (Subtarget->isTargetWindows())
-      return LowerDIV_Windows(Op, DAG, /* Signed */ true);
-    return LowerSDIV(Op, DAG);
-  case ISD::UDIV:
-    if (Subtarget->isTargetWindows())
-      return LowerDIV_Windows(Op, DAG, /* Signed */ false);
-    return LowerUDIV(Op, DAG);
+  case ISD::SDIV:          return LowerSDIV(Op, DAG);
+  case ISD::UDIV:          return LowerUDIV(Op, DAG);
   case ISD::ADDC:
   case ISD::ADDE:
   case ISD::SUBC:
@@ -8193,10 +8190,7 @@ void ARMTargetLowering::AdjustInstrPostInstrSelection(MachineInstr *MI,
 
 // Helper function that checks if N is a null or all ones constant.
 static inline bool isZeroOrAllOnes(SDValue N, bool AllOnes) {
-  ConstantSDNode *C = dyn_cast<ConstantSDNode>(N);
-  if (!C)
-    return false;
-  return AllOnes ? C->isAllOnesValue() : C->isNullValue();
+  return AllOnes ? isAllOnesConstant(N) : isNullConstant(N);
 }
 
 // Return true if N is conditionally 0 or all ones.
@@ -9018,12 +9012,88 @@ static SDValue PerformXORCombine(SDNode *N,
   return SDValue();
 }
 
-/// PerformBFICombine - (bfi A, (and B, Mask1), Mask2) -> (bfi A, B, Mask2) iff
-/// the bits being cleared by the AND are not demanded by the BFI.
+// ParseBFI - given a BFI instruction in N, extract the "from" value (Rn) and return it,
+// and fill in FromMask and ToMask with (consecutive) bits in "from" to be extracted and
+// their position in "to" (Rd).
+static SDValue ParseBFI(SDNode *N, APInt &ToMask, APInt &FromMask) {
+  assert(N->getOpcode() == ARMISD::BFI);
+  
+  SDValue From = N->getOperand(1);
+  ToMask = ~cast<ConstantSDNode>(N->getOperand(2))->getAPIntValue();
+  FromMask = APInt::getLowBitsSet(ToMask.getBitWidth(), ToMask.countPopulation());
+
+  // If the Base came from a SHR #C, we can deduce that it is really testing bit
+  // #C in the base of the SHR.
+  if (From->getOpcode() == ISD::SRL &&
+      isa<ConstantSDNode>(From->getOperand(1))) {
+    APInt Shift = cast<ConstantSDNode>(From->getOperand(1))->getAPIntValue();
+    assert(Shift.getLimitedValue() < 32 && "Shift too large!");
+    FromMask <<= Shift.getLimitedValue(31);
+    From = From->getOperand(0);
+  }
+
+  return From;
+}
+
+// If A and B contain one contiguous set of bits, does A | B == A . B?
+//
+// Neither A nor B must be zero.
+static bool BitsProperlyConcatenate(const APInt &A, const APInt &B) {
+  unsigned LastActiveBitInA =  A.countTrailingZeros();
+  unsigned FirstActiveBitInB = B.getBitWidth() - B.countLeadingZeros() - 1;
+  return LastActiveBitInA - 1 == FirstActiveBitInB;
+}
+
+static SDValue FindBFIToCombineWith(SDNode *N) {
+  // We have a BFI in N. Follow a possible chain of BFIs and find a BFI it can combine with,
+  // if one exists.
+  APInt ToMask, FromMask;
+  SDValue From = ParseBFI(N, ToMask, FromMask);
+  SDValue To = N->getOperand(0);
+
+  // Now check for a compatible BFI to merge with. We can pass through BFIs that
+  // aren't compatible, but not if they set the same bit in their destination as
+  // we do (or that of any BFI we're going to combine with).
+  SDValue V = To;
+  APInt CombinedToMask = ToMask;
+  while (V.getOpcode() == ARMISD::BFI) {
+    APInt NewToMask, NewFromMask;
+    SDValue NewFrom = ParseBFI(V.getNode(), NewToMask, NewFromMask);
+    if (NewFrom != From) {
+      // This BFI has a different base. Keep going.
+      CombinedToMask |= NewToMask;
+      V = V.getOperand(0);
+      continue;
+    }
+
+    // Do the written bits conflict with any we've seen so far?
+    if ((NewToMask & CombinedToMask).getBoolValue())
+      // Conflicting bits - bail out because going further is unsafe.
+      return SDValue();
+
+    // Are the new bits contiguous when combined with the old bits?
+    if (BitsProperlyConcatenate(ToMask, NewToMask) &&
+        BitsProperlyConcatenate(FromMask, NewFromMask))
+      return V;
+    if (BitsProperlyConcatenate(NewToMask, ToMask) &&
+        BitsProperlyConcatenate(NewFromMask, FromMask))
+      return V;
+    
+    // We've seen a write to some bits, so track it.
+    CombinedToMask |= NewToMask;
+    // Keep going...
+    V = V.getOperand(0);
+  }
+
+  return SDValue();
+}
+
 static SDValue PerformBFICombine(SDNode *N,
                                  TargetLowering::DAGCombinerInfo &DCI) {
   SDValue N1 = N->getOperand(1);
   if (N1.getOpcode() == ISD::AND) {
+    // (bfi A, (and B, Mask1), Mask2) -> (bfi A, B, Mask2) iff
+    // the bits being cleared by the AND are not demanded by the BFI.
     ConstantSDNode *N11C = dyn_cast<ConstantSDNode>(N1.getOperand(1));
     if (!N11C)
       return SDValue();
@@ -9039,6 +9109,38 @@ static SDValue PerformBFICombine(SDNode *N,
       return DCI.DAG.getNode(ARMISD::BFI, SDLoc(N), N->getValueType(0),
                              N->getOperand(0), N1.getOperand(0),
                              N->getOperand(2));
+  } else if (N->getOperand(0).getOpcode() == ARMISD::BFI) {
+    // We have a BFI of a BFI. Walk up the BFI chain to see how long it goes.
+    // Keep track of any consecutive bits set that all come from the same base
+    // value. We can combine these together into a single BFI.
+    SDValue CombineBFI = FindBFIToCombineWith(N);
+    if (CombineBFI == SDValue())
+      return SDValue();
+
+    // We've found a BFI.
+    APInt ToMask1, FromMask1;
+    SDValue From1 = ParseBFI(N, ToMask1, FromMask1);
+
+    APInt ToMask2, FromMask2;
+    SDValue From2 = ParseBFI(CombineBFI.getNode(), ToMask2, FromMask2);
+    assert(From1 == From2);
+    (void)From2;
+  
+    // First, unlink CombineBFI.
+    DCI.DAG.ReplaceAllUsesWith(CombineBFI, CombineBFI.getOperand(0));
+    // Then create a new BFI, combining the two together.
+    APInt NewFromMask = FromMask1 | FromMask2;
+    APInt NewToMask = ToMask1 | ToMask2;
+
+    EVT VT = N->getValueType(0);
+    SDLoc dl(N);
+
+    if (NewFromMask[0] == 0)
+      From1 = DCI.DAG.getNode(
+        ISD::SRL, dl, VT, From1,
+        DCI.DAG.getConstant(NewFromMask.countTrailingZeros(), dl, VT));
+    return DCI.DAG.getNode(ARMISD::BFI, dl, VT, N->getOperand(0), From1,
+                           DCI.DAG.getConstant(~NewToMask, dl, VT));
   }
   return SDValue();
 }
@@ -10243,6 +10345,16 @@ static void computeKnownBits(SelectionDAG &DAG, SDValue Op, APInt &KnownZero,
     KnownOne &= Mask;
     return;
   }
+  if (Op.getOpcode() == ARMISD::CMOV) {
+    APInt KZ2(KnownZero.getBitWidth(), 0);
+    APInt KO2(KnownOne.getBitWidth(), 0);
+    computeKnownBits(DAG, Op.getOperand(1), KnownZero, KnownOne);
+    computeKnownBits(DAG, Op.getOperand(2), KZ2, KO2);
+
+    KnownZero &= KZ2;
+    KnownOne &= KO2;
+    return;
+  }
   return DAG.computeKnownBits(Op, KnownZero, KnownOne);
 }
 
@@ -10262,7 +10374,13 @@ SDValue ARMTargetLowering::PerformCMOVToBFICombine(SDNode *CMOV, SelectionDAG &D
 
   SDValue Op0 = CMOV->getOperand(0);
   SDValue Op1 = CMOV->getOperand(1);
+  auto CCNode = cast<ConstantSDNode>(CMOV->getOperand(2));
+  auto CC = CCNode->getAPIntValue().getLimitedValue();
   SDValue CmpZ = CMOV->getOperand(4);
+
+  // The compare must be against zero.
+  if (!isNullConstant(CmpZ->getOperand(1)))
+    return SDValue();
 
   assert(CmpZ->getOpcode() == ARMISD::CMPZ);
   SDValue And = CmpZ->getOperand(0);
@@ -10273,18 +10391,23 @@ SDValue ARMTargetLowering::PerformCMOVToBFICombine(SDNode *CMOV, SelectionDAG &D
     return SDValue();
   SDValue X = And->getOperand(0);
 
-  // Canonicalize so that the OR is on the left.
-  if (Op1->getOpcode() == ISD::OR)
+  if (CC == ARMCC::EQ) {
+    // We're performing an "equal to zero" compare. Swap the operands so we
+    // canonicalize on a "not equal to zero" compare.
     std::swap(Op0, Op1);
-  if (Op0->getOpcode() != ISD::OR)
+  } else {
+    assert(CC == ARMCC::NE && "How can a CMPZ node not be EQ or NE?");
+  }
+  
+  if (Op1->getOpcode() != ISD::OR)
     return SDValue();
 
-  ConstantSDNode *OrC = dyn_cast<ConstantSDNode>(Op0->getOperand(1));
+  ConstantSDNode *OrC = dyn_cast<ConstantSDNode>(Op1->getOperand(1));
   if (!OrC)
     return SDValue();
-  SDValue Y = Op0->getOperand(0);
+  SDValue Y = Op1->getOperand(0);
 
-  if (Op1 != Y)
+  if (Op0 != Y)
     return SDValue();
 
   // Now, is it profitable to continue?
@@ -11821,6 +11944,14 @@ bool ARMTargetLowering::canCombineStoreAndExtract(Type *VectorTy, Value *Idx,
   return false;
 }
 
+bool ARMTargetLowering::isCheapToSpeculateCttz() const {
+  return Subtarget->hasV6T2Ops();
+}
+
+bool ARMTargetLowering::isCheapToSpeculateCtlz() const {
+  return Subtarget->hasV6T2Ops();
+}
+
 Value *ARMTargetLowering::emitLoadLinked(IRBuilder<> &Builder, Value *Addr,
                                          AtomicOrdering Ord) const {
   Module *M = Builder.GetInsertBlock()->getParent()->getParent();
@@ -12136,4 +12267,18 @@ bool ARMTargetLowering::functionArgumentNeedsConsecutiveRegisters(
 
   bool IsIntArray = Ty->isArrayTy() && Ty->getArrayElementType()->isIntegerTy();
   return IsHA || IsIntArray;
+}
+
+unsigned ARMTargetLowering::getExceptionPointerRegister(
+    const Constant *PersonalityFn) const {
+  // Platforms which do not use SjLj EH may return values in these registers
+  // via the personality function.
+  return Subtarget->useSjLjEH() ? ARM::NoRegister : ARM::R0;
+}
+
+unsigned ARMTargetLowering::getExceptionSelectorRegister(
+    const Constant *PersonalityFn) const {
+  // Platforms which do not use SjLj EH may return values in these registers
+  // via the personality function.
+  return Subtarget->useSjLjEH() ? ARM::NoRegister : ARM::R1;
 }

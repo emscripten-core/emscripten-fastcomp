@@ -142,7 +142,7 @@ static bool convertFunction(Function *Func) {
 bool ExpandIndirectBr::runOnModule(Module &M) {
   bool Changed = false;
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
-    Changed |= convertFunction(Func);
+    Changed |= convertFunction(&*Func);
   }
   return Changed;
 }

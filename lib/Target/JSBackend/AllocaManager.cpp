@@ -214,7 +214,7 @@ void AllocaManager::collectBlocks() {
   BitVector Seen(AllocaCount);
 
   for (Function::const_iterator I = F->begin(), E = F->end(); I != E; ++I) {
-    const BasicBlock *BB = I;
+    const BasicBlock *BB = &*I;
 
     BlockLifetimeInfo &BLI = BlockLiveness[BB];
     BLI.Start.resize(AllocaCount);
@@ -356,7 +356,7 @@ void AllocaManager::computeIntraBlockLiveness() {
   AllocaCompatibility.resize(AllocaCount, BitVector(AllocaCount, true));
 
   for (Function::const_iterator I = F->begin(), E = F->end(); I != E; ++I) {
-    const BasicBlock *BB = I;
+    const BasicBlock *BB = &*I;
     const BlockLifetimeInfo &BLI = BlockLiveness[BB];
 
     Current = BLI.LiveIn;

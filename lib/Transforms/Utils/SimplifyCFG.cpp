@@ -44,7 +44,6 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/Utils/ValueMapper.h"
 #include <algorithm>
 #include <map>
@@ -1618,6 +1617,11 @@ static bool SpeculativelyExecuteBB(BranchInst *BI, BasicBlock *ThenBB,
     SpeculatedStore->setOperand(0, S);
   }
 
+  // Metadata can be dependent on the condition we are hoisting above.
+  // Conservatively strip all metadata on the instruction.
+  for (auto &I: *ThenBB)
+    I.dropUnknownNonDebugMetadata();
+
   // Hoist the instructions.
   BB->getInstList().splice(BI->getIterator(), ThenBB->getInstList(),
                            ThenBB->begin(), std::prev(ThenBB->end()));
@@ -2400,7 +2404,7 @@ static Value *ensureValueAvailableInSuccessor(Value *V, BasicBlock *BB,
   if (PHI)
     return PHI;
 
-  PHI = PHINode::Create(V->getType(), 2, "simplifycfg.merge", Succ->begin());
+  PHI = PHINode::Create(V->getType(), 2, "simplifycfg.merge", &Succ->front());
   PHI->addIncoming(V, BB);
   for (BasicBlock *PredBB : predecessors(Succ))
     if (PredBB != BB)
@@ -2426,14 +2430,20 @@ static bool mergeConditionalStoreToAddress(BasicBlock *PTB, BasicBlock *PFB,
     // Heuristic: if the block can be if-converted/phi-folded and the
     // instructions inside are all cheap (arithmetic/GEPs), it's worthwhile to
     // thread this store.
-    if (BB->size() > PHINodeFoldingThreshold)
-      return false;
-    for (auto &I : *BB)
-      if (!isa<BinaryOperator>(I) && !isa<GetElementPtrInst>(I) &&
-          !isa<StoreInst>(I) && !isa<TerminatorInst>(I) &&
-          !isa<DbgInfoIntrinsic>(I) && !IsaBitcastOfPointerType(I))
+    unsigned N = 0;
+    for (auto &I : *BB) {
+      // Cheap instructions viable for folding.
+      if (isa<BinaryOperator>(I) || isa<GetElementPtrInst>(I) ||
+          isa<StoreInst>(I))
+        ++N;
+      // Free instructions.
+      else if (isa<TerminatorInst>(I) || isa<DbgInfoIntrinsic>(I) ||
+               IsaBitcastOfPointerType(I))
+        continue;
+      else
         return false;
-    return true;
+    }
+    return N <= PHINodeFoldingThreshold;
   };
 
   if (!MergeCondStoresAggressively && (!IsWorthwhile(PTB) ||
@@ -2494,8 +2504,8 @@ static bool mergeConditionalStoreToAddress(BasicBlock *PTB, BasicBlock *PFB,
   Value *QPHI = ensureValueAvailableInSuccessor(QStore->getValueOperand(),
                                                 QStore->getParent(), PPHI);
 
-  IRBuilder<> QB(PostBB->getFirstInsertionPt());
-  
+  IRBuilder<> QB(&*PostBB->getFirstInsertionPt());
+
   Value *PPred = PStore->getParent() == PTB ? PCond : QB.CreateNot(PCond);
   Value *QPred = QStore->getParent() == QTB ? QCond : QB.CreateNot(QCond);
 
@@ -2505,7 +2515,8 @@ static bool mergeConditionalStoreToAddress(BasicBlock *PTB, BasicBlock *PFB,
     QPred = QB.CreateNot(QPred);
   Value *CombinedPred = QB.CreateOr(PPred, QPred);
 
-  auto *T = SplitBlockAndInsertIfThen(CombinedPred, QB.GetInsertPoint(), false);
+  auto *T =
+      SplitBlockAndInsertIfThen(CombinedPred, &*QB.GetInsertPoint(), false);
   QB.SetInsertPoint(T);
   StoreInst *SI = cast<StoreInst>(QB.CreateStore(QPHI, Address));
   AAMDNodes AAMD;
@@ -2680,7 +2691,7 @@ static bool SimplifyCondBranchToCondBranch(BranchInst *PBI, BranchInst *BI,
   // If BI is reached from the true path of PBI and PBI's condition implies
   // BI's condition, we know the direction of the BI branch.
   if (PBI->getSuccessor(0) == BI->getParent() &&
-      isImpliedCondition(PBI->getCondition(), BI->getCondition()) &&
+      isImpliedCondition(PBI->getCondition(), BI->getCondition(), DL) &&
       PBI->getSuccessor(0) != PBI->getSuccessor(1) &&
       BB->getSinglePredecessor()) {
     // Turn this into a branch on constant.

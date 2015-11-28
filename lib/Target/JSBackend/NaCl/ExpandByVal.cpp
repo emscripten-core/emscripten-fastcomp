@@ -153,12 +153,12 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
       // Mark the argument copy as unused using llvm.lifetime.end.
       if (isa<CallInst>(Call)) {
         BasicBlock::iterator It = BasicBlock::iterator(Call);
-        Builder.SetInsertPoint(++It);
+        Builder.SetInsertPoint(&*(++It));
         Builder.CreateLifetimeEnd(CopyBuf, ArgSize);
       } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Call)) {
-        Builder.SetInsertPoint(Invoke->getNormalDest()->getFirstInsertionPt());
+        Builder.SetInsertPoint(&*Invoke->getNormalDest()->getFirstInsertionPt());
         Builder.CreateLifetimeEnd(CopyBuf, ArgSize);
-        Builder.SetInsertPoint(Invoke->getUnwindDest()->getFirstInsertionPt());
+        Builder.SetInsertPoint(&*Invoke->getUnwindDest()->getFirstInsertionPt());
         Builder.CreateLifetimeEnd(CopyBuf, ArgSize);
       }
     }

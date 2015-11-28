@@ -490,7 +490,7 @@ INITIALIZE_PASS(FlattenGlobals, "flatten-globals",
 void FlattenGlobalsState::flattenGlobalsWithInitializers() {
   for (Module::global_iterator I = M.global_begin(), E = M.global_end();
        I != E;) {
-    GlobalVariable *Global = I++;
+    GlobalVariable *Global = &*I++;
     // Variables with "appending" linkage must always be arrays and so
     // cannot be normalized, so leave them alone.
     if (Global->hasAppendingLinkage())

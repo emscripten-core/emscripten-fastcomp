@@ -103,7 +103,7 @@ bool PromoteI1Ops::runOnBasicBlock(BasicBlock &BB) {
   }
 
   for (BasicBlock::iterator Iter = BB.begin(), E = BB.end(); Iter != E; ) {
-    Instruction *Inst = Iter++;
+    Instruction *Inst = &*Iter++;
     if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
       if (Load->getType() == I1Ty) {
         Changed = true;

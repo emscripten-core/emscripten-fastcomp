@@ -39,12 +39,14 @@ protected:
   ARMProcFamilyEnum ARMProcFamily;
 
   bool HasV8_1aOps;
+  bool HasV8_2aOps;
 
   bool HasFPARMv8;
   bool HasNEON;
   bool HasCrypto;
   bool HasCRC;
   bool HasPerfMon;
+  bool HasFullFP16;
 
   // HasZeroCycleRegMove - Has zero-cycle register mov instructions.
   bool HasZeroCycleRegMove;
@@ -103,6 +105,7 @@ public:
   }
 
   bool hasV8_1aOps() const { return HasV8_1aOps; }
+  bool hasV8_2aOps() const { return HasV8_2aOps; }
 
   bool hasZeroCycleRegMove() const { return HasZeroCycleRegMove; }
 
@@ -115,7 +118,12 @@ public:
   bool hasNEON() const { return HasNEON; }
   bool hasCrypto() const { return HasCrypto; }
   bool hasCRC() const { return HasCRC; }
+  /// CPU has TBI (top byte of addresses is ignored during HW address
+  /// translation) and OS enables it.
+  bool supportsAddressTopByteIgnored() const;
+
   bool hasPerfMon() const { return HasPerfMon; }
+  bool hasFullFP16() const { return HasFullFP16; }
 
   bool isLittleEndian() const { return IsLittle; }
 

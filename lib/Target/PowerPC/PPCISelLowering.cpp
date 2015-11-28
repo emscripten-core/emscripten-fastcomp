@@ -827,15 +827,7 @@ PPCTargetLowering::PPCTargetLowering(const PPCTargetMachine &TM,
     setLibcallName(RTLIB::SRA_I128, nullptr);
   }
 
-  if (isPPC64) {
-    setStackPointerRegisterToSaveRestore(PPC::X1);
-    setExceptionPointerRegister(PPC::X3);
-    setExceptionSelectorRegister(PPC::X4);
-  } else {
-    setStackPointerRegisterToSaveRestore(PPC::R1);
-    setExceptionPointerRegister(PPC::R3);
-    setExceptionSelectorRegister(PPC::R4);
-  }
+  setStackPointerRegisterToSaveRestore(isPPC64 ? PPC::X1 : PPC::R1);
 
   // We have target-specific dag combine patterns for the following nodes:
   setTargetDAGCombine(ISD::SINT_TO_FP);
@@ -1527,8 +1519,8 @@ SDValue PPC::get_VSPLTI_elt(SDNode *N, unsigned ByteSize, SelectionDAG &DAG) {
     for (unsigned i = 0; i != Multiple-1; ++i) {
       if (!UniquedVals[i].getNode()) continue;  // Must have been undefs.
 
-      LeadingZero &= cast<ConstantSDNode>(UniquedVals[i])->isNullValue();
-      LeadingOnes &= cast<ConstantSDNode>(UniquedVals[i])->isAllOnesValue();
+      LeadingZero &= isNullConstant(UniquedVals[i]);
+      LeadingOnes &= isAllOnesConstant(UniquedVals[i]);
     }
     // Finally, check the least significant entry.
     if (LeadingZero) {
@@ -6819,8 +6811,7 @@ SDValue PPCTargetLowering::LowerBUILD_VECTOR(SDValue Op,
       for (unsigned i = 0; i < 4; ++i) {
         if (BVN->getOperand(i).getOpcode() == ISD::UNDEF)
           CV[i] = UndefValue::get(Type::getFloatTy(*DAG.getContext()));
-        else if (cast<ConstantSDNode>(BVN->getOperand(i))->
-                   getConstantIntValue()->isZero())
+        else if (isNullConstant(BVN->getOperand(i)))
           continue;
         else
           CV[i] = One;
@@ -8421,8 +8412,8 @@ PPCTargetLowering::emitEHSjLjSetJmp(MachineInstr *MI,
           .addMBB(mainMBB);
   MIB = BuildMI(*thisMBB, MI, DL, TII->get(PPC::B)).addMBB(sinkMBB);
 
-  thisMBB->addSuccessor(mainMBB, /* weight */ 0);
-  thisMBB->addSuccessor(sinkMBB, /* weight */ 1);
+  thisMBB->addSuccessor(mainMBB, BranchProbability::getZero());
+  thisMBB->addSuccessor(sinkMBB, BranchProbability::getOne());
 
   // mainMBB:
   //  mainDstReg = 0
@@ -10155,16 +10146,12 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
   switch (N->getOpcode()) {
   default: break;
   case PPCISD::SHL:
-    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(0))) {
-      if (C->isNullValue())   // 0 << V -> 0.
+    if (isNullConstant(N->getOperand(0))) // 0 << V -> 0.
         return N->getOperand(0);
-    }
     break;
   case PPCISD::SRL:
-    if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(0))) {
-      if (C->isNullValue())   // 0 >>u V -> 0.
+    if (isNullConstant(N->getOperand(0))) // 0 >>u V -> 0.
         return N->getOperand(0);
-    }
     break;
   case PPCISD::SRA:
     if (ConstantSDNode *C = dyn_cast<ConstantSDNode>(N->getOperand(0))) {
@@ -10612,8 +10599,7 @@ SDValue PPCTargetLowering::PerformDAGCombine(SDNode *N,
         cast<ConstantSDNode>(LHS.getOperand(0).getOperand(1))->getZExtValue() ==
           Intrinsic::ppc_is_decremented_ctr_nonzero &&
         isa<ConstantSDNode>(LHS.getOperand(1)) &&
-        !cast<ConstantSDNode>(LHS.getOperand(1))->getConstantIntValue()->
-          isZero())
+        !isNullConstant(LHS.getOperand(1)))
       LHS = LHS.getOperand(0);
 
     if (LHS.getOpcode() == ISD::INTRINSIC_W_CHAIN &&
@@ -11530,6 +11516,16 @@ PPCTargetLowering::getScratchRegisters(CallingConv::ID) const {
   };
 
   return ScratchRegs;
+}
+
+unsigned PPCTargetLowering::getExceptionPointerRegister(
+    const Constant *PersonalityFn) const {
+  return Subtarget.isPPC64() ? PPC::X3 : PPC::R3;
+}
+
+unsigned PPCTargetLowering::getExceptionSelectorRegister(
+    const Constant *PersonalityFn) const {
+  return Subtarget.isPPC64() ? PPC::X4 : PPC::R4;
 }
 
 bool

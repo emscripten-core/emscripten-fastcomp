@@ -25,6 +25,8 @@ using namespace llvm;
 // Out of line method to get vtable etc for class.
 void ValueMapTypeRemapper::anchor() {}
 void ValueMaterializer::anchor() {}
+void ValueMaterializer::materializeInitFor(GlobalValue *New, GlobalValue *Old) {
+}
 
 Value *llvm::MapValue(const Value *V, ValueToValueMapTy &VM, RemapFlags Flags,
                       ValueMapTypeRemapper *TypeMapper,
@@ -36,15 +38,28 @@ Value *llvm::MapValue(const Value *V, ValueToValueMapTy &VM, RemapFlags Flags,
   
   // If we have a materializer and it can materialize a value, use that.
   if (Materializer) {
-    if (Value *NewV = Materializer->materializeValueFor(const_cast<Value*>(V)))
-      return VM[V] = NewV;
+    if (Value *NewV =
+            Materializer->materializeDeclFor(const_cast<Value *>(V))) {
+      VM[V] = NewV;
+      if (auto *GV = dyn_cast<GlobalValue>(V))
+        Materializer->materializeInitFor(cast<GlobalValue>(NewV),
+                                         const_cast<GlobalValue *>(GV));
+      return NewV;
+    }
   }
 
   // Global values do not need to be seeded into the VM if they
   // are using the identity mapping.
-  if (isa<GlobalValue>(V))
+  if (isa<GlobalValue>(V)) {
+    if (Flags & RF_NullMapMissingGlobalValues) {
+      assert(!(Flags & RF_IgnoreMissingEntries) &&
+             "Illegal to specify both RF_NullMapMissingGlobalValues and "
+             "RF_IgnoreMissingEntries");
+      return nullptr;
+    }
     return VM[V] = const_cast<Value*>(V);
-  
+  }
+
   if (const InlineAsm *IA = dyn_cast<InlineAsm>(V)) {
     // Inline asm may need *type* remapping.
     FunctionType *NewTy = IA->getFunctionType();
@@ -74,7 +89,8 @@ Value *llvm::MapValue(const Value *V, ValueToValueMapTy &VM, RemapFlags Flags,
     // correct.  For now, just match behaviour from before the metadata/value
     // split.
     //
-    //    assert(MappedMD && "Referenced metadata value not in value map");
+    //    assert((MappedMD || (Flags & RF_NullMapMissingGlobalValues)) &&
+    //           "Referenced metadata value not in value map");
     return VM[V] = MetadataAsValue::get(V->getContext(), MappedMD);
   }
 
@@ -184,7 +200,8 @@ static Metadata *mapMetadataOp(Metadata *Op,
   // correct.  For now, just match behaviour from before the metadata/value
   // split.
   //
-  //    llvm_unreachable("Referenced metadata not in value map!");
+  //    assert((Flags & RF_NullMapMissingGlobalValues) &&
+  //           "Referenced metadata not in value map!");
   return nullptr;
 }
 
@@ -305,7 +322,8 @@ static Metadata *MapMetadataImpl(const Metadata *MD,
     // correct.  For now, just match behaviour from before the metadata/value
     // split.
     //
-    //    assert(MappedV && "Referenced metadata not in value map!");
+    //    assert((MappedV || (Flags & RF_NullMapMissingGlobalValues)) &&
+    //           "Referenced metadata not in value map!");
     if (MappedV)
       return mapToMetadata(VM, MD, ValueAsMetadata::get(MappedV));
     return nullptr;

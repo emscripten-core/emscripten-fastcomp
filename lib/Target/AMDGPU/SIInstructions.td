@@ -1431,9 +1431,7 @@ defm V_INTERP_MOV_F32 : VINTRP_m <
 //===----------------------------------------------------------------------===//
 
 multiclass V_CNDMASK <vop2 op, string name> {
-  defm _e32 : VOP2_m <
-      op, VOP_CNDMASK.Outs, VOP_CNDMASK.Ins32, VOP_CNDMASK.Asm32, [],
-      name, name>;
+  defm _e32 : VOP2_m <op, name, VOP_CNDMASK, [], name>;
 
   defm _e64  : VOP3_m <
       op, VOP_CNDMASK.Outs, VOP_CNDMASK.Ins64,
@@ -2010,8 +2008,7 @@ multiclass SI_SPILL_SGPR <RegisterClass sgpr_class> {
   let UseNamedOperandTable = 1, Uses = [EXEC] in {
     def _SAVE : InstSI <
       (outs),
-      (ins sgpr_class:$src, i32imm:$frame_idx, SReg_128:$scratch_rsrc,
-           SReg_32:$scratch_offset),
+      (ins sgpr_class:$src, i32imm:$frame_idx),
       "", []
     > {
       let mayStore = 1;
@@ -2020,7 +2017,7 @@ multiclass SI_SPILL_SGPR <RegisterClass sgpr_class> {
 
     def _RESTORE : InstSI <
       (outs sgpr_class:$dst),
-      (ins i32imm:$frame_idx, SReg_128:$scratch_rsrc, SReg_32:$scratch_offset),
+      (ins i32imm:$frame_idx),
       "", []
     > {
       let mayStore = 0;
@@ -2175,6 +2172,11 @@ def : Pat <
     (i64 (REG_SEQUENCE SReg_64,
      (S_BCNT1_I32_B64 $src), sub0,
      (S_MOV_B32 0), sub1))
+>;
+
+def : Pat <
+  (i32 (smax i32:$x, (i32 (ineg i32:$x)))),
+  (S_ABS_I32 $x)
 >;
 
 //===----------------------------------------------------------------------===//
@@ -2504,6 +2506,11 @@ def : Pat <
 /********** Extraction, Insertion, Building and Casting  **********/
 /********** ============================================ **********/
 
+//def : Extract_Element<i64, v2i64, 0, sub0_sub1>;
+//def : Extract_Element<i64, v2i64, 1, sub2_sub3>;
+//def : Extract_Element<f64, v2f64, 0, sub0_sub1>;
+//def : Extract_Element<f64, v2f64, 1, sub2_sub3>;
+
 foreach Index = 0-2 in {
   def Extract_Element_v2i32_#Index : Extract_Element <
     i32, v2i32, Index, !cast<SubRegIndex>(sub#Index)
@@ -2588,6 +2595,16 @@ def : BitConvert <v2i32, f64, VReg_64>;
 def : BitConvert <f64, v2i32, VReg_64>;
 def : BitConvert <v4f32, v4i32, VReg_128>;
 def : BitConvert <v4i32, v4f32, VReg_128>;
+
+
+def : BitConvert <v2i64, v4i32, SReg_128>;
+def : BitConvert <v4i32, v2i64, SReg_128>;
+
+def : BitConvert <v2f64, v4i32, VReg_128>;
+def : BitConvert <v4i32, v2f64, VReg_128>;
+
+
+
 
 def : BitConvert <v8f32, v8i32, SReg_256>;
 def : BitConvert <v8i32, v8f32, SReg_256>;

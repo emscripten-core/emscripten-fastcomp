@@ -183,17 +183,18 @@ namespace llvm {
 
   protected:
     SCEVPredicateKind Kind;
+    ~SCEVPredicate() = default;
+    SCEVPredicate(const SCEVPredicate&) = default;
+    SCEVPredicate &operator=(const SCEVPredicate&) = default;
 
   public:
     SCEVPredicate(const FoldingSetNodeIDRef ID, SCEVPredicateKind Kind);
-
-    virtual ~SCEVPredicate() {}
 
     SCEVPredicateKind getKind() const { return Kind; }
 
     /// \brief Returns the estimated complexity of this predicate.
     /// This is roughly measured in the number of run-time checks required.
-    virtual unsigned getComplexity() { return 1; }
+    virtual unsigned getComplexity() const { return 1; }
 
     /// \brief Returns true if the predicate is always true. This means that no
     /// assumptions were made and nothing needs to be checked at run-time.
@@ -240,7 +241,7 @@ namespace llvm {
   /// expressions are equal, and this can be checked at run-time. We assume
   /// that the left hand side is a SCEVUnknown and the right hand side a
   /// constant.
-  class SCEVEqualPredicate : public SCEVPredicate {
+  class SCEVEqualPredicate final : public SCEVPredicate {
     /// We assume that LHS == RHS, where LHS is a SCEVUnknown and RHS a
     /// constant.
     const SCEVUnknown *LHS;
@@ -271,7 +272,7 @@ namespace llvm {
   /// SCEVUnionPredicate - This class represents a composition of other
   /// SCEV predicates, and is the class that most clients will interact with.
   /// This is equivalent to a logical "AND" of all the predicates in the union.
-  class SCEVUnionPredicate : public SCEVPredicate {
+  class SCEVUnionPredicate final : public SCEVPredicate {
   private:
     typedef DenseMap<const SCEV *, SmallVector<const SCEVPredicate *, 4>>
         PredicateMap;
@@ -303,7 +304,7 @@ namespace llvm {
 
     /// \brief We estimate the complexity of a union predicate as the size
     /// number of predicates in the union.
-    unsigned getComplexity() override { return Preds.size(); }
+    unsigned getComplexity() const override { return Preds.size(); }
 
     /// Methods for support type inquiry through isa, cast, and dyn_cast:
     static inline bool classof(const SCEVPredicate *P) {
@@ -832,35 +833,24 @@ namespace llvm {
                            SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap);
     const SCEV *getAddExpr(const SCEV *LHS, const SCEV *RHS,
                            SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
-      SmallVector<const SCEV *, 2> Ops;
-      Ops.push_back(LHS);
-      Ops.push_back(RHS);
+      SmallVector<const SCEV *, 2> Ops = {LHS, RHS};
       return getAddExpr(Ops, Flags);
     }
     const SCEV *getAddExpr(const SCEV *Op0, const SCEV *Op1, const SCEV *Op2,
                            SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
-      SmallVector<const SCEV *, 3> Ops;
-      Ops.push_back(Op0);
-      Ops.push_back(Op1);
-      Ops.push_back(Op2);
+      SmallVector<const SCEV *, 3> Ops = {Op0, Op1, Op2};
       return getAddExpr(Ops, Flags);
     }
     const SCEV *getMulExpr(SmallVectorImpl<const SCEV *> &Ops,
                            SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap);
     const SCEV *getMulExpr(const SCEV *LHS, const SCEV *RHS,
-                           SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap)
-    {
-      SmallVector<const SCEV *, 2> Ops;
-      Ops.push_back(LHS);
-      Ops.push_back(RHS);
+                           SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
+      SmallVector<const SCEV *, 2> Ops = {LHS, RHS};
       return getMulExpr(Ops, Flags);
     }
     const SCEV *getMulExpr(const SCEV *Op0, const SCEV *Op1, const SCEV *Op2,
                            SCEV::NoWrapFlags Flags = SCEV::FlagAnyWrap) {
-      SmallVector<const SCEV *, 3> Ops;
-      Ops.push_back(Op0);
-      Ops.push_back(Op1);
-      Ops.push_back(Op2);
+      SmallVector<const SCEV *, 3> Ops = {Op0, Op1, Op2};
       return getMulExpr(Ops, Flags);
     }
     const SCEV *getUDivExpr(const SCEV *LHS, const SCEV *RHS);

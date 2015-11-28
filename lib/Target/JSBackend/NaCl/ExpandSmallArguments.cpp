@@ -94,16 +94,18 @@ static bool ConvertFunction(Function *Func) {
   Function *NewFunc = RecreateFunction(Func, NFTy);
 
   // Move the arguments across to the new function.
-  for (Function::arg_iterator Arg = Func->arg_begin(), E = Func->arg_end(),
-         NewArg = NewFunc->arg_begin();
-       Arg != E; ++Arg, ++NewArg) {
+  for (Function::arg_iterator I = Func->arg_begin(), E = Func->arg_end(),
+         NewI = NewFunc->arg_begin();
+       I != E; ++I, ++NewI) {
+    auto Arg = &*I;
+    auto NewArg = &*NewI;
     NewArg->takeName(Arg);
     if (Arg->getType() == NewArg->getType()) {
       Arg->replaceAllUsesWith(NewArg);
     } else {
       Instruction *Trunc = new TruncInst(
           NewArg, Arg->getType(), NewArg->getName() + ".arg_trunc",
-          NewFunc->getEntryBlock().getFirstInsertionPt());
+          &*NewFunc->getEntryBlock().getFirstInsertionPt());
       Arg->replaceAllUsesWith(Trunc);
     }
   }
@@ -118,7 +120,7 @@ static bool ConvertFunction(Function *Func) {
          ++BB) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end();
            Iter != E; ) {
-        Instruction *Inst = Iter++;
+        Instruction *Inst = &*Iter++;
         if (ReturnInst *Ret = dyn_cast<ReturnInst>(Inst)) {
           Value *Ext = CopyDebug(
               CastInst::Create(CastType, Ret->getReturnValue(),
@@ -216,7 +218,7 @@ template <class T> static bool ConvertCall(T *Call, Pass *P) {
 bool ExpandSmallArguments::runOnModule(Module &M) {
   bool Changed = false;
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
-    Function *Func = Iter++;
+    Function *Func = &*Iter++;
     // Don't try to change intrinsic declarations because intrinsics
     // will continue to have non-normalized argument types.  For
     // example, memset() takes an i8 argument.  It shouldn't matter
@@ -229,7 +231,7 @@ bool ExpandSmallArguments::runOnModule(Module &M) {
     for (Function::iterator BB = Func->begin(), E = Func->end(); BB != E;
          ++BB) {
       for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E;) {
-        Instruction *Inst = Iter++;
+        Instruction *Inst = &*Iter++;
         if (CallInst *Call = dyn_cast<CallInst>(Inst)) {
           Changed |= ConvertCall(Call, this);
         } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(Inst)) {
