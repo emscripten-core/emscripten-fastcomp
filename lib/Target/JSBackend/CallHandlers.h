@@ -888,7 +888,9 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_not, SIMD_Int32x4_not);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_and, SIMD_Int32x4_and);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_or, SIMD_Int32x4_or);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_xor, SIMD_Int32x4_xor);
-DEF_BUILTIN_HANDLER(emscripten_atomic_fence, Atomics_fence);
+DEF_CALL_HANDLER(emscripten_atomic_fence, {
+  return "/* fence */";
+})
 
 DEF_CALL_HANDLER(emscripten_float32x4_select, {
   // FIXME: We really need a more general way of handling boolean types,
