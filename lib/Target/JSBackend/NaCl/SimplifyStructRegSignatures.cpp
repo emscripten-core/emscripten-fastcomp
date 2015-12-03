@@ -561,6 +561,14 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
     Temp->replaceAllUsesWith(New);
   }
 
+  // Remaining uses of functions we modified (like in a global vtable)
+  // can be handled via a constantexpr bitcast
+  for (auto &Old : FunctionsToDelete) {
+    Function *New = FunctionMap[Old];
+    assert(New);
+    Old->replaceAllUsesWith(ConstantExpr::getBitCast(New, Old->getType()));
+  }
+
   // Delete leftover functions - the ones with old signatures.
   for (auto &ToDelete : FunctionsToDelete) {
     ToDelete->eraseFromParent();
