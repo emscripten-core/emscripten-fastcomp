@@ -388,6 +388,16 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
     }
   }
 
+  if (isa<Instruction>(NewTarget)) {
+    Type* NewPointerType = PointerType::get(NewType, 0);
+    if (NewPointerType != OldCall->getType()) {
+      // This is a function pointer, and it has the wrong type after our
+      // changes. Bitcast it.
+      NewTarget = Builder.CreateBitCast(NewTarget, NewPointerType, ".casttarget");
+    }
+  }
+
+
   ArrayRef<Value *> ArrRef = NewArgs;
   TCall *NewCall = CreateCallFrom(OldCall, NewTarget, ArrRef, Builder);
 
@@ -527,7 +537,7 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
     fixCallSite(Ctx, InvokeToFix, PreferredAlignment);
   }
 
-  // Update taking of a function's address
+  // Update taking of a function's address from a parameter
   for (auto &Addressing : FunctionAddressings) {
     Value *Temp = Addressing.Temp;
     Function *Old = Addressing.Old;
