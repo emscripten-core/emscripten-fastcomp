@@ -513,6 +513,13 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
     fixCallSite(Ctx, InvokeToFix, PreferredAlignment);
   }
 
+  // Update taking of a function's address
+  for (auto &Old : FunctionsToDelete) {
+    Function *New = FunctionMap[Old];
+    assert(New);
+    Old->replaceAllUsesWith(New);
+  }
+
   // Delete leftover functions - the ones with old signatures.
   for (auto &ToDelete : FunctionsToDelete) {
     ToDelete->eraseFromParent();
