@@ -128,6 +128,13 @@ private:
   SetVector<InvokeInst *> InvokesToPatch;
   DenseMap<Function *, Function *> FunctionMap;
 
+  struct FunctionAddressing {
+    Value *Temp;
+    Function *Old;
+    FunctionAddressing(Value *Temp, Function *Old) : Temp(Temp), Old(Old) {}
+  };
+  std::vector<FunctionAddressing> FunctionAddressings;
+
   bool
   simplifyFunction(LLVMContext &Ctx, Function *OldFunc);
 
@@ -355,7 +362,7 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
     Value *OldArg = OldArgUse;
     Type *OldArgType = OldArg->getType();
     unsigned NewArgPos = OldArgUse.getOperandNo() + argOffset;
-    Type *NewArgType = NewType->getFunctionParamType(NewArgPos);
+    Type *NewArgType = NewArgPos < VarargMark ? NewType->getFunctionParamType(NewArgPos) : nullptr;
 
     if (OldArgType != NewArgType && OldArgType->isAggregateType()) {
       if (NewArgPos >= VarargMark) {
@@ -369,6 +376,13 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
       Builder.CreateStore(OldArg, Alloca);
       ByRefPlaces.insert(NewArgPos);
       NewArgs.push_back(Alloca);
+    } else if (NewArgType && OldArgType != NewArgType && isa<Function>(OldArg)) {
+      // If a function pointer has a changed type due to struct reg changes, it will still have
+      // the wrong type here, since we may have not changed that method yet. We'll fix it up
+      // later, and meanwhile place an undef of the right type in that slot.
+      Value *Temp = UndefValue::get(NewArgType);
+      FunctionAddressings.emplace_back(Temp, cast<Function>(OldArg));
+      NewArgs.push_back(Temp);
     } else {
       NewArgs.push_back(OldArg);
     }
@@ -514,10 +528,12 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
   }
 
   // Update taking of a function's address
-  for (auto &Old : FunctionsToDelete) {
+  for (auto &Addressing : FunctionAddressings) {
+    Value *Temp = Addressing.Temp;
+    Function *Old = Addressing.Old;
     Function *New = FunctionMap[Old];
     assert(New);
-    Old->replaceAllUsesWith(New);
+    Temp->replaceAllUsesWith(New);
   }
 
   // Delete leftover functions - the ones with old signatures.
