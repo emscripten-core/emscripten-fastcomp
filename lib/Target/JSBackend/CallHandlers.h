@@ -254,6 +254,10 @@ DEF_CALL_HANDLER(emscripten_debugger, {
   CantValidate = "emscripten_debugger is used";
   return "debugger";
 })
+DEF_CALL_HANDLER(llvm_debugtrap, {
+  CantValidate = "llvm.debugtrap is used";
+  return "debugger";
+})
 
 // i64 support
 
@@ -940,6 +944,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_do_not_unwind_async);
   SETUP_CALL_HANDLER(emscripten_get_async_return_value_addr);
   SETUP_CALL_HANDLER(emscripten_debugger);
+  SETUP_CALL_HANDLER(llvm_debugtrap);
   SETUP_CALL_HANDLER(getHigh32);
   SETUP_CALL_HANDLER(setHigh32);
   SETUP_CALL_HANDLER(FtoILow);
