@@ -126,6 +126,7 @@ private:
   DenseSet<Function *> FunctionsToDelete;
   SetVector<CallInst *> CallsToPatch;
   SetVector<InvokeInst *> InvokesToPatch;
+  SetVector<BitCastInst *> BitCastsToPatch;
   DenseMap<Function *, Function *> FunctionMap;
 
   struct FunctionAddressing {
@@ -436,6 +437,10 @@ void SimplifyStructRegSignatures::scheduleInstructionsForCleanup(
         CallsToPatch.insert(Call);
       } else if (InvokeInst *Invoke = dyn_cast<InvokeInst>(&IIter)) {
         InvokesToPatch.insert(Invoke);
+      } else if (BitCastInst *BitCast = dyn_cast<BitCastInst>(&IIter)) {
+        if (isa<Function>(BitCast->getOperand(0))) {
+          BitCastsToPatch.insert(BitCast);
+        }
       }
     }
   }
@@ -535,6 +540,16 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
 
   for (auto &InvokeToFix : InvokesToPatch) {
     fixCallSite(Ctx, InvokeToFix, PreferredAlignment);
+  }
+
+  // BitCasts of a function we are modifying must be corrected
+  for (auto &BitCastToFix : BitCastsToPatch) {
+    auto *Old = cast<Function>(BitCastToFix->getOperand(0));
+    if (FunctionMap.find(Old) != FunctionMap.end()) {
+      auto *New = FunctionMap[Old];
+      IRBuilder<> Builder(BitCastToFix);
+      BitCastToFix->setOperand(0, Builder.CreateBitCast(New, Old->getType(), "bitcastfixcast"));
+    }
   }
 
   // Update taking of a function's address from a parameter
