@@ -456,6 +456,9 @@ DEF_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32, {
 DEF_CALL_HANDLER(llvm_expect_i32, {
   return getAssign(CI) + getValueAsStr(CI->getOperand(0));
 })
+DEF_CALL_HANDLER(llvm_expect_i1, {
+  return getAssign(CI) + getValueAsStr(CI->getOperand(0));
+})
 
 DEF_CALL_HANDLER(llvm_dbg_declare, {
   return "";
@@ -966,6 +969,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_expect_i32);
+  SETUP_CALL_HANDLER(llvm_expect_i1);
   SETUP_CALL_HANDLER(llvm_dbg_declare);
   SETUP_CALL_HANDLER(llvm_dbg_value);
   SETUP_CALL_HANDLER(llvm_lifetime_start);
