@@ -526,6 +526,8 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(none);
   KEYWORD(to);
   KEYWORD(caller);
+  KEYWORD(within);
+  KEYWORD(from);
   KEYWORD(tail);
   KEYWORD(musttail);
   KEYWORD(notail);
@@ -591,6 +593,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(ghccc);
   KEYWORD(hhvmcc);
   KEYWORD(hhvm_ccc);
+  KEYWORD(cxx_fast_tlscc);
 
   KEYWORD(cc);
   KEYWORD(c);
@@ -758,11 +761,9 @@ lltok::Kind LLLexer::LexIdentifier() {
   INSTKEYWORD(landingpad,     LandingPad);
   INSTKEYWORD(cleanupret,     CleanupRet);
   INSTKEYWORD(catchret,       CatchRet);
+  INSTKEYWORD(catchswitch,  CatchSwitch);
   INSTKEYWORD(catchpad,     CatchPad);
-  INSTKEYWORD(terminatepad, TerminatePad);
   INSTKEYWORD(cleanuppad,   CleanupPad);
-  INSTKEYWORD(catchendpad,  CatchEndPad);
-  INSTKEYWORD(cleanupendpad, CleanupEndPad);
 #undef INSTKEYWORD
 
 #define DWKEYWORD(TYPE, TOKEN)                                                 \
@@ -777,6 +778,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   DWKEYWORD(VIRTUALITY, DwarfVirtuality);
   DWKEYWORD(LANG, DwarfLang);
   DWKEYWORD(OP, DwarfOp);
+  DWKEYWORD(MACINFO, DwarfMacinfo);
 #undef DWKEYWORD
 
   if (Keyword.startswith("DIFlag")) {

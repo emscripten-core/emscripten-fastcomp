@@ -74,7 +74,8 @@ namespace llvm {
 
 std::string getPGOFuncName(StringRef RawFuncName,
                            GlobalValue::LinkageTypes Linkage,
-                           StringRef FileName) {
+                           StringRef FileName,
+                           uint64_t Version LLVM_ATTRIBUTE_UNUSED) {
 
   // Function names may be prefixed with a binary '1' to indicate
   // that the backend should not modify the symbols due to any platform
@@ -96,8 +97,29 @@ std::string getPGOFuncName(StringRef RawFuncName,
   return FuncName;
 }
 
-std::string getPGOFuncName(const Function &F) {
-  return getPGOFuncName(F.getName(), F.getLinkage(), F.getParent()->getName());
+std::string getPGOFuncName(const Function &F, uint64_t Version) {
+  return getPGOFuncName(F.getName(), F.getLinkage(), F.getParent()->getName(),
+                        Version);
+}
+
+// \p FuncName is the string used as profile lookup key for the function. A
+// symbol is created to hold the name. Return the legalized symbol name.
+static std::string getPGOFuncNameVarName(StringRef FuncName,
+                                         GlobalValue::LinkageTypes Linkage) {
+  std::string VarName = getInstrProfNameVarPrefix();
+  VarName += FuncName;
+
+  if (!GlobalValue::isLocalLinkage(Linkage))
+    return VarName;
+
+  // Now fix up illegal chars in local VarName that may upset the assembler.
+  const char *InvalidChars = "-:<>\"'";
+  size_t found = VarName.find_first_of(InvalidChars);
+  while (found != std::string::npos) {
+    VarName[found] = '_';
+    found = VarName.find_first_of(InvalidChars, found + 1);
+  }
+  return VarName;
 }
 
 GlobalVariable *createPGOFuncNameVar(Module &M,
@@ -118,7 +140,7 @@ GlobalVariable *createPGOFuncNameVar(Module &M,
   auto *Value = ConstantDataArray::getString(M.getContext(), FuncName, false);
   auto FuncNameVar =
       new GlobalVariable(M, Value->getType(), true, Linkage, Value,
-                         Twine(getInstrProfNameVarPrefix()) + FuncName);
+                         getPGOFuncNameVarName(FuncName, Linkage));
 
   // Hide the symbol so that we correctly get a copy for each executable.
   if (!GlobalValue::isLocalLinkage(FuncNameVar->getLinkage()))
@@ -131,64 +153,12 @@ GlobalVariable *createPGOFuncNameVar(Function &F, StringRef FuncName) {
   return createPGOFuncNameVar(*F.getParent(), F.getLinkage(), FuncName);
 }
 
-/// Return the total size in bytes of the on-disk value profile data
-/// given the data stored in Record.
-uint32_t getValueProfDataSize(ValueProfRecordClosure *Closure) {
-  uint32_t Kind;
-  uint32_t TotalSize = sizeof(ValueProfData);
-  const void *Record = Closure->Record;
-  uint32_t NumValueKinds = Closure->GetNumValueKinds(Record);
-  if (NumValueKinds == 0)
-    return TotalSize;
+#define INSTR_PROF_COMMON_API_IMPL
+#include "llvm/ProfileData/InstrProfData.inc"
 
-  for (Kind = IPVK_First; Kind <= IPVK_Last; Kind++) {
-    uint32_t NumValueSites = Closure->GetNumValueSites(Record, Kind);
-    if (!NumValueSites)
-      continue;
-    TotalSize += getValueProfRecordSize(NumValueSites,
-                                        Closure->GetNumValueData(Record, Kind));
-  }
-  return TotalSize;
-}
 
-// Extract data from \c Closure and serialize into \c This instance.
-void serializeValueProfRecordFrom(ValueProfRecord *This,
-                                  ValueProfRecordClosure *Closure,
-                                  uint32_t ValueKind, uint32_t NumValueSites) {
-  uint32_t S;
-  const void *Record = Closure->Record;
-  This->Kind = ValueKind;
-  This->NumValueSites = NumValueSites;
-  InstrProfValueData *DstVD = getValueProfRecordValueData(This);
-
-  for (S = 0; S < NumValueSites; S++) {
-    uint32_t ND = Closure->GetNumValueDataForSite(Record, ValueKind, S);
-    This->SiteCountArray[S] = ND;
-    Closure->GetValueForSite(Record, DstVD, ValueKind, S,
-                             Closure->RemapValueData);
-    DstVD += ND;
-  }
-}
-
-ValueProfData *serializeValueProfDataFrom(ValueProfRecordClosure *Closure) {
-  uint32_t TotalSize = getValueProfDataSize(Closure);
-
-  ValueProfData *VPD = Closure->AllocValueProfData(TotalSize);
-
-  VPD->TotalSize = TotalSize;
-  VPD->NumValueKinds = Closure->GetNumValueKinds(Closure->Record);
-  ValueProfRecord *VR = getFirstValueProfRecord(VPD);
-  for (uint32_t Kind = IPVK_First; Kind <= IPVK_Last; Kind++) {
-    uint32_t NumValueSites = Closure->GetNumValueSites(Closure->Record, Kind);
-    if (!NumValueSites)
-      continue;
-    serializeValueProfRecordFrom(VR, Closure, Kind, NumValueSites);
-    VR = getValueProfRecordNext(VR);
-  }
-  return VPD;
-}
-
-/*! \brief ValueProfRecordClosure Interface implementation for  InstrProfRecord
+/*! 
+ * \brief ValueProfRecordClosure Interface implementation for  InstrProfRecord
  *  class. These C wrappers are used as adaptors so that C++ code can be
  *  invoked as callbacks.
  */
@@ -259,123 +229,9 @@ ValueProfData::serializeFrom(const InstrProfRecord &Record) {
   InstrProfRecordClosure.Record = &Record;
 
   std::unique_ptr<ValueProfData> VPD(
-      serializeValueProfDataFrom(&InstrProfRecordClosure));
+      serializeValueProfDataFrom(&InstrProfRecordClosure, nullptr));
   return VPD;
 }
-
-/* The value profiler runtime library stores the value profile data
- * for a given function in NumValueSites and Nodes. This is the
- * method to initialize the RuntimeRecord with the runtime data to
- * pre-compute the information needed to efficiently implement
- * ValueProfRecordClosure's callback interfaces.
- */
-void initializeValueProfRuntimeRecord(ValueProfRuntimeRecord *RuntimeRecord,
-                                      uint16_t *NumValueSites,
-                                      ValueProfNode **Nodes) {
-  unsigned I, J, S = 0, NumValueKinds = 0;
-  RuntimeRecord->NumValueSites = NumValueSites;
-  RuntimeRecord->Nodes = Nodes;
-  for (I = 0; I <= IPVK_Last; I++) {
-    uint16_t N = NumValueSites[I];
-    if (!N) {
-      RuntimeRecord->SiteCountArray[I] = 0;
-      continue;
-    }
-    NumValueKinds++;
-    RuntimeRecord->SiteCountArray[I] = (uint8_t *)calloc(N, 1);
-    RuntimeRecord->NodesKind[I] = &RuntimeRecord->Nodes[S];
-    for (J = 0; J < N; J++) {
-      uint8_t C = 0;
-      ValueProfNode *Site = RuntimeRecord->Nodes[S + J];
-      while (Site) {
-        C++;
-        Site = Site->Next;
-      }
-      if (C > UCHAR_MAX)
-        C = UCHAR_MAX;
-      RuntimeRecord->SiteCountArray[I][J] = C;
-    }
-    S += N;
-  }
-  RuntimeRecord->NumValueKinds = NumValueKinds;
-}
-
-void finalizeValueProfRuntimeRecord(ValueProfRuntimeRecord *RuntimeRecord) {
-  unsigned I;
-  for (I = 0; I <= IPVK_Last; I++) {
-    if (RuntimeRecord->SiteCountArray[I])
-      free(RuntimeRecord->SiteCountArray[I]);
-  }
-}
-
-/* ValueProfRecordClosure Interface implementation for
- * ValueProfDataRuntimeRecord.  */
-uint32_t getNumValueKindsRT(const void *R) {
-  return ((const ValueProfRuntimeRecord *)R)->NumValueKinds;
-}
-
-uint32_t getNumValueSitesRT(const void *R, uint32_t VK) {
-  return ((const ValueProfRuntimeRecord *)R)->NumValueSites[VK];
-}
-
-uint32_t getNumValueDataForSiteRT(const void *R, uint32_t VK, uint32_t S) {
-  const ValueProfRuntimeRecord *Record = (const ValueProfRuntimeRecord *)R;
-  return Record->SiteCountArray[VK][S];
-}
-
-uint32_t getNumValueDataRT(const void *R, uint32_t VK) {
-  unsigned I, S = 0;
-  const ValueProfRuntimeRecord *Record = (const ValueProfRuntimeRecord *)R;
-  if (Record->SiteCountArray[VK] == 0)
-    return 0;
-  for (I = 0; I < Record->NumValueSites[VK]; I++)
-    S += Record->SiteCountArray[VK][I];
-  return S;
-}
-
-void getValueForSiteRT(const void *R, InstrProfValueData *Dst, uint32_t VK,
-                       uint32_t S, uint64_t (*Mapper)(uint32_t, uint64_t)) {
-  unsigned I, N = 0;
-  const ValueProfRuntimeRecord *Record = (const ValueProfRuntimeRecord *)R;
-  N = getNumValueDataForSiteRT(R, VK, S);
-  ValueProfNode *VNode = Record->NodesKind[VK][S];
-  for (I = 0; I < N; I++) {
-    Dst[I] = VNode->VData;
-    VNode = VNode->Next;
-  }
-}
-
-ValueProfData *allocValueProfDataRT(size_t TotalSizeInBytes) {
-  return (ValueProfData *)calloc(TotalSizeInBytes, 1);
-}
-
-static ValueProfRecordClosure RTRecordClosure = {0,
-                                                 getNumValueKindsRT,
-                                                 getNumValueSitesRT,
-                                                 getNumValueDataRT,
-                                                 getNumValueDataForSiteRT,
-                                                 0,
-                                                 getValueForSiteRT,
-                                                 allocValueProfDataRT};
-
-/* Return the size of ValueProfData structure to store data
- * recorded in the runtime record.
- */
-uint32_t getValueProfDataSizeRT(const ValueProfRuntimeRecord *Record) {
-  RTRecordClosure.Record = Record;
-  return getValueProfDataSize(&RTRecordClosure);
-}
-
-/* Return a ValueProfData instance that stores the data collected
-   from runtime. */
-ValueProfData *
-serializeValueProfDataFromRT(const ValueProfRuntimeRecord *Record) {
-  RTRecordClosure.Record = Record;
-  return serializeValueProfDataFrom(&RTRecordClosure);
-}
-
-
-
 
 void ValueProfRecord::deserializeTo(InstrProfRecord &Record,
                                     InstrProfRecord::ValueMapType *VMap) {
@@ -442,6 +298,24 @@ static std::unique_ptr<ValueProfData> allocValueProfData(uint32_t TotalSize) {
                                             ValueProfData());
 }
 
+instrprof_error ValueProfData::checkIntegrity() {
+  if (NumValueKinds > IPVK_Last + 1)
+    return instrprof_error::malformed;
+  // Total size needs to be mulltiple of quadword size.
+  if (TotalSize % sizeof(uint64_t))
+    return instrprof_error::malformed;
+
+  ValueProfRecord *VR = getFirstValueProfRecord(this);
+  for (uint32_t K = 0; K < this->NumValueKinds; K++) {
+    if (VR->Kind > IPVK_Last)
+      return instrprof_error::malformed;
+    VR = getValueProfRecordNext(VR);
+    if ((char *)VR - (char *)this > (ptrdiff_t)TotalSize)
+      return instrprof_error::malformed;
+  }
+  return instrprof_error::success;
+}
+
 ErrorOr<std::unique_ptr<ValueProfData>>
 ValueProfData::getValueProfData(const unsigned char *D,
                                 const unsigned char *const BufferEnd,
@@ -452,31 +326,17 @@ ValueProfData::getValueProfData(const unsigned char *D,
 
   const unsigned char *Header = D;
   uint32_t TotalSize = swapToHostOrder<uint32_t>(Header, Endianness);
-  uint32_t NumValueKinds = swapToHostOrder<uint32_t>(Header, Endianness);
-
   if (D + TotalSize > BufferEnd)
     return instrprof_error::too_large;
-  if (NumValueKinds > IPVK_Last + 1)
-    return instrprof_error::malformed;
-  // Total size needs to be mulltiple of quadword size.
-  if (TotalSize % sizeof(uint64_t))
-    return instrprof_error::malformed;
 
   std::unique_ptr<ValueProfData> VPD = allocValueProfData(TotalSize);
-
   memcpy(VPD.get(), D, TotalSize);
   // Byte swap.
   VPD->swapBytesToHost(Endianness);
 
-  // Data integrity check:
-  ValueProfRecord *VR = getFirstValueProfRecord(VPD.get());
-  for (uint32_t K = 0; K < VPD->NumValueKinds; K++) {
-    if (VR->Kind > IPVK_Last)
-      return instrprof_error::malformed;
-    VR = getValueProfRecordNext(VR);
-    if ((char *)VR - (char *)VPD.get() > (ptrdiff_t)TotalSize)
-      return instrprof_error::malformed;
-  }
+  instrprof_error EC = VPD->checkIntegrity();
+  if (EC != instrprof_error::success)
+    return EC;
 
   return std::move(VPD);
 }

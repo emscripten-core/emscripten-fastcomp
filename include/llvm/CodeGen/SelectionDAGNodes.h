@@ -576,10 +576,10 @@ public:
   static use_iterator use_end() { return use_iterator(nullptr); }
 
   inline iterator_range<use_iterator> uses() {
-    return iterator_range<use_iterator>(use_begin(), use_end());
+    return make_range(use_begin(), use_end());
   }
   inline iterator_range<use_iterator> uses() const {
-    return iterator_range<use_iterator>(use_begin(), use_end());
+    return make_range(use_begin(), use_end());
   }
 
   /// Return true if there are exactly NUSES uses of the indicated value.
@@ -651,8 +651,8 @@ public:
   };
 
   iterator_range<value_op_iterator> op_values() const {
-    return iterator_range<value_op_iterator>(value_op_iterator(op_begin()),
-                                             value_op_iterator(op_end()));
+    return make_range(value_op_iterator(op_begin()),
+                      value_op_iterator(op_end()));
   }
 
   SDVTList getVTList() const {
@@ -664,7 +664,7 @@ public:
   /// to which the glue operand points. Otherwise return NULL.
   SDNode *getGluedNode() const {
     if (getNumOperands() != 0 &&
-      getOperand(getNumOperands()-1).getValueType() == MVT::Glue)
+        getOperand(getNumOperands()-1).getValueType() == MVT::Glue)
       return getOperand(getNumOperands()-1).getNode();
     return nullptr;
   }
@@ -2122,12 +2122,13 @@ public:
     : MaskedGatherScatterSDNode(ISD::MGATHER, Order, dl, Operands, VTs, MemVT,
                                 MMO) {
     assert(getValue().getValueType() == getValueType(0) &&
-           "Incompatible type of the PathThru value in MaskedGatherSDNode");
+           "Incompatible type of the PassThru value in MaskedGatherSDNode");
     assert(getMask().getValueType().getVectorNumElements() ==
-               getValueType(0).getVectorNumElements() &&
+           getValueType(0).getVectorNumElements() &&
            "Vector width mismatch between mask and data");
-    assert(getMask().getValueType().getScalarType() == MVT::i1 &&
-           "Vector width mismatch between mask and data");
+    assert(getIndex().getValueType().getVectorNumElements() ==
+           getValueType(0).getVectorNumElements() &&
+           "Vector width mismatch between index and data");
   }
 
   static bool classof(const SDNode *N) {
@@ -2143,13 +2144,14 @@ public:
   friend class SelectionDAG;
   MaskedScatterSDNode(unsigned Order, DebugLoc dl,ArrayRef<SDValue> Operands,
                       SDVTList VTs, EVT MemVT, MachineMemOperand *MMO)
-      : MaskedGatherScatterSDNode(ISD::MSCATTER, Order, dl, Operands, VTs,
-                                  MemVT, MMO) {
+    : MaskedGatherScatterSDNode(ISD::MSCATTER, Order, dl, Operands, VTs, MemVT,
+                                MMO) {
     assert(getMask().getValueType().getVectorNumElements() ==
-               getValue().getValueType().getVectorNumElements() &&
+           getValue().getValueType().getVectorNumElements() &&
            "Vector width mismatch between mask and data");
-    assert(getMask().getValueType().getScalarType() == MVT::i1 &&
-           "Vector width mismatch between mask and data");
+    assert(getIndex().getValueType().getVectorNumElements() ==
+           getValue().getValueType().getVectorNumElements() &&
+           "Vector width mismatch between index and data");
   }
 
   static bool classof(const SDNode *N) {

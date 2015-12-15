@@ -11,7 +11,7 @@ target triple = "wasm32-unknown-unknown"
 
 ; CHECK: foo:
 ; CHECK: i32.const $push0=, answer{{$}}
-; CHECK-NEXT: i32.load $push1=, $pop0{{$}}
+; CHECK-NEXT: i32.load $push1=, 0($pop0){{$}}
 ; CHECK-NEXT: return $pop1{{$}}
 define i32 @foo() {
   %a = load i32, i32* @answer
@@ -21,8 +21,7 @@ define i32 @foo() {
 ; CHECK-LABEL: call_memcpy:
 ; CHECK-NEXT: .param          i32, i32, i32{{$}}
 ; CHECK-NEXT: .result         i32{{$}}
-; CHECK-NEXT: i32.const       $push0=, memcpy{{$}}
-; CHECK-NEXT: call_indirect   $pop0, $0, $1, $2{{$}}
+; CHECK-NEXT: call            memcpy, $0, $1, $2{{$}}
 ; CHECK-NEXT: return          $0{{$}}
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture readonly, i32, i32, i1)
 define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
@@ -157,3 +156,12 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 ; CHECK-NEXT: .int64 4611686018427387904{{$}}
 ; CHECK-NEXT: .size f64two, 8{{$}}
 @f64two = internal global double 2.0
+
+; Indexing into a global array produces a relocation.
+; CHECK:      .type arr,@object
+; CHECK:      .type ptr,@object
+; CHECK:      ptr:
+; CHECK-NEXT: .int32 arr+80
+; CHECK-NEXT: .size ptr, 4
+@arr = global [128 x i32] zeroinitializer, align 16
+@ptr = global i32* getelementptr inbounds ([128 x i32], [128 x i32]* @arr, i32 0, i32 20), align 4

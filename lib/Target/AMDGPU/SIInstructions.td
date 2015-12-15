@@ -127,7 +127,7 @@ let Defs = [SCC] in {
 
 
 defm S_BREV_B32 : SOP1_32 <sop1<0x0b, 0x08>, "s_brev_b32",
-  [(set i32:$dst, (AMDGPUbrev i32:$src0))]
+  [(set i32:$dst, (bitreverse i32:$src0))]
 >;
 defm S_BREV_B64 : SOP1_64 <sop1<0x0c, 0x09>, "s_brev_b64", []>;
 
@@ -1590,10 +1590,10 @@ defm V_BCNT_U32_B32 : VOP2_VI3_Inst <vop23<0x22, 0x28b>, "v_bcnt_u32_b32",
   VOP_I32_I32_I32
 >;
 defm V_MBCNT_LO_U32_B32 : VOP2_VI3_Inst <vop23<0x23, 0x28c>, "v_mbcnt_lo_u32_b32",
-  VOP_I32_I32_I32
+  VOP_I32_I32_I32, int_amdgcn_mbcnt_lo
 >;
 defm V_MBCNT_HI_U32_B32 : VOP2_VI3_Inst <vop23<0x24, 0x28d>, "v_mbcnt_hi_u32_b32",
-  VOP_I32_I32_I32
+  VOP_I32_I32_I32, int_amdgcn_mbcnt_hi
 >;
 defm V_LDEXP_F32 : VOP2_VI3_Inst <vop23<0x2b, 0x288>, "v_ldexp_f32",
   VOP_F32_F32_I32, AMDGPUldexp
@@ -1942,36 +1942,6 @@ def SI_KILL : InstSI <
 
 let Uses = [EXEC], Defs = [EXEC,VCC,M0] in {
 
-//defm SI_ : RegisterLoadStore <VGPR_32, FRAMEri, ADDRIndirect>;
-
-let UseNamedOperandTable = 1 in {
-
-def SI_RegisterLoad : InstSI <
-  (outs VGPR_32:$dst, SReg_64:$temp),
-  (ins FRAMEri32:$addr, i32imm:$chan),
-  "", []
-> {
-  let isRegisterLoad = 1;
-  let mayLoad = 1;
-}
-
-class SIRegStore<dag outs> : InstSI <
-  outs,
-  (ins VGPR_32:$val, FRAMEri32:$addr, i32imm:$chan),
-  "", []
-> {
-  let isRegisterStore = 1;
-  let mayStore = 1;
-}
-
-let usesCustomInserter = 1 in {
-def SI_RegisterStorePseudo : SIRegStore<(outs)>;
-} // End usesCustomInserter = 1
-def SI_RegisterStore : SIRegStore<(outs SReg_64:$temp)>;
-
-
-} // End UseNamedOperandTable = 1
-
 class SI_INDIRECT_SRC<RegisterClass rc> : InstSI <
   (outs VGPR_32:$dst, SReg_64:$temp),
   (ins rc:$src, VSrc_32:$idx, i32imm:$off),
@@ -2069,8 +2039,8 @@ let Defs = [SCC] in {
 
 def SI_CONSTDATA_PTR : InstSI <
   (outs SReg_64:$dst),
-  (ins),
-  "", [(set SReg_64:$dst, (i64 SIconstdata_ptr))]
+  (ins const_ga:$ptr),
+  "", [(set SReg_64:$dst, (i64 (SIconstdata_ptr (tglobaladdr:$ptr))))]
 > {
   let SALU = 1;
 }
@@ -2591,7 +2561,9 @@ def : BitConvert <v2i32, i64, VReg_64>;
 def : BitConvert <i64, v2i32, VReg_64>;
 def : BitConvert <v2f32, i64, VReg_64>;
 def : BitConvert <i64, v2f32, VReg_64>;
+def : BitConvert <v2f32, f64, VReg_64>;
 def : BitConvert <v2i32, f64, VReg_64>;
+def : BitConvert <f64, v2f32, VReg_64>;
 def : BitConvert <f64, v2i32, VReg_64>;
 def : BitConvert <v4f32, v4i32, VReg_128>;
 def : BitConvert <v4i32, v4f32, VReg_128>;
@@ -2600,7 +2572,9 @@ def : BitConvert <v4i32, v4f32, VReg_128>;
 def : BitConvert <v2i64, v4i32, SReg_128>;
 def : BitConvert <v4i32, v2i64, SReg_128>;
 
+def : BitConvert <v2f64, v4f32, VReg_128>;
 def : BitConvert <v2f64, v4i32, VReg_128>;
+def : BitConvert <v4f32, v2f64, VReg_128>;
 def : BitConvert <v4i32, v2f64, VReg_128>;
 
 
@@ -3055,25 +3029,25 @@ multiclass SI_INDIRECT_Pattern <ValueType vt, ValueType eltvt, string VecSize> {
 
   // 1. Extract with offset
   def : Pat<
-    (eltvt (vector_extract vt:$vec, (add i32:$idx, imm:$off))),
+    (eltvt (extractelt vt:$vec, (add i32:$idx, imm:$off))),
     (!cast<Instruction>("SI_INDIRECT_SRC_"#VecSize) $vec, $idx, imm:$off)
   >;
 
   // 2. Extract without offset
   def : Pat<
-    (eltvt (vector_extract vt:$vec, i32:$idx)),
+    (eltvt (extractelt vt:$vec, i32:$idx)),
     (!cast<Instruction>("SI_INDIRECT_SRC_"#VecSize) $vec, $idx, 0)
   >;
 
   // 3. Insert with offset
   def : Pat<
-    (vector_insert vt:$vec, eltvt:$val, (add i32:$idx, imm:$off)),
+    (insertelt vt:$vec, eltvt:$val, (add i32:$idx, imm:$off)),
     (!cast<Instruction>("SI_INDIRECT_DST_"#VecSize) $vec, $idx, imm:$off, $val)
   >;
 
   // 4. Insert without offset
   def : Pat<
-    (vector_insert vt:$vec, eltvt:$val, i32:$idx),
+    (insertelt vt:$vec, eltvt:$val, i32:$idx),
     (!cast<Instruction>("SI_INDIRECT_DST_"#VecSize) $vec, $idx, 0, $val)
   >;
 }

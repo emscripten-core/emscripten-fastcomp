@@ -257,6 +257,10 @@ static unsigned getStoreStride(const SCEVAddRecExpr *StoreEv) {
 }
 
 bool LoopIdiomRecognize::isLegalStore(StoreInst *SI) {
+  // Don't touch volatile stores.
+  if (!SI->isSimple())
+    return false;
+
   Value *StoredVal = SI->getValueOperand();
   Value *StorePtr = SI->getPointerOperand();
 
@@ -285,10 +289,6 @@ void LoopIdiomRecognize::collectStores(BasicBlock *BB) {
   for (Instruction &I : *BB) {
     StoreInst *SI = dyn_cast<StoreInst>(&I);
     if (!SI)
-      continue;
-
-    // Don't touch volatile stores.
-    if (!SI->isSimple())
       continue;
 
     // Make sure this is a strided store with a constant stride.
@@ -578,7 +578,7 @@ bool LoopIdiomRecognize::processLoopStridedStore(
     // Everything is emitted in default address space
     Type *Int8PtrTy = DestInt8PtrTy;
 
-    Module *M = TheStore->getParent()->getParent()->getParent();
+    Module *M = TheStore->getModule();
     Value *MSP =
         M->getOrInsertFunction("memset_pattern16", Builder.getVoidTy(),
                                Int8PtrTy, Int8PtrTy, IntPtr, (void *)nullptr);

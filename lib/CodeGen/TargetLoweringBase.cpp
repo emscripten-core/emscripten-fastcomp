@@ -247,13 +247,9 @@ static void InitLibcallNames(const char **Names, const Triple &TT) {
   Names[RTLIB::FPROUND_F80_F64] = "__truncxfdf2";
   Names[RTLIB::FPROUND_F128_F64] = "__trunctfdf2";
   Names[RTLIB::FPROUND_PPCF128_F64] = "__trunctfdf2";
-  Names[RTLIB::FPTOSINT_F32_I8] = "__fixsfqi";
-  Names[RTLIB::FPTOSINT_F32_I16] = "__fixsfhi";
   Names[RTLIB::FPTOSINT_F32_I32] = "__fixsfsi";
   Names[RTLIB::FPTOSINT_F32_I64] = "__fixsfdi";
   Names[RTLIB::FPTOSINT_F32_I128] = "__fixsfti";
-  Names[RTLIB::FPTOSINT_F64_I8] = "__fixdfqi";
-  Names[RTLIB::FPTOSINT_F64_I16] = "__fixdfhi";
   Names[RTLIB::FPTOSINT_F64_I32] = "__fixdfsi";
   Names[RTLIB::FPTOSINT_F64_I64] = "__fixdfdi";
   Names[RTLIB::FPTOSINT_F64_I128] = "__fixdfti";
@@ -266,13 +262,9 @@ static void InitLibcallNames(const char **Names, const Triple &TT) {
   Names[RTLIB::FPTOSINT_PPCF128_I32] = "__fixtfsi";
   Names[RTLIB::FPTOSINT_PPCF128_I64] = "__fixtfdi";
   Names[RTLIB::FPTOSINT_PPCF128_I128] = "__fixtfti";
-  Names[RTLIB::FPTOUINT_F32_I8] = "__fixunssfqi";
-  Names[RTLIB::FPTOUINT_F32_I16] = "__fixunssfhi";
   Names[RTLIB::FPTOUINT_F32_I32] = "__fixunssfsi";
   Names[RTLIB::FPTOUINT_F32_I64] = "__fixunssfdi";
   Names[RTLIB::FPTOUINT_F32_I128] = "__fixunssfti";
-  Names[RTLIB::FPTOUINT_F64_I8] = "__fixunsdfqi";
-  Names[RTLIB::FPTOUINT_F64_I16] = "__fixunsdfhi";
   Names[RTLIB::FPTOUINT_F64_I32] = "__fixunsdfsi";
   Names[RTLIB::FPTOUINT_F64_I64] = "__fixunsdfdi";
   Names[RTLIB::FPTOUINT_F64_I128] = "__fixunsdfti";
@@ -501,10 +493,6 @@ RTLIB::Libcall RTLIB::getFPROUND(EVT OpVT, EVT RetVT) {
 /// UNKNOWN_LIBCALL if there is none.
 RTLIB::Libcall RTLIB::getFPTOSINT(EVT OpVT, EVT RetVT) {
   if (OpVT == MVT::f32) {
-    if (RetVT == MVT::i8)
-      return FPTOSINT_F32_I8;
-    if (RetVT == MVT::i16)
-      return FPTOSINT_F32_I16;
     if (RetVT == MVT::i32)
       return FPTOSINT_F32_I32;
     if (RetVT == MVT::i64)
@@ -512,10 +500,6 @@ RTLIB::Libcall RTLIB::getFPTOSINT(EVT OpVT, EVT RetVT) {
     if (RetVT == MVT::i128)
       return FPTOSINT_F32_I128;
   } else if (OpVT == MVT::f64) {
-    if (RetVT == MVT::i8)
-      return FPTOSINT_F64_I8;
-    if (RetVT == MVT::i16)
-      return FPTOSINT_F64_I16;
     if (RetVT == MVT::i32)
       return FPTOSINT_F64_I32;
     if (RetVT == MVT::i64)
@@ -551,10 +535,6 @@ RTLIB::Libcall RTLIB::getFPTOSINT(EVT OpVT, EVT RetVT) {
 /// UNKNOWN_LIBCALL if there is none.
 RTLIB::Libcall RTLIB::getFPTOUINT(EVT OpVT, EVT RetVT) {
   if (OpVT == MVT::f32) {
-    if (RetVT == MVT::i8)
-      return FPTOUINT_F32_I8;
-    if (RetVT == MVT::i16)
-      return FPTOUINT_F32_I16;
     if (RetVT == MVT::i32)
       return FPTOUINT_F32_I32;
     if (RetVT == MVT::i64)
@@ -562,10 +542,6 @@ RTLIB::Libcall RTLIB::getFPTOUINT(EVT OpVT, EVT RetVT) {
     if (RetVT == MVT::i128)
       return FPTOUINT_F32_I128;
   } else if (OpVT == MVT::f64) {
-    if (RetVT == MVT::i8)
-      return FPTOUINT_F64_I8;
-    if (RetVT == MVT::i16)
-      return FPTOUINT_F64_I16;
     if (RetVT == MVT::i32)
       return FPTOUINT_F64_I32;
     if (RetVT == MVT::i64)
@@ -826,8 +802,7 @@ void TargetLoweringBase::initActions() {
     setOperationAction(ISD::USUBO, VT, Expand);
     setOperationAction(ISD::SMULO, VT, Expand);
     setOperationAction(ISD::UMULO, VT, Expand);
-    setOperationAction(ISD::UABSDIFF, VT, Expand);
-    setOperationAction(ISD::SABSDIFF, VT, Expand);
+
     setOperationAction(ISD::BITREVERSE, VT, Expand);
     
     // These library functions default to expand.
@@ -840,6 +815,9 @@ void TargetLoweringBase::initActions() {
       setOperationAction(ISD::SIGN_EXTEND_VECTOR_INREG, VT, Expand);
       setOperationAction(ISD::ZERO_EXTEND_VECTOR_INREG, VT, Expand);
     }
+
+    // For most targets @llvm.get.dynamic.area.offest just returns 0.
+    setOperationAction(ISD::GET_DYNAMIC_AREA_OFFSET, VT, Expand);
   }
 
   // Most targets ignore the @llvm.prefetch intrinsic.
@@ -1568,13 +1546,11 @@ int TargetLoweringBase::InstructionOpcodeToISD(unsigned Opcode) const {
   case Invoke:         return 0;
   case Resume:         return 0;
   case Unreachable:    return 0;
-  case CleanupEndPad:  return 0;
   case CleanupRet:     return 0;
-  case CatchEndPad:  return 0;
   case CatchRet:       return 0;
-  case CatchPad:     return 0;
-  case TerminatePad: return 0;
-  case CleanupPad:   return 0;
+  case CatchPad:       return 0;
+  case CatchSwitch:    return 0;
+  case CleanupPad:     return 0;
   case Add:            return ISD::ADD;
   case FAdd:           return ISD::FADD;
   case Sub:            return ISD::SUB;
@@ -1650,6 +1626,10 @@ TargetLoweringBase::getTypeLegalizationCost(const DataLayout &DL,
 
     if (LK.first == TypeSplitVector || LK.first == TypeExpandInteger)
       Cost *= 2;
+
+    // Do not loop with f128 type.
+    if (MTy == LK.second)
+      return std::make_pair(Cost, MTy.getSimpleVT());
 
     // Keep legalizing the type.
     MTy = LK.second;

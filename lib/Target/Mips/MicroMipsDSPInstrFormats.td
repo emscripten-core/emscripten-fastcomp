@@ -141,3 +141,74 @@ class POOL32A_1RIMM5AC_FMT<string opstr, bits<8> funct> : MMDSPInst<opstr> {
   let Inst{13-6}  = funct;
   let Inst{5-0}   = 0b111100;
 }
+
+class POOL32A_2RSA5_FMT<string opstr, bits<11> op> : MMDSPInst<opstr> {
+  bits<5> rt;
+  bits<5> rs;
+  bits<5> sa;
+
+  let Inst{31-26} = 0b000000;
+  let Inst{25-21} = rt;
+  let Inst{20-16} = rs;
+  let Inst{15-11} = sa;
+  let Inst{10-0}  = op;
+}
+
+class POOL32A_1RMEMB0_FMT<string opstr, bits<10> funct> : MMDSPInst<opstr> {
+  bits<5> index;
+  bits<5> base;
+  bits<5> rd;
+
+  let Inst{31-26} = 0;
+  let Inst{25-21} = index;
+  let Inst{20-16} = base;
+  let Inst{15-11} = rd;
+  let Inst{10}    = 0b0;
+  let Inst{9-0}   = funct;
+}
+
+class POOL32A_1RAC_FMT<string instr_asm, bits<8> funct> : MMDSPInst<instr_asm> {
+  bits<5> rs;
+  bits<2> ac;
+
+  let Inst{31-26} = 0;
+  let Inst{25-21} = 0;
+  let Inst{20-16} = rs;
+  let Inst{15-14} = ac;
+  let Inst{13-6}  = funct;
+  let Inst{5-0}   = 0b111100;
+}
+
+class POOL32A_1RMASK7_FMT<string opstr, bits<8> op> : MMDSPInst<opstr> {
+  bits<5> rt;
+  bits<7> mask;
+
+  let Inst{31-26} = 0b000000;
+  let Inst{25-21} = rt;
+  let Inst{20-14} = mask;
+  let Inst{13-6}  = op;
+  let Inst{5-0}   = 0b111100;
+}
+
+class POOL32A_1RIMM10_FMT<string opstr, bits<10> op> : MMDSPInst<opstr> {
+  bits<5> rd;
+  bits<10> imm;
+
+  let Inst{31-26} = 0;
+  let Inst{25-16} = imm;
+  let Inst{15-11} = rd;
+  let Inst{10}    = 0;
+  let Inst{9-0}   = op;
+}
+
+class POOL32A_1RIMM8_FMT<string opstr, bits<6> op> : MMDSPInst<opstr> {
+  bits<5> rt;
+  bits<8> imm;
+
+  let Inst{31-26} = 0;
+  let Inst{25-21} = rt;
+  let Inst{20-13} = imm;
+  let Inst{12}    = 0;
+  let Inst{11-6}  = op;
+  let Inst{5-0}   = 0b111100;
+}

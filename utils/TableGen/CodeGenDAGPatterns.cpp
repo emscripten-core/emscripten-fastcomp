@@ -14,6 +14,7 @@
 
 #include "CodeGenDAGPatterns.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Debug.h"
@@ -387,7 +388,13 @@ bool EEVT::TypeSet::EnforceSmallerThan(EEVT::TypeSet &Other, TreePattern &TP) {
   // the size of the smallest type.
   {
     TypeSet InputSet(Other);
-    MVT Smallest = TypeVec[0];
+    MVT Smallest = *std::min_element(TypeVec.begin(), TypeVec.end(),
+      [](MVT A, MVT B) {
+        return A.getScalarSizeInBits() < B.getScalarSizeInBits() ||
+               (A.getScalarSizeInBits() == B.getScalarSizeInBits() &&
+                A.getSizeInBits() < B.getSizeInBits());
+      });
+
     auto I = std::remove_if(Other.TypeVec.begin(), Other.TypeVec.end(),
       [Smallest](MVT OtherVT) {
         // Don't compare vector and non-vector types.
@@ -415,7 +422,12 @@ bool EEVT::TypeSet::EnforceSmallerThan(EEVT::TypeSet &Other, TreePattern &TP) {
   // the size of the largest type.
   {
     TypeSet InputSet(*this);
-    MVT Largest = Other.TypeVec[Other.TypeVec.size()-1];
+    MVT Largest = *std::max_element(Other.TypeVec.begin(), Other.TypeVec.end(),
+      [](MVT A, MVT B) {
+        return A.getScalarSizeInBits() < B.getScalarSizeInBits() ||
+               (A.getScalarSizeInBits() == B.getScalarSizeInBits() &&
+                A.getSizeInBits() < B.getSizeInBits());
+      });
     auto I = std::remove_if(TypeVec.begin(), TypeVec.end(),
       [Largest](MVT OtherVT) {
         // Don't compare vector and non-vector types.
@@ -873,14 +885,14 @@ std::string PatternToMatch::getPredicateCheck() const {
   // Sort so that different orders get canonicalized to the same string.
   std::sort(PredicateRecs.begin(), PredicateRecs.end(), LessRecord());
 
-  std::string PredicateCheck;
+  SmallString<128> PredicateCheck;
   for (Record *Pred : PredicateRecs) {
     if (!PredicateCheck.empty())
       PredicateCheck += " && ";
     PredicateCheck += "(" + Pred->getValueAsString("CondString") + ")";
   }
 
-  return PredicateCheck;
+  return PredicateCheck.str();
 }
 
 //===----------------------------------------------------------------------===//

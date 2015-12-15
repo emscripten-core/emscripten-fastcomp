@@ -64,7 +64,7 @@ namespace {
 /// Print out the expression identified in the Ops list.
 ///
 static void PrintOps(Instruction *I, const SmallVectorImpl<ValueEntry> &Ops) {
-  Module *M = I->getParent()->getParent()->getParent();
+  Module *M = I->getModule();
   dbgs() << Instruction::getOpcodeName(I->getOpcode()) << " "
        << *Ops[0].Op->getType() << '\t';
   for (unsigned i = 0, e = Ops.size(); i != e; ++i) {
@@ -947,8 +947,6 @@ static Value *NegateValue(Value *V, Instruction *BI,
     if (Instruction *InstInput = dyn_cast<Instruction>(V)) {
       if (InvokeInst *II = dyn_cast<InvokeInst>(InstInput)) {
         InsertPt = II->getNormalDest()->begin();
-      } else if (auto *CPI = dyn_cast<CatchPadInst>(InstInput)) {
-        InsertPt = CPI->getNormalDest()->begin();
       } else {
         InsertPt = ++InstInput->getIterator();
       }

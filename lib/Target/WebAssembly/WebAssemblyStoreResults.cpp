@@ -10,9 +10,12 @@
 /// \file
 /// \brief This file implements an optimization pass using store result values.
 ///
-/// WebAssembly's store instructions return the stored value, specifically to
-/// enable the optimization of reducing get_local/set_local traffic, which is
-/// what we're doing here.
+/// WebAssembly's store instructions return the stored value. This is to enable
+/// an optimization wherein uses of the stored value can be replaced by uses of
+/// the store's result value, making the stored value register more likely to
+/// be single-use, thus more likely to be useful to register stackifying, and
+/// potentially also exposing the store to register stackifying. These both can
+/// reduce get_local/set_local traffic.
 ///
 //===----------------------------------------------------------------------===//
 
@@ -68,8 +71,12 @@ bool WebAssemblyStoreResults::runOnMachineFunction(MachineFunction &MF) {
 
   const MachineRegisterInfo &MRI = MF.getRegInfo();
   MachineDominatorTree &MDT = getAnalysis<MachineDominatorTree>();
+  bool Changed = false;
 
-  for (auto &MBB : MF)
+  assert(MRI.isSSA() && "StoreResults depends on SSA form");
+
+  for (auto &MBB : MF) {
+    DEBUG(dbgs() << "Basic Block: " << MBB.getName() << '\n');
     for (auto &MI : MBB)
       switch (MI.getOpcode()) {
       default:
@@ -84,19 +91,34 @@ bool WebAssemblyStoreResults::runOnMachineFunction(MachineFunction &MF) {
       case WebAssembly::STORE_I32:
       case WebAssembly::STORE_I64:
         unsigned ToReg = MI.getOperand(0).getReg();
-        unsigned FromReg = MI.getOperand(2).getReg();
+        unsigned FromReg = MI.getOperand(3).getReg();
         for (auto I = MRI.use_begin(FromReg), E = MRI.use_end(); I != E;) {
           MachineOperand &O = *I++;
           MachineInstr *Where = O.getParent();
-          if (Where->getOpcode() == TargetOpcode::PHI)
-            Where = Where->getOperand(&O - &Where->getOperand(0) + 1)
-                        .getMBB()
-                        ->getFirstTerminator();
-          if (&MI == Where || !MDT.dominates(&MI, Where))
-            continue;
+          if (Where->getOpcode() == TargetOpcode::PHI) {
+            // PHIs use their operands on their incoming CFG edges rather than
+            // in their parent blocks. Get the basic block paired with this use
+            // of FromReg and check that MI's block dominates it.
+            MachineBasicBlock *Pred =
+                Where->getOperand(&O - &Where->getOperand(0) + 1).getMBB();
+            if (!MDT.dominates(&MBB, Pred))
+              continue;
+          } else {
+            // For a non-PHI, check that MI dominates the instruction in the
+            // normal way.
+            if (&MI == Where || !MDT.dominates(&MI, Where))
+              continue;
+          }
+          Changed = true;
+          DEBUG(dbgs() << "Setting operand " << O << " in " << *Where
+                       << " from " << MI << "\n");
           O.setReg(ToReg);
+          // If the store's def was previously dead, it is no longer. But the
+          // dead flag shouldn't be set yet.
+          assert(!MI.getOperand(0).isDead() && "Dead flag set on store result");
         }
       }
+  }
 
-  return true;
+  return Changed;
 }

@@ -38,6 +38,8 @@ def bc_mmx  : PatFrag<(ops node:$in), (x86mmx  (bitconvert node:$in))>;
 def SDTX86VFCMP : SDTypeProfile<1, 3, [SDTCisInt<0>, SDTCisSameAs<1, 2>,
                                        SDTCisFP<1>, SDTCisVT<3, i8>,
                                        SDTCisVec<1>]>;
+def SDTX86CmpTestSae : SDTypeProfile<1, 3, [SDTCisVT<0, i32>, 
+                                     SDTCisSameAs<1, 2>, SDTCisInt<3>]>;
 
 def X86fmin    : SDNode<"X86ISD::FMIN",      SDTFPBinOp>;
 def X86fmax    : SDNode<"X86ISD::FMAX",      SDTFPBinOp>;
@@ -66,7 +68,9 @@ def X86fhsub   : SDNode<"X86ISD::FHSUB",     SDTFPBinOp>;
 def X86hadd    : SDNode<"X86ISD::HADD",      SDTIntBinOp>;
 def X86hsub    : SDNode<"X86ISD::HSUB",      SDTIntBinOp>;
 def X86comi    : SDNode<"X86ISD::COMI",      SDTX86CmpTest>;
+def X86comiSae : SDNode<"X86ISD::COMI",      SDTX86CmpTestSae>;
 def X86ucomi   : SDNode<"X86ISD::UCOMI",     SDTX86CmpTest>;
+def X86ucomiSae: SDNode<"X86ISD::UCOMI",     SDTX86CmpTestSae>;
 def X86cmps    : SDNode<"X86ISD::FSETCC",     SDTX86Cmps>;
 //def X86cmpsd   : SDNode<"X86ISD::FSETCCsd",    SDTX86Cmpsd>;
 def X86cvtdq2pd: SDNode<"X86ISD::CVTDQ2PD",
@@ -292,8 +296,6 @@ def X86insertqi : SDNode<"X86ISD::INSERTQI",
 def SDTShuff1Op : SDTypeProfile<1, 1, [SDTCisVec<0>, SDTCisSameAs<0,1>]>;
 def SDTShuff2Op : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                 SDTCisSameAs<0,2>]>;
-def SDTShuff3Op : SDTypeProfile<1, 3, [SDTCisVec<0>, SDTCisSameAs<0,1>,
-                                SDTCisSameAs<0,2>, SDTCisSameAs<0,3>]>;
 
 def SDTShuff2OpM : SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisSameAs<0,1>,
                                         SDTCisSameSizeAs<0,2>,
@@ -376,7 +378,11 @@ def X86vpmaddwd    : SDNode<"X86ISD::VPMADDWD"   , SDTPack>;
 
 def X86VPermilpv  : SDNode<"X86ISD::VPERMILPV", SDTShuff2OpM>;
 def X86VPermilpi  : SDNode<"X86ISD::VPERMILPI", SDTShuff2OpI>;
-def X86VPermv     : SDNode<"X86ISD::VPERMV",    SDTShuff2Op>;
+def X86VPermv     : SDNode<"X86ISD::VPERMV",
+                           SDTypeProfile<1, 2, [SDTCisVec<0>, SDTCisInt<1>,
+                                                SDTCisSameNumEltsAs<0,1>,
+                                                SDTCisSameSizeAs<0,1>,
+                                                SDTCisSameAs<0,2>]>>;
 def X86VPermi     : SDNode<"X86ISD::VPERMI",    SDTShuff2OpI>;
 def X86VPermt2     : SDNode<"X86ISD::VPERMV3",
                     SDTypeProfile<1, 3, [SDTCisVec<0>,
@@ -385,7 +391,13 @@ def X86VPermt2     : SDNode<"X86ISD::VPERMV3",
                                          SDTCisSameSizeAs<0,2>,
                                          SDTCisSameAs<0,3>]>, []>;
 
-def X86VPermi2X   : SDNode<"X86ISD::VPERMIV3", SDTShuff3Op>;
+def X86VPermi2X   : SDNode<"X86ISD::VPERMIV3",
+                    SDTypeProfile<1, 3, [SDTCisVec<0>, SDTCisInt<1>,
+                                         SDTCisVec<1>, SDTCisSameNumEltsAs<0, 1>,
+                                         SDTCisSameSizeAs<0,1>,
+                                         SDTCisSameAs<0,2>,
+                                         SDTCisSameAs<0,3>]>, []>;
+
 def X86vpternlog  : SDNode<"X86ISD::VPTERNLOG", SDTTernlog>;
 
 def X86VPerm2x128 : SDNode<"X86ISD::VPERM2X128", SDTShuff3OpI>;
@@ -630,9 +642,9 @@ def extloadv8f32 : PatFrag<(ops node:$ptr), (v8f64 (extloadvf32 node:$ptr))>;
 // The memory operand is required to be a 128-bit load, so it must be converted
 // from a vector to a scalar.
 def loadf32_128 : PatFrag<(ops node:$ptr),
-  (f32 (vector_extract (loadv4f32 node:$ptr), (iPTR 0)))>;
+  (f32 (extractelt (loadv4f32 node:$ptr), (iPTR 0)))>;
 def loadf64_128 : PatFrag<(ops node:$ptr),
-  (f64 (vector_extract (loadv2f64 node:$ptr), (iPTR 0)))>;
+  (f64 (extractelt (loadv2f64 node:$ptr), (iPTR 0)))>;
 
 // Like 'store', but always requires 128-bit vector alignment.
 def alignedstore : PatFrag<(ops node:$val, node:$ptr),
@@ -730,9 +742,9 @@ def memopv2i64 : PatFrag<(ops node:$ptr), (v2i64 (memop node:$ptr))>;
 // The memory operand is required to be a 128-bit load, so it must be converted
 // from a vector to a scalar.
 def memopfsf32_128 : PatFrag<(ops node:$ptr),
-  (f32 (vector_extract (memopv4f32 node:$ptr), (iPTR 0)))>;
+  (f32 (extractelt (memopv4f32 node:$ptr), (iPTR 0)))>;
 def memopfsf64_128 : PatFrag<(ops node:$ptr),
-  (f64 (vector_extract (memopv2f64 node:$ptr), (iPTR 0)))>;
+  (f64 (extractelt (memopv2f64 node:$ptr), (iPTR 0)))>;
 
 
 // SSSE3 uses MMX registers for some instructions. They aren't aligned on a

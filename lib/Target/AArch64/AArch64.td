@@ -38,6 +38,9 @@ def FeaturePerfMon : SubtargetFeature<"perfmon", "HasPerfMon", "true",
 def FeatureFullFP16 : SubtargetFeature<"fullfp16", "HasFullFP16", "true",
   "Full FP16", [FeatureFPARMv8]>;
 
+def FeatureSPE : SubtargetFeature<"spe", "HasSPE", "true",
+  "Enable Statistical Profiling extension">;
+
 /// Cyclone has register move instructions which are "free".
 def FeatureZCRegMove : SubtargetFeature<"zcm", "HasZeroCycleRegMove", "true",
                                         "Has zero-cycle register moves">;
@@ -88,6 +91,14 @@ include "AArch64SchedA53.td"
 include "AArch64SchedA57.td"
 include "AArch64SchedCyclone.td"
 
+def ProcA35     : SubtargetFeature<"a35", "ARMProcFamily", "CortexA35",
+                                   "Cortex-A35 ARM processors",
+                                   [FeatureFPARMv8,
+                                   FeatureNEON,
+                                   FeatureCrypto,
+                                   FeatureCRC,
+                                   FeaturePerfMon]>;
+
 def ProcA53     : SubtargetFeature<"a53", "ARMProcFamily", "CortexA53",
                                    "Cortex-A53 ARM processors",
                                    [FeatureFPARMv8,
@@ -118,6 +129,8 @@ def : ProcessorModel<"generic", NoSchedModel, [FeatureFPARMv8,
                                               FeatureCRC,
                                               FeaturePerfMon]>;
 
+// FIXME: Cortex-A35 is currently modelled as a Cortex-A53
+def : ProcessorModel<"cortex-a35", CortexA53Model, [ProcA35]>;
 def : ProcessorModel<"cortex-a53", CortexA53Model, [ProcA53]>;
 def : ProcessorModel<"cortex-a57", CortexA57Model, [ProcA57]>;
 // FIXME: Cortex-A72 is currently modelled as an Cortex-A57.

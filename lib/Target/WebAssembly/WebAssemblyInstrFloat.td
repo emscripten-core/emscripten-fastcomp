@@ -14,8 +14,10 @@
 
 let Defs = [ARGUMENTS] in {
 
+let isCommutable = 1 in
 defm ADD : BinaryFP<fadd, "add ">;
 defm SUB : BinaryFP<fsub, "sub ">;
+let isCommutable = 1 in
 defm MUL : BinaryFP<fmul, "mul ">;
 defm DIV : BinaryFP<fdiv, "div ">;
 defm SQRT : UnaryFP<fsqrt, "sqrt">;
@@ -24,8 +26,10 @@ defm ABS : UnaryFP<fabs, "abs ">;
 defm NEG : UnaryFP<fneg, "neg ">;
 defm COPYSIGN : BinaryFP<fcopysign, "copysign">;
 
+let isCommutable = 1 in {
 defm MIN : BinaryFP<fminnan, "min ">;
 defm MAX : BinaryFP<fmaxnan, "max ">;
+} // isCommutable = 1
 
 defm CEIL : UnaryFP<fceil, "ceil">;
 defm FLOOR : UnaryFP<ffloor, "floor">;
@@ -34,14 +38,22 @@ defm NEAREST : UnaryFP<fnearbyint, "nearest">;
 
 } // Defs = [ARGUMENTS]
 
+// DAGCombine oddly folds casts into the rhs of copysign. Unfold them.
+def : Pat<(fcopysign F64:$lhs, F32:$rhs),
+          (COPYSIGN_F64 F64:$lhs, (F64_PROMOTE_F32 F32:$rhs))>;
+def : Pat<(fcopysign F32:$lhs, F64:$rhs),
+          (COPYSIGN_F32 F32:$lhs, (F32_DEMOTE_F64 F64:$rhs))>;
+
 // WebAssembly doesn't expose inexact exceptions, so map frint to fnearbyint.
 def : Pat<(frint f32:$src), (NEAREST_F32 f32:$src)>;
 def : Pat<(frint f64:$src), (NEAREST_F64 f64:$src)>;
 
 let Defs = [ARGUMENTS] in {
 
+let isCommutable = 1 in {
 defm EQ : ComparisonFP<SETOEQ, "eq  ">;
 defm NE : ComparisonFP<SETUNE, "ne  ">;
+} // isCommutable = 1
 defm LT : ComparisonFP<SETOLT, "lt  ">;
 defm LE : ComparisonFP<SETOLE, "le  ">;
 defm GT : ComparisonFP<SETOGT, "gt  ">;

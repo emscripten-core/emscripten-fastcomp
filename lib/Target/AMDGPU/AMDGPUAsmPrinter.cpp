@@ -100,16 +100,6 @@ void AMDGPUAsmPrinter::EmitFunctionBodyStart() {
   }
 }
 
-void AMDGPUAsmPrinter::EmitEndOfAsmFile(Module &M) {
-
-  // This label is used to mark the end of the .text section.
-  const TargetLoweringObjectFile &TLOF = getObjFileLowering();
-  OutStreamer->SwitchSection(TLOF.getTextSection());
-  MCSymbol *EndOfTextLabel =
-      OutContext.getOrCreateSymbol(StringRef(END_OF_TEXT_LABEL_NAME));
-  OutStreamer->EmitLabel(EndOfTextLabel);
-}
-
 void AMDGPUAsmPrinter::EmitFunctionEntryLabel() {
   const SIMachineFunctionInfo *MFI = MF->getInfo<SIMachineFunctionInfo>();
   const AMDGPUSubtarget &STM = MF->getSubtarget<AMDGPUSubtarget>();
@@ -121,6 +111,48 @@ void AMDGPUAsmPrinter::EmitFunctionEntryLabel() {
   }
 
   AsmPrinter::EmitFunctionEntryLabel();
+}
+
+static bool isModuleLinkage(const GlobalValue *GV) {
+  switch (GV->getLinkage()) {
+  case GlobalValue::InternalLinkage:
+  case GlobalValue::CommonLinkage:
+   return true;
+  case GlobalValue::ExternalLinkage:
+   return false;
+  default: llvm_unreachable("unknown linkage type");
+  }
+}
+
+void AMDGPUAsmPrinter::EmitGlobalVariable(const GlobalVariable *GV) {
+
+  if (TM.getTargetTriple().getOS() != Triple::AMDHSA ||
+      GV->isDeclaration()) {
+    AsmPrinter::EmitGlobalVariable(GV);
+    return;
+  }
+
+  // Group segment variables aren't emitted in HSA.
+  if (AMDGPU::isGroupSegment(GV))
+    return;
+
+  AMDGPUTargetStreamer *TS =
+      static_cast<AMDGPUTargetStreamer *>(OutStreamer->getTargetStreamer());
+  if (isModuleLinkage(GV)) {
+    TS->EmitAMDGPUHsaModuleScopeGlobal(GV->getName());
+  } else {
+    TS->EmitAMDGPUHsaProgramScopeGlobal(GV->getName());
+  }
+
+  const DataLayout &DL = getDataLayout();
+  OutStreamer->PushSection();
+  OutStreamer->SwitchSection(
+      getObjFileLowering().SectionForGlobal(GV, *Mang, TM));
+  MCSymbol *GVSym = getSymbol(GV);
+  const Constant *C = GV->getInitializer();
+  OutStreamer->EmitLabel(GVSym);
+  EmitGlobalConstant(DL, C);
+  OutStreamer->PopSection();
 }
 
 bool AMDGPUAsmPrinter::runOnMachineFunction(MachineFunction &MF) {
@@ -401,6 +433,11 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
     ProgInfo.NumSGPR = AMDGPUSubtarget::FIXED_SGPR_COUNT_FOR_INIT_BUG;
   }
 
+  if (MFI->NumUserSGPRs > STM.getMaxNumUserSGPRs()) {
+    LLVMContext &Ctx = MF.getFunction()->getContext();
+    Ctx.emitError("too many user SGPRs used");
+  }
+
   ProgInfo.VGPRBlocks = (ProgInfo.NumVGPR - 1) / 4;
   ProgInfo.SGPRBlocks = (ProgInfo.NumSGPR - 1) / 8;
   // Set the value to initialize FP_ROUND and FP_DENORM parts of the mode
@@ -452,18 +489,27 @@ void AMDGPUAsmPrinter::getSIProgramInfo(SIProgramInfo &ProgInfo,
       S_00B848_FLOAT_MODE(ProgInfo.FloatMode) |
       S_00B848_PRIV(ProgInfo.Priv) |
       S_00B848_DX10_CLAMP(ProgInfo.DX10Clamp) |
-      S_00B848_IEEE_MODE(ProgInfo.DebugMode) |
+      S_00B848_DEBUG_MODE(ProgInfo.DebugMode) |
       S_00B848_IEEE_MODE(ProgInfo.IEEEMode);
+
+  // 0 = X, 1 = XY, 2 = XYZ
+  unsigned TIDIGCompCnt = 0;
+  if (MFI->hasWorkItemIDZ())
+    TIDIGCompCnt = 2;
+  else if (MFI->hasWorkItemIDY())
+    TIDIGCompCnt = 1;
 
   ProgInfo.ComputePGMRSrc2 =
       S_00B84C_SCRATCH_EN(ProgInfo.ScratchBlocks > 0) |
-      S_00B84C_USER_SGPR(MFI->NumUserSGPRs) |
-      S_00B84C_TGID_X_EN(1) |
-      S_00B84C_TGID_Y_EN(1) |
-      S_00B84C_TGID_Z_EN(1) |
-      S_00B84C_TG_SIZE_EN(1) |
-      S_00B84C_TIDIG_COMP_CNT(2) |
-      S_00B84C_LDS_SIZE(ProgInfo.LDSBlocks);
+      S_00B84C_USER_SGPR(MFI->getNumUserSGPRs()) |
+      S_00B84C_TGID_X_EN(MFI->hasWorkGroupIDX()) |
+      S_00B84C_TGID_Y_EN(MFI->hasWorkGroupIDY()) |
+      S_00B84C_TGID_Z_EN(MFI->hasWorkGroupIDZ()) |
+      S_00B84C_TG_SIZE_EN(MFI->hasWorkGroupInfo()) |
+      S_00B84C_TIDIG_COMP_CNT(TIDIGCompCnt) |
+      S_00B84C_EXCP_EN_MSB(0) |
+      S_00B84C_LDS_SIZE(ProgInfo.LDSBlocks) |
+      S_00B84C_EXCP_EN(0);
 }
 
 static unsigned getRsrcReg(unsigned ShaderType) {
@@ -524,9 +570,44 @@ void AMDGPUAsmPrinter::EmitAmdKernelCodeT(const MachineFunction &MF,
   header.compute_pgm_resource_registers =
       KernelInfo.ComputePGMRSrc1 |
       (KernelInfo.ComputePGMRSrc2 << 32);
-  header.code_properties =
-      AMD_CODE_PROPERTY_ENABLE_SGPR_KERNARG_SEGMENT_PTR |
-      AMD_CODE_PROPERTY_IS_PTR64;
+  header.code_properties = AMD_CODE_PROPERTY_IS_PTR64;
+
+  if (MFI->hasPrivateSegmentBuffer()) {
+    header.code_properties |=
+      AMD_CODE_PROPERTY_ENABLE_SGPR_PRIVATE_SEGMENT_BUFFER;
+  }
+
+  if (MFI->hasDispatchPtr())
+    header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR;
+
+  if (MFI->hasQueuePtr())
+    header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_QUEUE_PTR;
+
+  if (MFI->hasKernargSegmentPtr())
+    header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_KERNARG_SEGMENT_PTR;
+
+  if (MFI->hasDispatchID())
+    header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_ID;
+
+  if (MFI->hasFlatScratchInit())
+    header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_FLAT_SCRATCH_INIT;
+
+  // TODO: Private segment size
+
+  if (MFI->hasGridWorkgroupCountX()) {
+    header.code_properties |=
+      AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_X;
+  }
+
+  if (MFI->hasGridWorkgroupCountY()) {
+    header.code_properties |=
+      AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Y;
+  }
+
+  if (MFI->hasGridWorkgroupCountZ()) {
+    header.code_properties |=
+      AMD_CODE_PROPERTY_ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z;
+  }
 
   if (MFI->hasDispatchPtr())
     header.code_properties |= AMD_CODE_PROPERTY_ENABLE_SGPR_DISPATCH_PTR;

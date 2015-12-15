@@ -148,17 +148,8 @@ public:
   /// arguments at this call site.
   typedef IterTy arg_iterator;
 
-  /// arg_begin/arg_end - Return iterators corresponding to the actual argument
-  /// list for a call site.
-  IterTy arg_begin() const {
-    assert(getInstruction() && "Not a call or invoke instruction!");
-    // Skip non-arguments
-    return (*this)->op_begin();
-  }
-
-  IterTy arg_end() const { return (*this)->op_end() - getArgumentEndOffset(); }
   iterator_range<IterTy> args() const {
-    return iterator_range<IterTy>(arg_begin(), arg_end());
+    return make_range(arg_begin(), arg_end());
   }
   bool arg_empty() const { return arg_end() == arg_begin(); }
   unsigned arg_size() const { return unsigned(arg_end() - arg_begin()); }
@@ -182,7 +173,7 @@ public:
     return (*this)->op_end() - (isCall() ? 1 : 3);
   }
   iterator_range<IterTy> data_ops() const {
-    return iterator_range<IterTy>(data_operands_begin(), data_operands_end());
+    return make_range(data_operands_begin(), data_operands_end());
   }
   bool data_operands_empty() const {
     return data_operands_end() == data_operands_begin();
@@ -387,6 +378,14 @@ public:
     CALLSITE_DELEGATE_GETTER(getOperandBundle(ID));
   }
 
+  IterTy arg_begin() const {
+    CALLSITE_DELEGATE_GETTER(arg_begin());
+  }
+
+  IterTy arg_end() const {
+    CALLSITE_DELEGATE_GETTER(arg_end());
+  }
+
 #undef CALLSITE_DELEGATE_GETTER
 #undef CALLSITE_DELEGATE_SETTER
 
@@ -460,18 +459,6 @@ public:
   }
 
 private:
-  unsigned getArgumentEndOffset() const {
-    if (isCall()) {
-      // Skip [ operand bundles ], Callee
-      auto *CI = cast<CallInst>(getInstruction());
-      return 1 + CI->getNumTotalBundleOperands();
-    } else {
-      // Skip [ operand bundles ], BB, BB, Callee
-      auto *II = cast<InvokeInst>(getInstruction());
-      return 3 + II->getNumTotalBundleOperands();
-    }
-  }
-
   IterTy getCallee() const {
     if (isCall()) // Skip Callee
       return cast<CallInst>(getInstruction())->op_end() - 1;

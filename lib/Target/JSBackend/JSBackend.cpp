@@ -2362,9 +2362,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::ICmp: {
-    unsigned predicate = isa<ConstantExpr>(I) ?
-                         (unsigned)cast<ConstantExpr>(I)->getPredicate() :
-                         (unsigned)cast<ICmpInst>(I)->getPredicate();
+    auto predicate = isa<ConstantExpr>(I) ?
+                     (CmpInst::Predicate)cast<ConstantExpr>(I)->getPredicate() :
+                     cast<ICmpInst>(I)->getPredicate();
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
     Code << getAssignIfNeeded(I) << "(" <<
       getValueAsCastStr(I->getOperand(0), sign) <<

@@ -53,6 +53,9 @@ public:
   // Create a BranchProbability object with the given numerator and 1<<31
   // as denominator.
   static BranchProbability getRaw(uint32_t N) { return BranchProbability(N); }
+  // Create a BranchProbability object from 64-bit integers.
+  static BranchProbability getBranchProbability(uint64_t Numerator,
+                                                uint64_t Denominator);
 
   // Normalize given probabilties so that the sum of them becomes approximate
   // one.
@@ -114,6 +117,14 @@ public:
     return *this;
   }
 
+  BranchProbability &operator/=(uint32_t RHS) {
+    assert(N != UnknownN &&
+           "Unknown probability cannot participate in arithmetics.");
+    assert(RHS > 0 && "The divider cannot be zero.");
+    N /= RHS;
+    return *this;
+  }
+
   BranchProbability operator+(BranchProbability RHS) const {
     BranchProbability Prob(*this);
     return Prob += RHS;
@@ -129,22 +140,41 @@ public:
     return Prob *= RHS;
   }
 
+  BranchProbability operator/(uint32_t RHS) const {
+    BranchProbability Prob(*this);
+    return Prob /= RHS;
+  }
+
   bool operator==(BranchProbability RHS) const { return N == RHS.N; }
   bool operator!=(BranchProbability RHS) const { return !(*this == RHS); }
-  bool operator<(BranchProbability RHS) const { return N < RHS.N; }
-  bool operator>(BranchProbability RHS) const { return RHS < *this; }
-  bool operator<=(BranchProbability RHS) const { return !(RHS < *this); }
-  bool operator>=(BranchProbability RHS) const { return !(*this < RHS); }
+
+  bool operator<(BranchProbability RHS) const {
+    assert(N != UnknownN && RHS.N != UnknownN &&
+           "Unknown probability cannot participate in comparisons.");
+    return N < RHS.N;
+  }
+
+  bool operator>(BranchProbability RHS) const {
+    assert(N != UnknownN && RHS.N != UnknownN &&
+           "Unknown probability cannot participate in comparisons.");
+    return RHS < *this;
+  }
+
+  bool operator<=(BranchProbability RHS) const {
+    assert(N != UnknownN && RHS.N != UnknownN &&
+           "Unknown probability cannot participate in comparisons.");
+    return !(RHS < *this);
+  }
+
+  bool operator>=(BranchProbability RHS) const {
+    assert(N != UnknownN && RHS.N != UnknownN &&
+           "Unknown probability cannot participate in comparisons.");
+    return !(*this < RHS);
+  }
 };
 
 inline raw_ostream &operator<<(raw_ostream &OS, BranchProbability Prob) {
   return Prob.print(OS);
-}
-
-inline BranchProbability operator/(BranchProbability LHS, uint32_t RHS) {
-  assert(LHS != BranchProbability::getUnknown() &&
-         "Unknown probability cannot participate in arithmetics.");
-  return BranchProbability::getRaw(LHS.getNumerator() / RHS);
 }
 
 template <class ProbabilityIter>

@@ -664,6 +664,28 @@ define void @fastmathflags(float %op1, float %op2) {
   ret void
 }
 
+; Check various fast math flags and floating-point types on calls.
+
+declare float @fmf1()
+declare double @fmf2()
+declare <4 x double> @fmf3()
+
+; CHECK-LABEL: fastMathFlagsForCalls(
+define void @fastMathFlagsForCalls(float %f, double %d1, <4 x double> %d2) {
+  %call.fast = call fast float @fmf1()
+  ; CHECK: %call.fast = call fast float @fmf1()
+
+  ; Throw in some other attributes to make sure those stay in the right places.
+
+  %call.nsz.arcp = notail call nsz arcp double @fmf2()
+  ; CHECK: %call.nsz.arcp = notail call nsz arcp double @fmf2()
+
+  %call.nnan.ninf = tail call nnan ninf fastcc <4 x double> @fmf3()
+  ; CHECK: %call.nnan.ninf = tail call nnan ninf fastcc <4 x double> @fmf3()
+
+  ret void
+}
+
 ;; Type System
 %opaquety = type opaque
 define void @typesystem() {
@@ -769,95 +791,82 @@ define i32 @instructions.win_eh.1() personality i32 -3 {
 entry:
   %arg1 = alloca i32
   %arg2 = alloca i32
-  invoke void @f.ccc() to label %normal unwind label %catchpad1
-  invoke void @f.ccc() to label %normal unwind label %catchpad2
-  invoke void @f.ccc() to label %normal unwind label %catchpad3
+  invoke void @f.ccc() to label %normal unwind label %catchswitch1
+  invoke void @f.ccc() to label %normal unwind label %catchswitch2
+  invoke void @f.ccc() to label %normal unwind label %catchswitch3
+
+catchswitch1:
+  %cs1 = catchswitch within none [label %catchpad1] unwind to caller
 
 catchpad1:
-  catchpad [] to label %normal unwind label %exn.1
-  ; CHECK: catchpad []
-  ; CHECK-NEXT: to label %normal unwind label %exn.1
+  catchpad within %cs1 []
+  br label %normal
+  ; CHECK: catchpad within %cs1 []
+  ; CHECK-NEXT: br label %normal
+
+catchswitch2:
+  %cs2 = catchswitch within none [label %catchpad2] unwind to caller
 
 catchpad2:
-  catchpad [i32* %arg1] to label %normal unwind label %exn.2
-  ; CHECK: catchpad [i32* %arg1]
-  ; CHECK-NEXT: to label %normal unwind label %exn.2
+  catchpad within %cs2 [i32* %arg1]
+  br label %normal
+  ; CHECK: catchpad within %cs2 [i32* %arg1]
+  ; CHECK-NEXT: br label %normal
+
+catchswitch3:
+  %cs3 = catchswitch within none [label %catchpad3] unwind label %cleanuppad1
 
 catchpad3:
-  catchpad [i32* %arg1, i32* %arg2] to label %normal unwind label %exn.3
-  ; CHECK: catchpad [i32* %arg1, i32* %arg2] 
-  ; CHECK-NEXT: to label %normal unwind label %exn.3
-
-exn.1:
-  catchendpad unwind label %terminate.1
-  ; CHECK: catchendpad unwind label %terminate.1
-
-exn.2:
-  catchendpad unwind to caller
-  ; CHECK: catchendpad unwind to caller
-
-exn.3:
-  catchendpad unwind label %cleanuppad1
-  ; CHECK: catchendpad unwind label %cleanuppad1
+  catchpad within %cs3 [i32* %arg1, i32* %arg2]
+  br label %normal
+  ; CHECK: catchpad within %cs3 [i32* %arg1, i32* %arg2]
+  ; CHECK-NEXT: br label %normal
 
 cleanuppad1:
-  %clean.1 = cleanuppad []
-  ; CHECK: %clean.1 = cleanuppad []
-  invoke void @f.ccc() to label %normal unwind label %cleanupendpad1
-
-cleanupendpad1:
-  cleanupendpad %clean.1 unwind label %terminate.2
-  ; CHECK: cleanupendpad %clean.1 unwind label %terminate.2
-
-terminate.1:
-  terminatepad [] unwind to caller
-  ; CHECK: terminatepad [] unwind to caller
-
-terminate.2:
-  terminatepad [i32* %arg1] unwind label %normal.pre
-  ; CHECK: terminatepad [i32* %arg1] unwind label %normal.pre
-
-normal.pre:
-  terminatepad [i32* %arg1, i32* %arg2] unwind to caller
-  ; CHECK: terminatepad [i32* %arg1, i32* %arg2] unwind to caller
+  %clean.1 = cleanuppad within none []
+  unreachable
+  ; CHECK: %clean.1 = cleanuppad within none []
+  ; CHECK-NEXT: unreachable
 
 normal:
   ret i32 0
 }
-
+;
 define i32 @instructions.win_eh.2() personality i32 -4 {
 entry:
-  invoke void @f.ccc() to label %invoke.cont unwind label %catchpad
+  invoke void @f.ccc() to label %invoke.cont unwind label %catchswitch
 
 invoke.cont:
   invoke void @f.ccc() to label %continue unwind label %cleanup
 
 cleanup:
-  %clean = cleanuppad []
-  ; CHECK: %clean = cleanuppad []
-  cleanupret %clean unwind to caller
-  ; CHECK: cleanupret %clean unwind to caller
+  %clean = cleanuppad within none []
+  ; CHECK: %clean = cleanuppad within none []
+  cleanupret from %clean unwind to caller
+  ; CHECK: cleanupret from %clean unwind to caller
+
+catchswitch:
+  %cs = catchswitch within none [label %catchpad] unwind label %terminate
 
 catchpad:
-  %catch = catchpad [] to label %body unwind label %catchend
-  ; CHECK: %catch = catchpad []
-  ; CHECK-NEXT: to label %body unwind label %catchend
+  %catch = catchpad within %cs []
+  br label %body
+  ; CHECK: %catch = catchpad within %cs []
+  ; CHECK-NEXT: br label %body
 
 body:
-  invoke void @f.ccc() to label %continue unwind label %catchend
-  catchret %catch to label %return
-  ; CHECK: catchret %catch to label %return
+  invoke void @f.ccc() to label %continue unwind label %terminate
+  catchret from %catch to label %return
+  ; CHECK: catchret from %catch to label %return
 
 return:
   ret i32 0
 
-catchend:
-  catchendpad unwind label %terminate
-  ; CHECK: catchendpad unwind label %terminate
-
 terminate:
-  terminatepad [] unwind to caller
-  ; CHECK: terminatepad [] unwind to caller
+  cleanuppad within %cs []
+  unreachable
+  ; CHECK: cleanuppad within %cs []
+  ; CHECK-NEXT: unreachable
 
 continue:
   ret i32 0

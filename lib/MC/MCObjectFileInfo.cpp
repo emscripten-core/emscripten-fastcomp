@@ -259,6 +259,12 @@ void MCObjectFileInfo::initMachOMCObjectFileInfo(Triple T) {
   DwarfDebugInlineSection =
       Ctx->getMachOSection("__DWARF", "__debug_inlined", MachO::S_ATTR_DEBUG,
                            SectionKind::getMetadata());
+  DwarfCUIndexSection =
+      Ctx->getMachOSection("__DWARF", "__debug_cu_index", MachO::S_ATTR_DEBUG,
+                           SectionKind::getMetadata());
+  DwarfTUIndexSection =
+      Ctx->getMachOSection("__DWARF", "__debug_tu_index", MachO::S_ATTR_DEBUG,
+                           SectionKind::getMetadata());
   StackMapSection = Ctx->getMachOSection("__LLVM_STACKMAPS", "__llvm_stackmaps",
                                          0, SectionKind::getMetadata());
 
@@ -531,6 +537,12 @@ void MCObjectFileInfo::initELFMCObjectFileInfo(Triple T) {
   DwarfAddrSection =
       Ctx->getELFSection(".debug_addr", ELF::SHT_PROGBITS, 0, "addr_sec");
 
+  // DWP Sections
+  DwarfCUIndexSection =
+      Ctx->getELFSection(".debug_cu_index", ELF::SHT_PROGBITS, 0);
+  DwarfTUIndexSection =
+      Ctx->getELFSection(".debug_tu_index", ELF::SHT_PROGBITS, 0);
+
   StackMapSection =
       Ctx->getELFSection(".llvm_stackmaps", ELF::SHT_PROGBITS, ELF::SHF_ALLOC);
 
@@ -713,6 +725,16 @@ void MCObjectFileInfo::initCOFFMCObjectFileInfo(Triple T) {
       COFF::IMAGE_SCN_MEM_DISCARDABLE | COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
           COFF::IMAGE_SCN_MEM_READ,
       SectionKind::getMetadata(), "addr_sec");
+  DwarfCUIndexSection = Ctx->getCOFFSection(
+      ".debug_cu_index",
+      COFF::IMAGE_SCN_MEM_DISCARDABLE | COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
+          COFF::IMAGE_SCN_MEM_READ,
+      SectionKind::getMetadata());
+  DwarfTUIndexSection = Ctx->getCOFFSection(
+      ".debug_tu_index",
+      COFF::IMAGE_SCN_MEM_DISCARDABLE | COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |
+          COFF::IMAGE_SCN_MEM_READ,
+      SectionKind::getMetadata());
   DwarfAccelNamesSection = Ctx->getCOFFSection(
       ".apple_names",
       COFF::IMAGE_SCN_MEM_DISCARDABLE | COFF::IMAGE_SCN_CNT_INITIALIZED_DATA |

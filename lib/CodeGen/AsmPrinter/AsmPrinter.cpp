@@ -1187,6 +1187,11 @@ bool AsmPrinter::doFinalization(Module &M) {
     else
       assert(Alias.hasLocalLinkage() && "Invalid alias linkage");
 
+    // Set the symbol type to function if the alias has a function type.
+    // This affects codegen when the aliasee is not a function.
+    if (Alias.getType()->getPointerElementType()->isFunctionTy())
+      OutStreamer->EmitSymbolAttribute(Name, MCSA_ELF_TypeFunction);
+
     EmitVisibility(Name, Alias.getVisibility());
 
     // Emit the directives as assignments aka .set:
@@ -1868,6 +1873,8 @@ static void emitGlobalConstantImpl(const DataLayout &DL, const Constant *C,
                                    const Constant *BaseCV = nullptr,
                                    uint64_t Offset = 0);
 
+static void emitGlobalConstantFP(const ConstantFP *CFP, AsmPrinter &AP);
+
 /// isRepeatedByteSequence - Determine whether the given value is
 /// composed of a repeated sequence of identical bytes and return the
 /// byte value.  If it is not a repeated sequence, return -1.
@@ -1945,34 +1952,9 @@ static void emitGlobalConstantDataSequential(const DataLayout &DL,
       AP.OutStreamer->EmitIntValue(CDS->getElementAsInteger(i),
                                    ElementByteSize);
     }
-  } else if (ElementByteSize == 4) {
-    // FP Constants are printed as integer constants to avoid losing
-    // precision.
-    assert(CDS->getElementType()->isFloatTy());
-    for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
-      union {
-        float F;
-        uint32_t I;
-      };
-
-      F = CDS->getElementAsFloat(i);
-      if (AP.isVerbose())
-        AP.OutStreamer->GetCommentOS() << "float " << F << '\n';
-      AP.OutStreamer->EmitIntValue(I, 4);
-    }
   } else {
-    assert(CDS->getElementType()->isDoubleTy());
-    for (unsigned i = 0, e = CDS->getNumElements(); i != e; ++i) {
-      union {
-        double F;
-        uint64_t I;
-      };
-
-      F = CDS->getElementAsDouble(i);
-      if (AP.isVerbose())
-        AP.OutStreamer->GetCommentOS() << "double " << F << '\n';
-      AP.OutStreamer->EmitIntValue(I, 8);
-    }
+    for (unsigned I = 0, E = CDS->getNumElements(); I != E; ++I)
+      emitGlobalConstantFP(cast<ConstantFP>(CDS->getElementAsConstant(I)), AP);
   }
 
   unsigned Size = DL.getTypeAllocSize(CDS->getType());

@@ -281,21 +281,31 @@ public:
   /// that dominated values can succeed in their lookup.
   ScopedHTType AvailableValues;
 
-  /// \brief A scoped hash table of the current values of loads.
+  /// A scoped hash table of the current values of previously encounted memory
+  /// locations.
   ///
-  /// This allows us to get efficient access to dominating loads when we have
-  /// a fully redundant load.  In addition to the most recent load, we keep
-  /// track of a generation count of the read, which is compared against the
-  /// current generation count.  The current generation count is incremented
+  /// This allows us to get efficient access to dominating loads or stores when
+  /// we have a fully redundant load.  In addition to the most recent load, we
+  /// keep track of a generation count of the read, which is compared against
+  /// the current generation count.  The current generation count is incremented
   /// after every possibly writing memory operation, which ensures that we only
-  /// CSE loads with other loads that have no intervening store.
+  /// CSE loads with other loads that have no intervening store.  Ordering
+  /// events (such as fences or atomic instructions) increment the generation
+  /// count as well; essentially, we model these as writes to all possible
+  /// locations.  Note that atomic and/or volatile loads and stores can be
+  /// present the table; it is the responsibility of the consumer to inspect
+  /// the atomicity/volatility if needed.
   struct LoadValue {
     Value *Data;
     unsigned Generation;
     int MatchingId;
-    LoadValue() : Data(nullptr), Generation(0), MatchingId(-1) {}
-    LoadValue(Value *Data, unsigned Generation, unsigned MatchingId)
-        : Data(Data), Generation(Generation), MatchingId(MatchingId) {}
+    bool IsAtomic;
+    LoadValue()
+      : Data(nullptr), Generation(0), MatchingId(-1), IsAtomic(false) {}
+    LoadValue(Value *Data, unsigned Generation, unsigned MatchingId,
+              bool IsAtomic)
+      : Data(Data), Generation(Generation), MatchingId(MatchingId),
+        IsAtomic(IsAtomic) {}
   };
   typedef RecyclingAllocator<BumpPtrAllocator,
                              ScopedHashTableVal<Value *, LoadValue>>
@@ -388,57 +398,100 @@ private:
   class ParseMemoryInst {
   public:
     ParseMemoryInst(Instruction *Inst, const TargetTransformInfo &TTI)
-        : Load(false), Store(false), Vol(false), MayReadFromMemory(false),
-          MayWriteToMemory(false), MatchingId(-1), Ptr(nullptr) {
-      MayReadFromMemory = Inst->mayReadFromMemory();
-      MayWriteToMemory = Inst->mayWriteToMemory();
-      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst)) {
-        MemIntrinsicInfo Info;
-        if (!TTI.getTgtMemIntrinsic(II, Info))
-          return;
-        if (Info.NumMemRefs == 1) {
-          Store = Info.WriteMem;
-          Load = Info.ReadMem;
-          MatchingId = Info.MatchingId;
-          MayReadFromMemory = Info.ReadMem;
-          MayWriteToMemory = Info.WriteMem;
-          Vol = Info.Vol;
-          Ptr = Info.PtrVal;
-        }
-      } else if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
-        Load = true;
-        Vol = !LI->isSimple();
-        Ptr = LI->getPointerOperand();
+      : IsTargetMemInst(false), Inst(Inst) {
+      if (IntrinsicInst *II = dyn_cast<IntrinsicInst>(Inst))
+        if (TTI.getTgtMemIntrinsic(II, Info) && Info.NumMemRefs == 1)
+          IsTargetMemInst = true;
+    }
+    bool isLoad() const {
+      if (IsTargetMemInst) return Info.ReadMem;
+      return isa<LoadInst>(Inst);
+    }
+    bool isStore() const {
+      if (IsTargetMemInst) return Info.WriteMem;
+      return isa<StoreInst>(Inst);
+    }
+    bool isSimple() const {
+      if (IsTargetMemInst) return Info.IsSimple;
+      if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+        return LI->isSimple();
       } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
-        Store = true;
-        Vol = !SI->isSimple();
-        Ptr = SI->getPointerOperand();
+        return SI->isSimple();
       }
+      return Inst->isAtomic();
     }
-    bool isLoad() const { return Load; }
-    bool isStore() const { return Store; }
-    bool isVolatile() const { return Vol; }
-    bool isMatchingMemLoc(const ParseMemoryInst &Inst) const {
-      return Ptr == Inst.Ptr && MatchingId == Inst.MatchingId;
+    bool isAtomic() const {
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return false;
+      }
+      return Inst->isAtomic();
     }
-    bool isValid() const { return Ptr != nullptr; }
-    int getMatchingId() const { return MatchingId; }
-    Value *getPtr() const { return Ptr; }
-    bool mayReadFromMemory() const { return MayReadFromMemory; }
-    bool mayWriteToMemory() const { return MayWriteToMemory; }
+    bool isUnordered() const {
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return true;
+      }
+      if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+        return LI->isUnordered();
+      } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+        return SI->isUnordered();
+      }
+      // Conservative answer
+      return !Inst->isAtomic();
+    }
 
-  private:
-    bool Load;
-    bool Store;
-    bool Vol;
-    bool MayReadFromMemory;
-    bool MayWriteToMemory;
+    bool isVolatile() const {
+      if (IsTargetMemInst) {
+        assert(Info.IsSimple && "need to refine IsSimple in TTI");
+        return false;
+      }
+      if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+        return LI->isVolatile();
+      } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+        return SI->isVolatile();
+      }
+      // Conservative answer
+      return true;
+    }
+
+    
+    bool isMatchingMemLoc(const ParseMemoryInst &Inst) const {
+      return (getPointerOperand() == Inst.getPointerOperand() &&
+              getMatchingId() == Inst.getMatchingId());
+    }
+    bool isValid() const { return getPointerOperand() != nullptr; }
+
     // For regular (non-intrinsic) loads/stores, this is set to -1. For
     // intrinsic loads/stores, the id is retrieved from the corresponding
     // field in the MemIntrinsicInfo structure.  That field contains
     // non-negative values only.
-    int MatchingId;
-    Value *Ptr;
+    int getMatchingId() const {
+      if (IsTargetMemInst) return Info.MatchingId;
+      return -1;
+    }
+    Value *getPointerOperand() const {
+      if (IsTargetMemInst) return Info.PtrVal;
+      if (LoadInst *LI = dyn_cast<LoadInst>(Inst)) {
+        return LI->getPointerOperand();
+      } else if (StoreInst *SI = dyn_cast<StoreInst>(Inst)) {
+        return SI->getPointerOperand();
+      }
+      return nullptr;
+    }
+    bool mayReadFromMemory() const {
+      if (IsTargetMemInst) return Info.ReadMem;
+      return Inst->mayReadFromMemory();
+    }
+    bool mayWriteToMemory() const {
+      if (IsTargetMemInst) return Info.WriteMem;
+      return Inst->mayWriteToMemory();
+    }
+
+  private:
+    bool IsTargetMemInst;
+    MemIntrinsicInfo Info;
+    Instruction *Inst;
   };
 
   bool processNode(DomTreeNode *Node);
@@ -554,20 +607,22 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
     ParseMemoryInst MemInst(Inst, TTI);
     // If this is a non-volatile load, process it.
     if (MemInst.isValid() && MemInst.isLoad()) {
-      // Ignore volatile loads.
-      if (MemInst.isVolatile()) {
+      // (conservatively) we can't peak past the ordering implied by this
+      // operation, but we can add this load to our set of available values
+      if (MemInst.isVolatile() || !MemInst.isUnordered()) {
         LastStore = nullptr;
-        // Don't CSE across synchronization boundaries.
-        if (Inst->mayWriteToMemory())
-          ++CurrentGeneration;
-        continue;
+        ++CurrentGeneration;
       }
 
       // If we have an available version of this load, and if it is the right
       // generation, replace this instruction.
-      LoadValue InVal = AvailableLoads.lookup(MemInst.getPtr());
+      LoadValue InVal = AvailableLoads.lookup(MemInst.getPointerOperand());
       if (InVal.Data != nullptr && InVal.Generation == CurrentGeneration &&
-          InVal.MatchingId == MemInst.getMatchingId()) {
+          InVal.MatchingId == MemInst.getMatchingId() &&
+          // We don't yet handle removing loads with ordering of any kind.
+          !MemInst.isVolatile() && MemInst.isUnordered() &&
+          // We can't replace an atomic load with one which isn't also atomic.
+          InVal.IsAtomic >= MemInst.isAtomic()) {
         Value *Op = getOrCreateResult(InVal.Data, Inst->getType());
         if (Op != nullptr) {
           DEBUG(dbgs() << "EarlyCSE CSE LOAD: " << *Inst
@@ -583,8 +638,9 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
 
       // Otherwise, remember that we have this instruction.
       AvailableLoads.insert(
-          MemInst.getPtr(),
-          LoadValue(Inst, CurrentGeneration, MemInst.getMatchingId()));
+          MemInst.getPointerOperand(),
+          LoadValue(Inst, CurrentGeneration, MemInst.getMatchingId(),
+                    MemInst.isAtomic()));
       LastStore = nullptr;
       continue;
     }
@@ -639,9 +695,12 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
 
       if (MemInst.isValid() && MemInst.isStore()) {
         // We do a trivial form of DSE if there are two stores to the same
-        // location with no intervening loads.  Delete the earlier store.
+        // location with no intervening loads.  Delete the earlier store. Note
+        // that we can delete an earlier simple store even if the following one
+        // is ordered/volatile/atomic store.
         if (LastStore) {
           ParseMemoryInst LastStoreMemInst(LastStore, TTI);
+          assert(LastStoreMemInst.isSimple() && "Violated invariant");
           if (LastStoreMemInst.isMatchingMemLoc(MemInst)) {
             DEBUG(dbgs() << "EarlyCSE DEAD STORE: " << *LastStore
                          << "  due to: " << *Inst << '\n');
@@ -659,12 +718,18 @@ bool EarlyCSE::processNode(DomTreeNode *Node) {
         // to non-volatile loads, so we don't have to check for volatility of
         // the store.
         AvailableLoads.insert(
-            MemInst.getPtr(),
-            LoadValue(Inst, CurrentGeneration, MemInst.getMatchingId()));
+            MemInst.getPointerOperand(),
+            LoadValue(Inst, CurrentGeneration, MemInst.getMatchingId(),
+                      MemInst.isAtomic()));
 
-        // Remember that this was the last store we saw for DSE.
-        if (!MemInst.isVolatile())
+        // Remember that this was the last normal store we saw for DSE.
+        // Note that we can't delete an earlier atomic or volatile store in
+        // favor of a later one which isn't.  We could in principle remove an
+        // earlier unordered store if the later one is also unordered.
+        if (MemInst.isSimple())
           LastStore = Inst;
+        else
+          LastStore = nullptr;
       }
     }
   }

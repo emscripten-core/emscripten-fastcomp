@@ -67,8 +67,6 @@ def WebAssemblywrapper  : SDNode<"WebAssemblyISD::Wrapper",
 //===----------------------------------------------------------------------===//
 
 def bb_op : Operand<OtherVT>;
-def tjumptable_op : Operand<iPTR>;
-def global : Operand<iPTR>;
 
 //===----------------------------------------------------------------------===//
 // WebAssembly Instruction Format Definitions.
@@ -115,6 +113,7 @@ defm : LOCAL<I64>;
 defm : LOCAL<F32>;
 defm : LOCAL<F64>;
 
+let isMoveImm = 1 in {
 def CONST_I32 : I<(outs I32:$res), (ins i32imm:$imm),
                   [(set I32:$res, imm:$imm)],
                   "i32.const\t$res, $imm">;
@@ -127,6 +126,7 @@ def CONST_F32 : I<(outs F32:$res), (ins f32imm:$imm),
 def CONST_F64 : I<(outs F64:$res), (ins f64imm:$imm),
                   [(set F64:$res, fpimm:$imm)],
                   "f64.const\t$res, $imm">;
+} // isMoveImm = 1
 
 } // Defs = [ARGUMENTS]
 
@@ -134,12 +134,10 @@ def : Pat<(i32 (WebAssemblywrapper tglobaladdr:$dst)),
           (CONST_I32 tglobaladdr:$dst)>;
 def : Pat<(i32 (WebAssemblywrapper texternalsym:$dst)),
           (CONST_I32 texternalsym:$dst)>;
+def : Pat<(i32 (WebAssemblywrapper tjumptable:$dst)),
+          (CONST_I32 tjumptable:$dst)>;
 
 let Defs = [ARGUMENTS] in {
-
-def JUMP_TABLE : I<(outs I32:$dst), (ins tjumptable_op:$addr),
-                   [(set I32:$dst, (WebAssemblywrapper tjumptable:$addr))],
-                   "jump_table\t$dst, $addr">;
 
 // Function signature and local variable declaration "instructions".
 def PARAM  : I<(outs), (ins variable_ops), [], ".param  \t">;
@@ -156,7 +154,7 @@ include "WebAssemblyInstrMemory.td"
 include "WebAssemblyInstrCall.td"
 include "WebAssemblyInstrControl.td"
 include "WebAssemblyInstrInteger.td"
-include "WebAssemblyInstrFloat.td"
 include "WebAssemblyInstrConv.td"
+include "WebAssemblyInstrFloat.td"
 include "WebAssemblyInstrAtomics.td"
 include "WebAssemblyInstrSIMD.td"

@@ -238,7 +238,11 @@ void Fuzzer::RunOneAndUpdateCorpus(Unit &U) {
 }
 
 void Fuzzer::ExecuteCallback(const Unit &U) {
-  int Res = USF.TargetFunction(U.data(), U.size());
+  const uint8_t *Data = U.data();
+  uint8_t EmptyData;
+  if (!Data) 
+    Data = &EmptyData;
+  int Res = USF.TargetFunction(Data, U.size());
   (void)Res;
   assert(Res == 0);
 }
@@ -298,10 +302,8 @@ void Fuzzer::WriteUnitToFileWithPrefix(const Unit &U, const char *Prefix) {
   WriteToFile(U, Path);
   Printf("artifact_prefix='%s'; Test unit written to %s\n",
          Options.ArtifactPrefix.c_str(), Path.c_str());
-  if (U.size() <= kMaxUnitSizeToPrint) {
-    Printf("Base64: ");
-    PrintFileAsBase64(Path);
-  }
+  if (U.size() <= kMaxUnitSizeToPrint)
+    Printf("Base64: %s\n", Base64(U).c_str());
 }
 
 void Fuzzer::SaveCorpus() {
@@ -466,10 +468,15 @@ void Fuzzer::Drill() {
 }
 
 void Fuzzer::Loop() {
+  system_clock::time_point LastCorpusReload = system_clock::now();
   while (true) {
     size_t J1 = ChooseUnitIdxToMutate();;
     SyncCorpus();
-    RereadOutputCorpus();
+    auto Now = system_clock::now();
+    if (duration_cast<seconds>(Now - LastCorpusReload).count()) {
+      RereadOutputCorpus();
+      LastCorpusReload = Now;
+    }
     if (TotalNumberOfRuns >= Options.MaxNumberOfRuns)
       break;
     if (Options.MaxTotalTimeSec > 0 &&

@@ -252,7 +252,7 @@ void llvm::error(std::error_code EC) {
   exit(1);
 }
 
-static void report_error(StringRef File, std::error_code EC) {
+void llvm::report_error(StringRef File, std::error_code EC) {
   assert(EC);
   errs() << ToolName << ": '" << File << "': " << EC.message() << ".\n";
   exit(1);
@@ -282,10 +282,8 @@ static const Target *getTarget(const ObjectFile *Obj = nullptr) {
   std::string Error;
   const Target *TheTarget = TargetRegistry::lookupTarget(ArchName, TheTriple,
                                                          Error);
-  if (!TheTarget) {
-    errs() << ToolName << ": " << Error;
-    return nullptr;
-  }
+  if (!TheTarget)
+    report_fatal_error("can't find target: " + Error);
 
   // Update the triple name and return the found target.
   TripleName = TheTriple.getTriple();
@@ -805,10 +803,6 @@ static bool getHidden(RelocationRef RelRef) {
 
 static void DisassembleObject(const ObjectFile *Obj, bool InlineRelocs) {
   const Target *TheTarget = getTarget(Obj);
-  // getTarget() will have already issued a diagnostic if necessary, so
-  // just bail here if it failed.
-  if (!TheTarget)
-    return;
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;

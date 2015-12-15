@@ -143,15 +143,10 @@ void ARMTargetLowering::addTypeForNEON(MVT VT, MVT PromotedLdStVT,
   setOperationAction(ISD::UREM, VT, Expand);
   setOperationAction(ISD::FREM, VT, Expand);
 
-  if (VT.isInteger()) {
-    setOperationAction(ISD::SABSDIFF, VT, Legal);
-    setOperationAction(ISD::UABSDIFF, VT, Legal);
-  }
   if (!VT.isFloatingPoint() &&
       VT != MVT::v2i64 && VT != MVT::v1i64)
     for (unsigned Opcode : {ISD::SMIN, ISD::SMAX, ISD::UMIN, ISD::UMAX})
       setOperationAction(Opcode, VT, Legal);
-
 }
 
 void ARMTargetLowering::addDRTypeForNEON(MVT VT) {
@@ -4139,6 +4134,56 @@ static void ExpandREAD_REGISTER(SDNode *N, SmallVectorImpl<SDValue> &Results,
   Results.push_back(Read.getOperand(0));
 }
 
+/// \p BC is a bitcast that is about to be turned into a VMOVDRR.
+/// When \p DstVT, the destination type of \p BC, is on the vector
+/// register bank and the source of bitcast, \p Op, operates on the same bank,
+/// it might be possible to combine them, such that everything stays on the
+/// vector register bank.
+/// \p return The node that would replace \p BT, if the combine
+/// is possible.
+static SDValue CombineVMOVDRRCandidateWithVecOp(const SDNode *BC,
+                                                SelectionDAG &DAG) {
+  SDValue Op = BC->getOperand(0);
+  EVT DstVT = BC->getValueType(0);
+
+  // The only vector instruction that can produce a scalar (remember,
+  // since the bitcast was about to be turned into VMOVDRR, the source
+  // type is i64) from a vector is EXTRACT_VECTOR_ELT.
+  // Moreover, we can do this combine only if there is one use.
+  // Finally, if the destination type is not a vector, there is not
+  // much point on forcing everything on the vector bank.
+  if (!DstVT.isVector() || Op.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
+      !Op.hasOneUse())
+    return SDValue();
+
+  // If the index is not constant, we will introduce an additional
+  // multiply that will stick.
+  // Give up in that case.
+  ConstantSDNode *Index = dyn_cast<ConstantSDNode>(Op.getOperand(1));
+  if (!Index)
+    return SDValue();
+  unsigned DstNumElt = DstVT.getVectorNumElements();
+
+  // Compute the new index.
+  const APInt &APIntIndex = Index->getAPIntValue();
+  APInt NewIndex(APIntIndex.getBitWidth(), DstNumElt);
+  NewIndex *= APIntIndex;
+  // Check if the new constant index fits into i32.
+  if (NewIndex.getBitWidth() > 32)
+    return SDValue();
+
+  // vMTy bitcast(i64 extractelt vNi64 src, i32 index) ->
+  // vMTy extractsubvector vNxMTy (bitcast vNi64 src), i32 index*M)
+  SDLoc dl(Op);
+  SDValue ExtractSrc = Op.getOperand(0);
+  EVT VecVT = EVT::getVectorVT(
+      *DAG.getContext(), DstVT.getScalarType(),
+      ExtractSrc.getValueType().getVectorNumElements() * DstNumElt);
+  SDValue BitCast = DAG.getNode(ISD::BITCAST, dl, VecVT, ExtractSrc);
+  return DAG.getNode(ISD::EXTRACT_SUBVECTOR, dl, DstVT, BitCast,
+                     DAG.getConstant(NewIndex.getZExtValue(), dl, MVT::i32));
+}
+
 /// ExpandBITCAST - If the target supports VFP, this function is called to
 /// expand a bit convert where either the source or destination type is i64 to
 /// use a VMOVDRR or VMOVRRD node.  This should not be done when the non-i64
@@ -4158,6 +4203,11 @@ static SDValue ExpandBITCAST(SDNode *N, SelectionDAG &DAG) {
 
   // Turn i64->f64 into VMOVDRR.
   if (SrcVT == MVT::i64 && TLI.isTypeLegal(DstVT)) {
+    // Do not force values to GPRs (this is what VMOVDRR does for the inputs)
+    // if we can combine the bitcast with its source.
+    if (SDValue Val = CombineVMOVDRRCandidateWithVecOp(N, DAG))
+      return Val;
+
     SDValue Lo = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Op,
                              DAG.getConstant(0, dl, MVT::i32));
     SDValue Hi = DAG.getNode(ISD::EXTRACT_ELEMENT, dl, MVT::i32, Op,
@@ -7346,7 +7396,8 @@ void ARMTargetLowering::EmitSjLjDispatchBlock(MachineInstr *MI,
       }
     }
 
-    BB->addSuccessor(DispatchBB);
+    BB->addSuccessor(DispatchBB, BranchProbability::getZero());
+    BB->normalizeSuccProbs();
 
     // Find the invoke call and mark all of the callee-saved registers as
     // 'implicit defined' so that they're spilled. This prevents code from
@@ -10093,15 +10144,6 @@ static SDValue PerformIntrinsicCombine(SDNode *N, SelectionDAG &DAG) {
     // Don't do anything for most intrinsics.
     break;
 
-  case Intrinsic::arm_neon_vabds:
-    if (!N->getValueType(0).isInteger())
-      return SDValue();
-    return DAG.getNode(ISD::SABSDIFF, SDLoc(N), N->getValueType(0),
-                       N->getOperand(1), N->getOperand(2));
-  case Intrinsic::arm_neon_vabdu:
-    return DAG.getNode(ISD::UABSDIFF, SDLoc(N), N->getValueType(0),
-                       N->getOperand(1), N->getOperand(2));
-
   // Vector shifts: check for immediate versions and lower them.
   // Note: This is done during DAG combining instead of DAG legalizing because
   // the build_vectors for 64-bit vector element shift counts are generally
@@ -11684,7 +11726,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
     Info.opc = ISD::INTRINSIC_W_CHAIN;
     // Conservatively set memVT to the entire set of vectors loaded.
     auto &DL = I.getCalledFunction()->getParent()->getDataLayout();
-    uint64_t NumElts = DL.getTypeAllocSize(I.getType()) / 8;
+    uint64_t NumElts = DL.getTypeSizeInBits(I.getType()) / 64;
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(0);
     Info.offset = 0;
@@ -11710,7 +11752,7 @@ bool ARMTargetLowering::getTgtMemIntrinsic(IntrinsicInfo &Info,
       Type *ArgTy = I.getArgOperand(ArgI)->getType();
       if (!ArgTy->isVectorTy())
         break;
-      NumElts += DL.getTypeAllocSize(ArgTy) / 8;
+      NumElts += DL.getTypeSizeInBits(ArgTy) / 64;
     }
     Info.memVT = EVT::getVectorVT(I.getType()->getContext(), MVT::i64, NumElts);
     Info.ptrVal = I.getArgOperand(0);
@@ -11891,7 +11933,7 @@ bool ARMTargetLowering::shouldExpandAtomicStoreInIR(StoreInst *SI) const {
 TargetLowering::AtomicExpansionKind
 ARMTargetLowering::shouldExpandAtomicLoadInIR(LoadInst *LI) const {
   unsigned Size = LI->getType()->getPrimitiveSizeInBits();
-  return ((Size == 64) && !Subtarget->isMClass()) ? AtomicExpansionKind::LLSC
+  return ((Size == 64) && !Subtarget->isMClass()) ? AtomicExpansionKind::LLOnly
                                                   : AtomicExpansionKind::None;
 }
 
@@ -12053,8 +12095,8 @@ bool ARMTargetLowering::lowerInterleavedLoad(
   Type *EltTy = VecTy->getVectorElementType();
 
   const DataLayout &DL = LI->getModule()->getDataLayout();
-  unsigned VecSize = DL.getTypeAllocSizeInBits(VecTy);
-  bool EltIs64Bits = DL.getTypeAllocSizeInBits(EltTy) == 64;
+  unsigned VecSize = DL.getTypeSizeInBits(VecTy);
+  bool EltIs64Bits = DL.getTypeSizeInBits(EltTy) == 64;
 
   // Skip if we do not have NEON and skip illegal vector types and vector types
   // with i64/f64 elements (vldN doesn't support i64/f64 elements).
@@ -12143,8 +12185,8 @@ bool ARMTargetLowering::lowerInterleavedStore(StoreInst *SI,
   VectorType *SubVecTy = VectorType::get(EltTy, NumSubElts);
 
   const DataLayout &DL = SI->getModule()->getDataLayout();
-  unsigned SubVecSize = DL.getTypeAllocSizeInBits(SubVecTy);
-  bool EltIs64Bits = DL.getTypeAllocSizeInBits(EltTy) == 64;
+  unsigned SubVecSize = DL.getTypeSizeInBits(SubVecTy);
+  bool EltIs64Bits = DL.getTypeSizeInBits(EltTy) == 64;
 
   // Skip if we do not have NEON and skip illegal vector types and vector types
   // with i64/f64 elements (vstN doesn't support i64/f64 elements).
