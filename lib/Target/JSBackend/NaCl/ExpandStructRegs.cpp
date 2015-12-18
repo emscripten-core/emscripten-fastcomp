@@ -170,6 +170,25 @@ static void ProcessLoadOrStoreAttrs(InstType *Dest, InstType *Src,
   Dest->setAlignment(MinAlign(Alignment, SL->getElementOffset(Index)));
 }
 
+template <class InstType>
+static void ProcessArrayLoadOrStoreAttrs(InstType *Dest, InstType *Src,
+                                         ArrayType* ATy, const unsigned Index,
+                                         const DataLayout *DL) {
+  CopyDebug(Dest, Src);
+  Dest->setVolatile(Src->isVolatile());
+  if (Src->isAtomic()) {
+    errs() << "Use: " << *Src << "\n";
+    report_fatal_error("Atomic struct loads/stores not supported");
+  }
+
+  if (!Src->getAlignment()) {
+    return;
+  }
+
+  const unsigned Alignment = Src->getAlignment();
+  Dest->setAlignment(MinAlign(Alignment, Index * DL->getTypeSizeInBits(ATy->getElementType())));
+}
+
 static bool SplitUpStore(StoreInst *Store, const DataLayout *DL) {
   StructType *STy = cast<StructType>(Store->getValueOperand()->getType());
 
@@ -219,6 +238,70 @@ static bool SplitUpLoad(LoadInst *Load, const DataLayout *DL) {
 
     NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewLoad);
     ProcessLoadOrStoreAttrs(NewLoad, Load, STy, Index, DL);
+
+    // Reconstruct the struct value.
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+    NewStruct =
+        CopyDebug(InsertValueInst::Create(NewStruct, NewLoad, EVIndexes,
+                                          Load->getName() + ".insert", Load),
+                  Load);
+  }
+  Load->replaceAllUsesWith(NewStruct);
+  Load->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
+static bool SplitUpArrayStore(StoreInst *Store, const DataLayout *DL) {
+  ArrayType *ATy = cast<ArrayType>(Store->getValueOperand()->getType());
+
+  bool NeedsAnotherPass = false;
+  // Create a separate store instruction for each struct field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<Value *, 2> Indexes;
+    Indexes.push_back(ConstantInt::get(Store->getContext(), APInt(32, 0)));
+    Indexes.push_back(ConstantInt::get(Store->getContext(), APInt(32, Index)));
+    Value *GEP =
+        CopyDebug(GetElementPtrInst::Create(
+                      ATy,
+                      Store->getPointerOperand(), Indexes,
+                      Store->getPointerOperand()->getName() + ".index", Store),
+                  Store);
+    NeedsAnotherPass =
+        NeedsAnotherPass || DoAnotherPass(GEP->getType()->getContainedType(0));
+
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+    Value *Field = ExtractValueInst::Create(Store->getValueOperand(), EVIndexes,
+                                            "", Store);
+    StoreInst *NewStore = new StoreInst(Field, GEP, Store);
+    ProcessArrayLoadOrStoreAttrs(NewStore, Store, ATy, Index, DL);
+  }
+  Store->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
+static bool SplitUpArrayLoad(LoadInst *Load, const DataLayout *DL) {
+  ArrayType *ATy = cast<ArrayType>(Load->getType());
+  Value *NewStruct = UndefValue::get(ATy);
+
+  bool NeedsAnotherPass = false;
+  // Create a separate load instruction for each struct field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<Value *, 2> Indexes;
+    Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, 0)));
+    Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, Index)));
+    Value *GEP =
+        CopyDebug(GetElementPtrInst::Create(ATy,
+                                            Load->getPointerOperand(), Indexes,
+                                            Load->getName() + ".index", Load),
+                  Load);
+    LoadInst *NewLoad = new LoadInst(GEP, Load->getName() + ".field", Load);
+
+    NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewLoad);
+    ProcessArrayLoadOrStoreAttrs(NewLoad, Load, ATy, Index, DL);
 
     // Reconstruct the struct value.
     SmallVector<unsigned, 1> EVIndexes;
@@ -439,10 +522,16 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
           if (Store->getValueOperand()->getType()->isStructTy()) {
             NeedsAnotherPass |= SplitUpStore(Store, DL);
             Changed = true;
+          } else if (Store->getValueOperand()->getType()->isArrayTy()) {
+            NeedsAnotherPass |= SplitUpArrayStore(Store, DL);
+            Changed = true;
           }
         } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
           if (Load->getType()->isStructTy()) {
             NeedsAnotherPass |= SplitUpLoad(Load, DL);
+            Changed = true;
+          } else if (Load->getType()->isArrayTy()) {
+            NeedsAnotherPass |= SplitUpArrayLoad(Load, DL);
             Changed = true;
           }
         } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
