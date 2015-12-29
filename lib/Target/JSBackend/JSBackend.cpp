@@ -909,7 +909,7 @@ const char *SIMDType(VectorType *t) {
 
   if (t->getElementType()->isIntegerTy()) {
     if (t->getElementType()->getPrimitiveSizeInBits() == 1) {
-      switch(t->getNumElements()) {
+      switch (t->getNumElements()) {
         case 2: return "Bool64x2";
         case 4: return "Bool32x4";
         case 8: return "Bool16x8";
@@ -917,7 +917,7 @@ const char *SIMDType(VectorType *t) {
         default: break; // fall-through to error
       }
     } else {
-      switch(t->getNumElements()) {
+      switch (t->getNumElements()) {
         case 2: return "Int64x2";
         case 4: return "Int32x4";
         case 8: return "Int16x8";
@@ -926,7 +926,7 @@ const char *SIMDType(VectorType *t) {
       }
     }
   } else { // float type
-    switch(t->getNumElements()) {
+    switch (t->getNumElements()) {
       case 2: return "Float64x2";
       case 4: return "Float32x4";
       case 8: return "Float16x8";
@@ -2138,7 +2138,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
         const char *load = "_load";
         if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-          switch(VT->getNumElements()) {
+          switch (VT->getNumElements()) {
             case 1: load = "_load1"; break;
             case 2: load = "_load2"; break;
             case 3: load = "_load3"; break;
@@ -2183,7 +2183,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       const char *store = "_store";
       if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-        switch(VT->getNumElements()) {
+        switch (VT->getNumElements()) {
           case 1: store = "_store1"; break;
           case 2: store = "_store2"; break;
           case 3: store = "_store3"; break;
