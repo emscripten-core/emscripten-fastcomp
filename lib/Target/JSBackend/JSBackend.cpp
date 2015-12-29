@@ -213,6 +213,10 @@ namespace {
     bool UsesSIMDInt32x4;
     bool UsesSIMDFloat32x4;
     bool UsesSIMDFloat64x2;
+    bool UsesSIMDBool8x16;
+    bool UsesSIMDBool16x8;
+    bool UsesSIMDBool32x4;
+    bool UsesSIMDBool64x2;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
     const DataLayout *DL;
@@ -229,7 +233,8 @@ namespace {
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
         UsesSIMDInt8x16(false), UsesSIMDInt16x8(false), UsesSIMDInt32x4(false),
-        UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), InvokeState(0),
+        UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), UsesSIMDBool8x16(false),
+        UsesSIMDBool16x8(false), UsesSIMDBool32x4(false), UsesSIMDBool64x2(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
         CurrInstruction(nullptr) {}
 
@@ -530,7 +535,13 @@ namespace {
         if (VT->getNumElements() <= 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
         else if (VT->getNumElements() <= 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
         else if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
-        else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
+        else if (VT->getElementType()->getPrimitiveSizeInBits() == 1) {
+          if (VT->getNumElements() == 16) UsesSIMDBool8x16 = true;
+          else if (VT->getNumElements() == 8) UsesSIMDBool16x8 = true;
+          else if (VT->getNumElements() == 4) UsesSIMDBool32x4 = true;
+          else if (VT->getNumElements() == 2) UsesSIMDBool64x2 = true;
+          else report_fatal_error("Unsupported boolean vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
+        } else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
           report_fatal_error("Unsupported integer vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
         }
       }
@@ -892,22 +903,39 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
-// We currently replace <i1 x 4> with <i32 x 4>
-int actualPrimitiveSize(VectorType *t) {
-  bool isInt = t->getElementType()->isIntegerTy();
+const char *SIMDType(VectorType *t) {
   int primSize = t->getElementType()->getPrimitiveSizeInBits();
   assert(primSize <= 128);
-  int numElems = t->getNumElements();
-  if (isInt && primSize == 1) primSize = 128 / numElems; // Always treat bit vectors as integer vectors of the base width.
-  assert(128 % primSize == 0);
-  return primSize;
-}
 
-std::string SIMDType(VectorType *t) {
-  bool isInt = t->getElementType()->isIntegerTy();
-  int primSize = actualPrimitiveSize(t);
-  int numElems = 128 / primSize; // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  return (isInt ? "Int" : "Float") + std::to_string(primSize) + 'x' + std::to_string(numElems);
+  if (t->getElementType()->isIntegerTy()) {
+    if (t->getElementType()->getPrimitiveSizeInBits() == 1) {
+      switch (t->getNumElements()) {
+        case 2: return "Bool64x2";
+        case 4: return "Bool32x4";
+        case 8: return "Bool16x8";
+        case 16: return "Bool8x16";
+        default: break; // fall-through to error
+      }
+    } else {
+      switch (t->getNumElements()) {
+        case 2: return "Int64x2";
+        case 4: return "Int32x4";
+        case 8: return "Int16x8";
+        case 16: return "Int8x16";
+        default: break; // fall-through to error
+      }
+    }
+  } else { // float type
+    switch (t->getNumElements()) {
+      case 2: return "Float64x2";
+      case 4: return "Float32x4";
+      case 8: return "Float16x8";
+      case 16: return "Float8x16";
+        default: break; // fall-through to error
+    }
+  }
+  errs() << *t << "\n";
+  report_fatal_error("Unsupported type!");
 }
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
@@ -1642,7 +1670,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
       if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
         operand = "Math_fround(" + operand + ")";
       }
-      Result = "SIMD_" + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
+      Result = std::string("SIMD_") + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
     }
     Code << Result;
   }
@@ -1726,7 +1754,7 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
           // otherwise not being precise about it.
           operand = "Math_fround(" + operand + ")";
         }
-        Code << "SIMD_" + SIMDType(SVI->getType()) + "_splat(" << operand << ')';
+        Code << "SIMD_" << SIMDType(SVI->getType()) << "_splat(" << operand << ')';
         return;
       }
     }
@@ -1843,36 +1871,36 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
+           << castIntVecToBoolVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getType())) + "_and(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
     case ICmpInst::FCMP_UEQ:
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
+           << castIntVecToBoolVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getType())) + "_or(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
+            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
       return;
     case FCmpInst::FCMP_ORD:
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and("
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_equal(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(0)) << "),"
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(1)->getType())) << "_equal(" << getValueAsStr(I->getOperand(1)) << ',' << getValueAsStr(I->getOperand(1)) << "))";
       return;
 
     case FCmpInst::FCMP_UNO:
       checkVectorType(I->getOperand(0)->getType());
       checkVectorType(I->getOperand(1)->getType());
       Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), "SIMD_" + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_or("
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(0)) << "),"
+           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(1)->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(1)) << ',' << getValueAsStr(I->getOperand(1)) << "))";
       return;
 
     case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
@@ -2110,7 +2138,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
         std::string PS = getValueAsStr(P);
         const char *load = "_load";
         if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-          switch(VT->getNumElements()) {
+          switch (VT->getNumElements()) {
             case 1: load = "_load1"; break;
             case 2: load = "_load2"; break;
             case 3: load = "_load3"; break;
@@ -2155,7 +2183,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
       const char *store = "_store";
       if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-        switch(VT->getNumElements()) {
+        switch (VT->getNumElements()) {
           case 1: store = "_store1"; break;
           case 2: store = "_store2"; break;
           case 3: store = "_store3"; break;
@@ -2855,11 +2883,8 @@ void JSWriter::printFunctionBody(const Function *F) {
           break;
         case Type::VectorTyID: {
           VectorType *VT = cast<VectorType>(VI->second);
-          int primSize = actualPrimitiveSize(VT);
-          // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-          int numElems = 128 / primSize;
           Out << "SIMD_" << SIMDType(VT) << "(0";
-          for (int i = 1; i < numElems; ++i) {
+          for (unsigned i = 1; i < VT->getNumElements(); ++i) {
             Out << ",0";
           }
           Out << ')';
@@ -3301,6 +3326,10 @@ void JSWriter::printModuleBody() {
   Out << "\"simdInt32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
   Out << "\"simdFloat32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
   Out << "\"simdFloat64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
+  Out << "\"simdBool8x16\": " << (UsesSIMDBool8x16 ? "1" : "0") << ",";
+  Out << "\"simdBool16x8\": " << (UsesSIMDBool16x8 ? "1" : "0") << ",";
+  Out << "\"simdBool32x4\": " << (UsesSIMDBool32x4 ? "1" : "0") << ",";
+  Out << "\"simdBool64x2\": " << (UsesSIMDBool64x2 ? "1" : "0") << ",";
 
   Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
 
