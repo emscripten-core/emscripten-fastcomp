@@ -11,6 +11,7 @@ LLVM.
 #include <assert.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 
