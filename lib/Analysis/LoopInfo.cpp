@@ -179,7 +179,13 @@ PHINode *Loop::getCanonicalInductionVariable() const {
 bool Loop::isLCSSAForm(DominatorTree &DT) const {
   for (block_iterator BI = block_begin(), E = block_end(); BI != E; ++BI) {
     BasicBlock *BB = *BI;
-    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E;++I)
+    for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E;++I) {
+      // Tokens can't be used in PHI nodes and live-out tokens prevent loop
+      // optimizations, so for the purposes of considered LCSSA form, we
+      // can ignore them.
+      if (I->getType()->isTokenTy())
+        continue;
+
       for (Use &U : I->uses()) {
         Instruction *UI = cast<Instruction>(U.getUser());
         BasicBlock *UserBB = UI->getParent();
@@ -195,6 +201,7 @@ bool Loop::isLCSSAForm(DominatorTree &DT) const {
             DT.isReachableFromEntry(UserBB))
           return false;
       }
+    }
   }
 
   return true;
@@ -630,14 +637,8 @@ LoopInfo::LoopInfo(const DominatorTreeBase<BasicBlock> &DomTree) {
   analyze(DomTree);
 }
 
-/// updateUnloop - The last backedge has been removed from a loop--now the
-/// "unloop". Find a new parent for the blocks contained within unloop and
-/// update the loop tree. We don't necessarily have valid dominators at this
-/// point, but LoopInfo is still valid except for the removal of this loop.
-///
-/// Note that Unloop may now be an empty loop. Calling Loop::getHeader without
-/// checking first is illegal.
 void LoopInfo::updateUnloop(Loop *Unloop) {
+  Unloop->markUnlooped();
 
   // First handle the special case of no parent loop to simplify the algorithm.
   if (!Unloop->getParentLoop()) {

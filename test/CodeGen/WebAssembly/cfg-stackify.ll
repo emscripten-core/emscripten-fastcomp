@@ -464,7 +464,7 @@ if.end:
 ; CHECK:      block       BB13_8{{$}}
 ; CHECK-NEXT: block       BB13_7{{$}}
 ; CHECK-NEXT: block       BB13_4{{$}}
-; CHECK-NEXT: br_if       $pop{{[0-9]*}}, BB13_4{{$}}
+; CHECK:      br_if       $pop{{[0-9]*}}, BB13_4{{$}}
 ; CHECK-NEXT: block       BB13_3{{$}}
 ; CHECK:      br_if       $pop{{[0-9]*}}, BB13_3{{$}}
 ; CHECK:      br_if       $pop{{[0-9]*}}, BB13_7{{$}}
@@ -483,7 +483,7 @@ if.end:
 ; OPT:      block       BB13_8{{$}}
 ; OPT-NEXT: block       BB13_7{{$}}
 ; OPT-NEXT: block       BB13_4{{$}}
-; OPT-NEXT: br_if       $pop{{[0-9]*}}, BB13_4{{$}}
+; OPT:      br_if       $pop{{[0-9]*}}, BB13_4{{$}}
 ; OPT-NEXT: block       BB13_3{{$}}
 ; OPT:      br_if       $pop{{[0-9]*}}, BB13_3{{$}}
 ; OPT:      br_if       $pop{{[0-9]*}}, BB13_7{{$}}
@@ -642,7 +642,7 @@ second:
 ; CHECK-NEXT:  loop BB16_5{{$}}
 ; CHECK-NOT:   block
 ; CHECK:       block BB16_4{{$}}
-; CHECK-NEXT:  br_if {{[^,]*}}, BB16_4{{$}}
+; CHECK:       br_if {{[^,]*}}, BB16_4{{$}}
 ; CHECK-NOT:   block
 ; CHECK:       br_if {{[^,]*}}, BB16_1{{$}}
 ; CHECK-NOT:   block
@@ -907,7 +907,7 @@ bb6:
 ; CHECK-NEXT:  br_if        {{[^,]*}}, BB20_4{{$}}
 ; CHECK-NOT:   block
 ; CHECK:       block        BB20_3{{$}}
-; CHECK-NEXT:  br_if        {{[^,]*}}, BB20_3{{$}}
+; CHECK:       br_if        {{[^,]*}}, BB20_3{{$}}
 ; CHECK-NOT:   block
 ; CHECK:       br_if        {{[^,]*}}, BB20_6{{$}}
 ; CHECK-NEXT:  BB20_3:
@@ -933,7 +933,7 @@ bb6:
 ; OPT-NEXT:  br_if        $0, BB20_4{{$}}
 ; OPT-NOT:   block
 ; OPT:       block        BB20_3{{$}}
-; OPT-NEXT:  br_if        $0, BB20_3{{$}}
+; OPT:       br_if        $0, BB20_3{{$}}
 ; OPT-NOT:   block
 ; OPT:       br_if        $0, BB20_8{{$}}
 ; OPT-NEXT:  BB20_3:
@@ -991,7 +991,7 @@ bb8:
 ; CHECK:       block       BB21_7{{$}}
 ; CHECK-NEXT:  block       BB21_6{{$}}
 ; CHECK-NEXT:  block       BB21_4{{$}}
-; CHECK-NEXT:  br_if       {{[^,]*}}, BB21_4{{$}}
+; CHECK:       br_if       {{[^,]*}}, BB21_4{{$}}
 ; CHECK-NOT:   block
 ; CHECK:       br_if       {{[^,]*}}, BB21_7{{$}}
 ; CHECK-NOT:   block
@@ -1015,7 +1015,7 @@ bb8:
 ; OPT:       block       BB21_7{{$}}
 ; OPT-NEXT:  block       BB21_6{{$}}
 ; OPT-NEXT:  block       BB21_4{{$}}
-; OPT-NEXT:  br_if       {{[^,]*}}, BB21_4{{$}}
+; OPT:       br_if       {{[^,]*}}, BB21_4{{$}}
 ; OPT-NOT:   block
 ; OPT:       br_if       {{[^,]*}}, BB21_7{{$}}
 ; OPT-NOT:   block
@@ -1052,5 +1052,51 @@ bb4:
   br label %bb1
 
 bb7:
+  ret void
+}
+
+; A block can be "branched to" from another even if it is also reachable via
+; fallthrough from the other. This would normally be optimized away, so use
+; optnone to disable optimizations to test this case.
+
+; CHECK-LABEL: test13:
+; CHECK-NEXT:  .local i32{{$}}
+; CHECK:       block BB22_2{{$}}
+; CHECK:       br_if $pop4, BB22_2{{$}}
+; CHECK-NEXT:  return{{$}}
+; CHECK-NEXT:  BB22_2:
+; CHECK:       block BB22_4{{$}}
+; CHECK-NEXT:  br_if $0, BB22_4{{$}}
+; CHECK:       BB22_4:
+; CHECK:       block BB22_5{{$}}
+; CHECK:       br_if $pop6, BB22_5{{$}}
+; CHECK-NEXT:  BB22_5:
+; CHECK-NEXT:  unreachable{{$}}
+; OPT-LABEL: test13:
+; OPT-NEXT:  .local i32{{$}}
+; OPT:       block BB22_2{{$}}
+; OPT:       br_if $pop4, BB22_2{{$}}
+; OPT-NEXT:  return{{$}}
+; OPT-NEXT:  BB22_2:
+; OPT:       block BB22_4{{$}}
+; OPT-NEXT:  br_if $0, BB22_4{{$}}
+; OPT:       BB22_4:
+; OPT:       block BB22_5{{$}}
+; OPT:       br_if $pop6, BB22_5{{$}}
+; OPT-NEXT:  BB22_5:
+; OPT-NEXT:  unreachable{{$}}
+define void @test13() noinline optnone {
+bb:
+  br i1 undef, label %bb5, label %bb2
+bb1:
+  unreachable
+bb2:
+  br i1 undef, label %bb3, label %bb4
+bb3:
+  br label %bb4
+bb4:
+  %tmp = phi i1 [ false, %bb2 ], [ false, %bb3 ]
+  br i1 %tmp, label %bb1, label %bb1
+bb5:
   ret void
 }

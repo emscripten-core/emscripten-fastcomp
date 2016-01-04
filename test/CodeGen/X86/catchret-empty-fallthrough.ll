@@ -34,14 +34,17 @@ return:                                           ; preds = %catch, %entry
 
 ; CHECK-LABEL: foo: # @foo
 ; CHECK: testb $1, %cl
-; CHECK: jne .LBB0_[[return:[0-9]+]]
+; CHECK: je .LBB0_[[try:[0-9]+]]
+; CHECK: .LBB0_[[return:[0-9]+]]:
+; CHECK: retq
+; CHECK: .LBB0_[[try]]:
 ; CHECK: .Ltmp0:
 ; CHECK: callq bar
 ; CHECK: .Ltmp1:
 ; CHECK: .LBB0_[[catch:[0-9]+]]:
-; CHECK: .LBB0_[[return]]:
 
 ; CHECK: .seh_handlerdata
+; CHECK-NEXT: .Lfoo$parent_frame_offset = 32
 ; CHECK-NEXT: .long   (.Llsda_end0-.Llsda_begin0)/16
 ; CHECK-NEXT: .Llsda_begin0:
 ; CHECK-NEXT: .long   .Ltmp0@IMGREL+1

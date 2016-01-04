@@ -46,8 +46,8 @@ invoke.cont:                                      ; preds = %entry
 
 ; CHECK: .section        .xdata,"dr"
 ; CHECK: L__ehtable$try_except:
-; CHECK:         .long   -1
-; CHECK:         .long   _try_except_filter_catchall
+; CHECK:         .long   -1                          # ToState
+; CHECK:         .long   _try_except_filter_catchall # Filter
 ; CHECK:         .long   LBB0_1
 
 define internal i32 @try_except_filter_catchall() #0 {
@@ -193,7 +193,7 @@ catch.dispatch:                                   ; preds = %entry
 
 __except.ret:                                     ; preds = %catch.dispatch
   %0 = catchpad within %cs1 [i8* bitcast (i32 ()* @try_except_filter_catchall to i8*)]
-  call void @f(i32 2)
+  call void @f(i32 2) [ "funclet"(token %0) ]
   catchret from %0 to label %__except
 
 __except:

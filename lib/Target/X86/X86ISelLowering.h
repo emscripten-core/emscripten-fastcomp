@@ -126,6 +126,9 @@ namespace llvm {
       /// 1 is the number of bytes of stack to pop.
       RET_FLAG,
 
+      /// Return from interrupt. Operand 0 is the number of bytes to pop.
+      IRET,
+
       /// Repeat fill, corresponds to X86::REP_STOSx.
       REP_STOS,
 
@@ -300,6 +303,9 @@ namespace llvm {
 
       // Vector signed/unsigned integer to double.
       CVTDQ2PD, CVTUDQ2PD,
+
+      // Convert a vector to mask, set bits base on MSB.
+      CVT2MASK,
 
       // 128-bit vector logical left / right shift
       VSHLDQ, VSRLDQ,
@@ -603,15 +609,6 @@ namespace llvm {
     bool isCalleePop(CallingConv::ID CallingConv,
                      bool is64Bit, bool IsVarArg, bool TailCallOpt);
 
-    /// AVX512 static rounding constants.  These need to match the values in
-    /// avx512fintrin.h.
-    enum STATIC_ROUNDING {
-      TO_NEAREST_INT = 0,
-      TO_NEG_INF = 1,
-      TO_POS_INF = 2,
-      TO_ZERO = 3,
-      CUR_DIRECTION = 4
-    };
   }
 
   //===--------------------------------------------------------------------===//
@@ -699,6 +696,10 @@ namespace llvm {
     /// i16 is legal, but undesirable since i16 instruction encodings are longer
     /// and some i16 instructions are slow.
     bool IsDesirableToPromoteOp(SDValue Op, EVT &PVT) const override;
+
+    /// Return true if the MachineFunction contains a COPY which would imply
+    /// HasOpaqueSPAdjustment.
+    bool hasCopyImplyingStackAdjustment(MachineFunction *MF) const override;
 
     MachineBasicBlock *
       EmitInstrWithCustomInserter(MachineInstr *MI,
@@ -929,9 +930,6 @@ namespace llvm {
     LegalizeTypeAction getPreferredVectorAction(EVT VT) const override;
 
     bool isIntDivCheap(EVT VT, AttributeSet Attr) const override;
-
-    void markInRegArguments(SelectionDAG &DAG, TargetLowering::ArgListTy& Args)
-      const override;
 
   protected:
     std::pair<const TargetRegisterClass *, uint8_t>

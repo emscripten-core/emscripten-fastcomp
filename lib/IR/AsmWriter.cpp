@@ -103,17 +103,9 @@ static OrderMap orderModule(const Module *M) {
     orderValue(&A, OM);
   }
   for (const Function &F : *M) {
-    if (F.hasPrefixData())
-      if (!isa<GlobalValue>(F.getPrefixData()))
-        orderValue(F.getPrefixData(), OM);
-
-    if (F.hasPrologueData())
-      if (!isa<GlobalValue>(F.getPrologueData()))
-        orderValue(F.getPrologueData(), OM);
-
-    if (F.hasPersonalityFn())
-      if (!isa<GlobalValue>(F.getPersonalityFn()))
-        orderValue(F.getPersonalityFn(), OM);
+    for (const Use &U : F.operands())
+      if (!isa<GlobalValue>(U.get()))
+        orderValue(U.get(), OM);
 
     orderValue(&F, OM);
 
@@ -263,8 +255,8 @@ static UseListOrderStack predictUseListOrder(const Module *M) {
   for (const GlobalAlias &A : M->aliases())
     predictValueUseListOrder(A.getAliasee(), nullptr, OM, Stack);
   for (const Function &F : *M)
-    if (F.hasPrefixData())
-      predictValueUseListOrder(F.getPrefixData(), nullptr, OM, Stack);
+    for (const Use &U : F.operands())
+      predictValueUseListOrder(U.get(), nullptr, OM, Stack);
 
   return Stack;
 }
@@ -321,6 +313,7 @@ static void PrintCallingConv(unsigned cc, raw_ostream &Out) {
   case CallingConv::X86_64_Win64:  Out << "x86_64_win64cc"; break;
   case CallingConv::SPIR_FUNC:     Out << "spir_func"; break;
   case CallingConv::SPIR_KERNEL:   Out << "spir_kernel"; break;
+  case CallingConv::X86_INTR:      Out << "x86_intrcc"; break;
   case CallingConv::HHVM:          Out << "hhvmcc"; break;
   case CallingConv::HHVM_C:        Out << "hhvm_ccc"; break;
   }

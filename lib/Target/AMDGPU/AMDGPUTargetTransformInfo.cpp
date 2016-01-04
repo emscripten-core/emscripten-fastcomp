@@ -74,11 +74,24 @@ unsigned AMDGPUTTIImpl::getNumberOfRegisters(bool Vec) {
   return 4 * 128; // XXX - 4 channels. Should these count as vector instead?
 }
 
-unsigned AMDGPUTTIImpl::getRegisterBitWidth(bool) { return 32; }
+unsigned AMDGPUTTIImpl::getRegisterBitWidth(bool Vector) {
+  return Vector ? 0 : 32;
+}
 
 unsigned AMDGPUTTIImpl::getMaxInterleaveFactor(unsigned VF) {
   // Semi-arbitrary large amount.
   return 64;
+}
+
+unsigned AMDGPUTTIImpl::getCFInstrCost(unsigned Opcode) {
+  // XXX - For some reason this isn't called for switch.
+  switch (Opcode) {
+  case Instruction::Br:
+  case Instruction::Ret:
+    return 10;
+  default:
+    return BaseT::getCFInstrCost(Opcode);
+  }
 }
 
 int AMDGPUTTIImpl::getVectorInstrCost(unsigned Opcode, Type *ValTy,
@@ -130,14 +143,13 @@ static bool isArgPassedInSGPR(const Argument *A) {
   if (ShaderType == ShaderType::COMPUTE)
     return true;
 
-  // For non-compute shaders, the inreg attribute is used to mark inputs,
-  // which pre-loaded into SGPRs.
-  if (F->getAttributes().hasAttribute(A->getArgNo(), Attribute::InReg))
+  // For non-compute shaders, SGPR inputs are marked with either inreg or byval.
+  if (F->getAttributes().hasAttribute(A->getArgNo() + 1, Attribute::InReg) ||
+      F->getAttributes().hasAttribute(A->getArgNo() + 1, Attribute::ByVal))
     return true;
 
-  // For non-compute shaders, 32-bit values are pre-loaded into vgprs, all
-  // other value types use SGPRS.
-  return !A->getType()->isIntegerTy(32) && !A->getType()->isFloatTy();
+  // Everything else is in VGPRs.
+  return false;
 }
 
 ///

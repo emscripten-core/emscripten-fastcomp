@@ -38,15 +38,20 @@ class ModuleLinker {
   /// importing/exporting handling.
   const FunctionInfoIndex *ImportIndex;
 
-  /// Function to import from source module, all other functions are
+  /// Functions to import from source module, all other functions are
   /// imported as declarations instead of definitions.
-  DenseSet<const GlobalValue *> *ImportFunction;
+  DenseSet<const GlobalValue *> *FunctionsToImport;
 
   /// Set to true if the given FunctionInfoIndex contains any functions
   /// from this source module, in which case we must conservatively assume
   /// that any of its functions may be imported into another module
   /// as part of a different backend compilation process.
   bool HasExportedFunctions = false;
+
+  /// Association between metadata value id and temporary metadata that
+  /// remains unmapped after function importing. Saved during function
+  /// importing and consumed during the metadata linking postpass.
+  DenseMap<unsigned, MDNode *> *ValIDToTempMDMap;
 
   /// Used as the callback for lazy linking.
   /// The mover has just hit GV and we have to decide if it, and other members
@@ -113,8 +118,8 @@ class ModuleLinker {
 
   /// Helper methods to check if we are importing from or potentially
   /// exporting from the current source module.
-  bool isPerformingImport() { return ImportFunction != nullptr; }
-  bool isModuleExporting() { return HasExportedFunctions; }
+  bool isPerformingImport() const { return FunctionsToImport != nullptr; }
+  bool isModuleExporting() const { return HasExportedFunctions; }
 
   /// If we are importing from the source module, checks if we should
   /// import SGV as a definition, otherwise import as a declaration.
@@ -137,66 +142,28 @@ class ModuleLinker {
   /// to be adjusted.
   GlobalValue::LinkageTypes getLinkage(const GlobalValue *SGV);
 
-  /// Copies the necessary global value attributes and name from the source
-  /// to the newly cloned global value.
-  void copyGVAttributes(GlobalValue *NewGV, const GlobalValue *SrcGV);
-
-  /// Updates the visibility for the new global cloned from the source
-  /// and, if applicable, linked with an existing destination global.
-  /// Handles visibility change required for promoted locals.
-  void setVisibility(GlobalValue *NewGV, const GlobalValue *SGV,
-                     const GlobalValue *DGV = nullptr);
-
 public:
   ModuleLinker(IRMover &Mover, Module &SrcM, unsigned Flags,
                const FunctionInfoIndex *Index = nullptr,
-               DenseSet<const GlobalValue *> *FunctionsToImport = nullptr)
+               DenseSet<const GlobalValue *> *FunctionsToImport = nullptr,
+               DenseMap<unsigned, MDNode *> *ValIDToTempMDMap = nullptr)
       : Mover(Mover), SrcM(SrcM), Flags(Flags), ImportIndex(Index),
-        ImportFunction(FunctionsToImport) {
-    assert((ImportIndex || !ImportFunction) &&
+        FunctionsToImport(FunctionsToImport),
+        ValIDToTempMDMap(ValIDToTempMDMap) {
+    assert((ImportIndex || !FunctionsToImport) &&
            "Expect a FunctionInfoIndex when importing");
     // If we have a FunctionInfoIndex but no function to import,
     // then this is the primary module being compiled in a ThinLTO
     // backend compilation, and we need to see if it has functions that
     // may be exported to another backend compilation.
-    if (ImportIndex && !ImportFunction)
+    if (ImportIndex && !FunctionsToImport)
       HasExportedFunctions = ImportIndex->hasExportedFunctions(SrcM);
+    assert((ValIDToTempMDMap || !FunctionsToImport) &&
+           "Function importing must provide a ValIDToTempMDMap");
   }
 
   bool run();
 };
-}
-
-/// The LLVM SymbolTable class autorenames globals that conflict in the symbol
-/// table. This is good for all clients except for us. Go through the trouble
-/// to force this back.
-static void forceRenaming(GlobalValue *GV, StringRef Name) {
-  // If the global doesn't force its name or if it already has the right name,
-  // there is nothing for us to do.
-  // Note that any required local to global promotion should already be done,
-  // so promoted locals will not skip this handling as their linkage is no
-  // longer local.
-  if (GV->hasLocalLinkage() || GV->getName() == Name)
-    return;
-
-  Module *M = GV->getParent();
-
-  // If there is a conflict, rename the conflict.
-  if (GlobalValue *ConflictGV = M->getNamedValue(Name)) {
-    GV->takeName(ConflictGV);
-    ConflictGV->setName(Name); // This will cause ConflictGV to get renamed
-    assert(ConflictGV->getName() != Name && "forceRenaming didn't work");
-  } else {
-    GV->setName(Name); // Force the name back
-  }
-}
-
-/// copy additional attributes (those not needed to construct a GlobalValue)
-/// from the SrcGV to the DestGV.
-void ModuleLinker::copyGVAttributes(GlobalValue *NewGV,
-                                    const GlobalValue *SrcGV) {
-  NewGV->copyAttributesFrom(SrcGV);
-  forceRenaming(NewGV, getName(SrcGV));
 }
 
 bool ModuleLinker::doImportAsDefinition(const GlobalValue *SGV) {
@@ -223,7 +190,7 @@ bool ModuleLinker::doImportAsDefinition(const GlobalValue *SGV) {
     return true;
   // Only import the function requested for importing.
   auto *SF = dyn_cast<Function>(SGV);
-  if (SF && ImportFunction->count(SF))
+  if (SF && FunctionsToImport->count(SF))
     return true;
   // Otherwise no.
   return false;
@@ -375,18 +342,6 @@ getMinVisibility(GlobalValue::VisibilityTypes A,
   return GlobalValue::DefaultVisibility;
 }
 
-void ModuleLinker::setVisibility(GlobalValue *NewGV, const GlobalValue *SGV,
-                                 const GlobalValue *DGV) {
-  GlobalValue::VisibilityTypes Visibility = SGV->getVisibility();
-  if (DGV)
-    Visibility = getMinVisibility(DGV->getVisibility(), Visibility);
-  // For promoted locals, mark them hidden so that they can later be
-  // stripped from the symbol table to reduce bloat.
-  if (SGV->hasLocalLinkage() && doPromoteLocalToGlobal(SGV))
-    Visibility = GlobalValue::HiddenVisibility;
-  NewGV->setVisibility(Visibility);
-}
-
 bool ModuleLinker::getComdatLeader(Module &M, StringRef ComdatName,
                                    const GlobalVariable *&GVar) {
   const GlobalValue *GVal = M.getNamedValue(ComdatName);
@@ -502,6 +457,7 @@ bool ModuleLinker::getComdatResult(const Comdat *SrcC,
 bool ModuleLinker::shouldLinkFromSource(bool &LinkFromSrc,
                                         const GlobalValue &Dest,
                                         const GlobalValue &Src) {
+
   // Should we unconditionally use the Src?
   if (shouldOverrideFromSrc()) {
     LinkFromSrc = true;
@@ -521,9 +477,9 @@ bool ModuleLinker::shouldLinkFromSource(bool &LinkFromSrc,
 
   if (isPerformingImport()) {
     if (isa<Function>(&Src)) {
-      // For functions, LinkFromSrc iff this is the function requested
+      // For functions, LinkFromSrc iff this is a function requested
       // for importing. For variables, decide below normally.
-      LinkFromSrc = ImportFunction->count(&Src);
+      LinkFromSrc = FunctionsToImport->count(&Src);
       return false;
     }
 
@@ -776,7 +732,8 @@ bool ModuleLinker::run() {
   if (Mover.move(SrcM, ValuesToLink.getArrayRef(),
                  [this](GlobalValue &GV, IRMover::ValueAdder Add) {
                    addLazyFor(GV, Add);
-                 }))
+                 },
+                 ValIDToTempMDMap, false))
     return true;
   Module &DstM = Mover.getModule();
   for (auto &P : Internalize) {
@@ -789,11 +746,29 @@ bool ModuleLinker::run() {
 
 Linker::Linker(Module &M) : Mover(M) {}
 
-bool Linker::linkInModule(Module &Src, unsigned Flags,
+bool Linker::linkInModule(std::unique_ptr<Module> Src, unsigned Flags,
                           const FunctionInfoIndex *Index,
-                          DenseSet<const GlobalValue *> *FunctionsToImport) {
-  ModuleLinker TheLinker(Mover, Src, Flags, Index, FunctionsToImport);
-  return TheLinker.run();
+                          DenseSet<const GlobalValue *> *FunctionsToImport,
+                          DenseMap<unsigned, MDNode *> *ValIDToTempMDMap) {
+  ModuleLinker ModLinker(Mover, *Src, Flags, Index, FunctionsToImport,
+                         ValIDToTempMDMap);
+  return ModLinker.run();
+}
+
+bool Linker::linkInModuleForCAPI(Module &Src) {
+  ModuleLinker ModLinker(Mover, Src, 0, nullptr, nullptr);
+  return ModLinker.run();
+}
+
+bool Linker::linkInMetadata(Module &Src,
+                            DenseMap<unsigned, MDNode *> *ValIDToTempMDMap) {
+  SetVector<GlobalValue *> ValuesToLink;
+  if (Mover.move(
+          Src, ValuesToLink.getArrayRef(),
+          [this](GlobalValue &GV, IRMover::ValueAdder Add) { assert(false); },
+          ValIDToTempMDMap, true))
+    return true;
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -805,18 +780,19 @@ bool Linker::linkInModule(Module &Src, unsigned Flags,
 /// true is returned and ErrorMsg (if not null) is set to indicate the problem.
 /// Upon failure, the Dest module could be in a modified state, and shouldn't be
 /// relied on to be consistent.
-bool Linker::linkModules(Module &Dest, Module &Src, unsigned Flags) {
+bool Linker::linkModules(Module &Dest, std::unique_ptr<Module> Src,
+                         unsigned Flags) {
   Linker L(Dest);
-  return L.linkInModule(Src, Flags);
+  return L.linkInModule(std::move(Src), Flags);
 }
 
 std::unique_ptr<Module>
-llvm::renameModuleForThinLTO(std::unique_ptr<Module> &M,
+llvm::renameModuleForThinLTO(std::unique_ptr<Module> M,
                              const FunctionInfoIndex *Index) {
   std::unique_ptr<llvm::Module> RenamedModule(
       new llvm::Module(M->getModuleIdentifier(), M->getContext()));
   Linker L(*RenamedModule.get());
-  if (L.linkInModule(*M.get(), llvm::Linker::Flags::None, Index))
+  if (L.linkInModule(std::move(M), llvm::Linker::Flags::None, Index))
     return nullptr;
   return RenamedModule;
 }
@@ -843,11 +819,19 @@ LLVMBool LLVMLinkModules(LLVMModuleRef Dest, LLVMModuleRef Src,
   std::string Message;
   Ctx.setDiagnosticHandler(diagnosticHandler, &Message, true);
 
-  LLVMBool Result = Linker::linkModules(*D, *unwrap(Src));
+  Linker L(*D);
+  Module *M = unwrap(Src);
+  LLVMBool Result = L.linkInModuleForCAPI(*M);
 
   Ctx.setDiagnosticHandler(OldDiagnosticHandler, OldDiagnosticContext, true);
 
   if (OutMessages && Result)
     *OutMessages = strdup(Message.c_str());
   return Result;
+}
+
+LLVMBool LLVMLinkModules2(LLVMModuleRef Dest, LLVMModuleRef Src) {
+  Module *D = unwrap(Dest);
+  std::unique_ptr<Module> M(unwrap(Src));
+  return Linker::linkModules(*D, std::move(M));
 }

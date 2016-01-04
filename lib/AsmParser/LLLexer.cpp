@@ -591,6 +591,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(preserve_mostcc);
   KEYWORD(preserve_allcc);
   KEYWORD(ghccc);
+  KEYWORD(x86_intrcc);
   KEYWORD(hhvmcc);
   KEYWORD(hhvm_ccc);
   KEYWORD(cxx_fast_tlscc);
@@ -609,6 +610,8 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(convergent);
   KEYWORD(dereferenceable);
   KEYWORD(dereferenceable_or_null);
+  KEYWORD(inaccessiblememonly);
+  KEYWORD(inaccessiblemem_or_argmemonly);
   KEYWORD(inlinehint);
   KEYWORD(inreg);
   KEYWORD(jumptable);

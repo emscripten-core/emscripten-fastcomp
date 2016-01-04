@@ -71,6 +71,14 @@ public:
 
   /// Retrieve a Module from the cache or lazily load it on demand.
   Module &operator()(StringRef FileName);
+
+  std::unique_ptr<Module> takeModule(StringRef FileName) {
+    auto I = ModuleMap.find(FileName);
+    assert(I != ModuleMap.end());
+    std::unique_ptr<Module> Ret = std::move(I->second);
+    ModuleMap.erase(I);
+    return Ret;
+  }
 };
 
 // Get a Module for \p FileName from the cache, or load it lazily.
@@ -149,12 +157,13 @@ static void findExternalCalls(const Module &DestModule, Function &F,
 //
 // \p ModuleToFunctionsToImportMap is filled with the set of Function to import
 // per Module.
-static void GetImportList(
-    Module &DestModule, SmallVector<StringRef, 64> &Worklist,
-    StringSet<> &CalledFunctions,
-    std::map<StringRef, std::pair<Module *, DenseSet<const GlobalValue *>>> &
-        ModuleToFunctionsToImportMap,
-    const FunctionInfoIndex &Index, ModuleLazyLoaderCache &ModuleLoaderCache) {
+static void GetImportList(Module &DestModule,
+                          SmallVector<StringRef, 64> &Worklist,
+                          StringSet<> &CalledFunctions,
+                          std::map<StringRef, DenseSet<const GlobalValue *>>
+                              &ModuleToFunctionsToImportMap,
+                          const FunctionInfoIndex &Index,
+                          ModuleLazyLoaderCache &ModuleLoaderCache) {
   while (!Worklist.empty()) {
     auto CalledFunctionName = Worklist.pop_back_val();
     DEBUG(dbgs() << DestModule.getModuleIdentifier() << ": Process import for "
@@ -238,8 +247,7 @@ static void GetImportList(
 
     // Add the function to the import list
     auto &Entry = ModuleToFunctionsToImportMap[SrcModule.getModuleIdentifier()];
-    Entry.first = &SrcModule;
-    Entry.second.insert(F);
+    Entry.insert(F);
 
     // Process the newly imported functions and add callees to the worklist.
     F->materialize();
@@ -274,7 +282,7 @@ bool FunctionImporter::importFunctions(Module &DestModule) {
   Linker TheLinker(DestModule);
 
   // Map of Module -> List of Function to import from the Module
-  std::map<StringRef, std::pair<Module *, DenseSet<const GlobalValue *>>>
+  std::map<StringRef, DenseSet<const GlobalValue *>>
       ModuleToFunctionsToImportMap;
 
   // Analyze the summaries and get the list of functions to import by
@@ -284,21 +292,44 @@ bool FunctionImporter::importFunctions(Module &DestModule) {
                 ModuleToFunctionsToImportMap, Index, ModuleLoaderCache);
   assert(Worklist.empty() && "Worklist hasn't been flushed in GetImportList");
 
+  StringMap<std::unique_ptr<DenseMap<unsigned, MDNode *>>>
+      ModuleToTempMDValsMap;
+
   // Do the actual import of functions now, one Module at a time
   for (auto &FunctionsToImportPerModule : ModuleToFunctionsToImportMap) {
     // Get the module for the import
-    auto &FunctionsToImport = FunctionsToImportPerModule.second.second;
-    auto *SrcModule = FunctionsToImportPerModule.second.first;
+    auto &FunctionsToImport = FunctionsToImportPerModule.second;
+    std::unique_ptr<Module> SrcModule =
+        ModuleLoaderCache.takeModule(FunctionsToImportPerModule.first);
     assert(&DestModule.getContext() == &SrcModule->getContext() &&
            "Context mismatch");
 
+    // Save the mapping of value ids to temporary metadata created when
+    // importing this function. If we have already imported from this module,
+    // add new temporary metadata to the existing mapping.
+    auto &TempMDVals = ModuleToTempMDValsMap[SrcModule->getModuleIdentifier()];
+    if (!TempMDVals)
+      TempMDVals = llvm::make_unique<DenseMap<unsigned, MDNode *>>();
+
     // Link in the specified functions.
-    if (TheLinker.linkInModule(*SrcModule, Linker::Flags::None, &Index,
-                               &FunctionsToImport))
+    if (TheLinker.linkInModule(std::move(SrcModule), Linker::Flags::None,
+                               &Index, &FunctionsToImport, TempMDVals.get()))
       report_fatal_error("Function Import: link error");
 
     ImportedCount += FunctionsToImport.size();
   }
+
+  // Now link in metadata for all modules from which we imported functions.
+  for (StringMapEntry<std::unique_ptr<DenseMap<unsigned, MDNode *>>> &SME :
+       ModuleToTempMDValsMap) {
+    // Load the specified source module.
+    auto &SrcModule = ModuleLoaderCache(SME.getKey());
+
+    // Link in all necessary metadata from this module.
+    if (TheLinker.linkInMetadata(SrcModule, SME.getValue().get()))
+      return false;
+  }
+
   DEBUG(dbgs() << "Imported " << ImportedCount << " functions for Module "
                << DestModule.getModuleIdentifier() << "\n");
   return ImportedCount;
@@ -340,6 +371,7 @@ getFunctionIndexForFile(StringRef Path, std::string &Error,
   return (*ObjOrErr)->takeIndex();
 }
 
+namespace {
 /// Pass that performs cross-module function import provided a summary file.
 class FunctionImportPass : public ModulePass {
   /// Optional function summary index to use for importing, otherwise
@@ -386,6 +418,7 @@ public:
     return false;
   }
 };
+} // anonymous namespace
 
 char FunctionImportPass::ID = 0;
 INITIALIZE_PASS_BEGIN(FunctionImportPass, "function-import",

@@ -18,7 +18,7 @@ invoke.cont.1:                                    ; preds = %invoke.cont
 
 ehcleanup:                                        ; preds = %entry
   %0 = cleanuppad within none []
-  invoke void @f(i32 2) #3
+  invoke void @f(i32 2) #3 [ "funclet"(token %0) ]
           to label %invoke.cont.2 unwind label %ehcleanup.3
 
 invoke.cont.2:                                    ; preds = %ehcleanup
@@ -26,7 +26,7 @@ invoke.cont.2:                                    ; preds = %ehcleanup
 
 ehcleanup.3:                                      ; preds = %invoke.cont.2, %ehcleanup.end, %invoke.cont
   %1 = cleanuppad within none []
-  call void @f(i32 3) #3
+  call void @f(i32 3) #3 [ "funclet"(token %1) ]
   cleanupret from %1 unwind to caller
 }
 
@@ -72,9 +72,9 @@ attributes #3 = { noinline }
 ; CHECK: retl
 
 ; CHECK: L__ehtable$nested_finally:
-; CHECK:        .long   -1
-; CHECK:        .long   0
-; CHECK:        .long   LBB0_[[outer]]
-; CHECK:        .long   0
-; CHECK:        .long   0
-; CHECK:        .long   LBB0_[[inner]]
+; CHECK:        .long   -1 # ToState
+; CHECK:        .long   0  # Null
+; CHECK:        .long   "?dtor$[[outer]]@?0?nested_finally@4HA" # FinallyFunclet
+; CHECK:        .long   0  # ToState
+; CHECK:        .long   0  # Null
+; CHECK:        .long   "?dtor$[[inner]]@?0?nested_finally@4HA" # FinallyFunclet
