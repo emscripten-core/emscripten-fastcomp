@@ -282,11 +282,6 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
         struct SIMachineFunctionInfo::SpilledReg Spill =
             MFI->getSpilledReg(MF, Index, i);
 
-        if (Spill.VGPR == AMDGPU::NoRegister) {
-           LLVMContext &Ctx = MF->getFunction()->getContext();
-           Ctx.emitError("Ran out of VGPRs for spilling SGPR");
-        }
-
         BuildMI(*MBB, MI, DL,
                 TII->getMCOpcodeFromPseudo(AMDGPU::V_WRITELANE_B32),
                 Spill.VGPR)
@@ -315,11 +310,6 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
         struct SIMachineFunctionInfo::SpilledReg Spill =
             MFI->getSpilledReg(MF, Index, i);
 
-        if (Spill.VGPR == AMDGPU::NoRegister) {
-           LLVMContext &Ctx = MF->getFunction()->getContext();
-           Ctx.emitError("Ran out of VGPRs for spilling SGPR");
-        }
-
         BuildMI(*MBB, MI, DL,
                 TII->getMCOpcodeFromPseudo(AMDGPU::V_READLANE_B32),
                 SubReg)
@@ -331,16 +321,17 @@ void SIRegisterInfo::eliminateFrameIndex(MachineBasicBlock::iterator MI,
       // TODO: only do this when it is needed
       switch (MF->getSubtarget<AMDGPUSubtarget>().getGeneration()) {
       case AMDGPUSubtarget::SOUTHERN_ISLANDS:
-        // "VALU writes SGPR" -> "SMRD reads that SGPR" needs "S_NOP 3" on SI
-        TII->insertNOPs(MI, 3);
+        // "VALU writes SGPR" -> "SMRD reads that SGPR" needs 4 wait states
+        // ("S_NOP 3") on SI
+        TII->insertWaitStates(MI, 4);
         break;
       case AMDGPUSubtarget::SEA_ISLANDS:
         break;
       default: // VOLCANIC_ISLANDS and later
-        // "VALU writes SGPR -> VMEM reads that SGPR" needs "S_NOP 4" on VI
-        // and later. This also applies to VALUs which write VCC, but we're
-        // unlikely to see VMEM use VCC.
-        TII->insertNOPs(MI, 4);
+        // "VALU writes SGPR -> VMEM reads that SGPR" needs 5 wait states
+        // ("S_NOP 4") on VI and later. This also applies to VALUs which write
+        // VCC, but we're unlikely to see VMEM use VCC.
+        TII->insertWaitStates(MI, 5);
       }
 
       MI->eraseFromParent();

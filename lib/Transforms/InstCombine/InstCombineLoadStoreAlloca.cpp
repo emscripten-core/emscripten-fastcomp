@@ -91,21 +91,23 @@ isOnlyCopiedFromConstantGlobal(Value *V, MemTransferInst *&TheCopy,
         if (CS.isCallee(&U))
           continue;
 
+        unsigned DataOpNo = CS.getDataOperandNo(&U);
+        bool IsArgOperand = CS.isArgOperand(&U);
+
         // Inalloca arguments are clobbered by the call.
-        unsigned ArgNo = CS.getArgumentNo(&U);
-        if (CS.isInAllocaArgument(ArgNo))
+        if (IsArgOperand && CS.isInAllocaArgument(DataOpNo))
           return false;
 
         // If this is a readonly/readnone call site, then we know it is just a
         // load (but one that potentially returns the value itself), so we can
         // ignore it if we know that the value isn't captured.
         if (CS.onlyReadsMemory() &&
-            (CS.getInstruction()->use_empty() || CS.doesNotCapture(ArgNo)))
+            (CS.getInstruction()->use_empty() || CS.doesNotCapture(DataOpNo)))
           continue;
 
         // If this is being passed as a byval argument, the caller is making a
         // copy, so it is only a read of the alloca.
-        if (CS.isByValArgument(ArgNo))
+        if (IsArgOperand && CS.isByValArgument(DataOpNo))
           continue;
       }
 
@@ -1038,9 +1040,9 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
       return &SI;
   }
 
-  // Don't hack volatile/atomic stores.
-  // FIXME: Some bits are legal for atomic stores; needs refactoring.
-  if (!SI.isSimple()) return nullptr;
+  // Don't hack volatile/ordered stores.
+  // FIXME: Some bits are legal for ordered atomic stores; needs refactoring.
+  if (!SI.isUnordered()) return nullptr;
 
   // If the RHS is an alloca with a single use, zapify the store, making the
   // alloca dead.
@@ -1072,7 +1074,7 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
 
     if (StoreInst *PrevSI = dyn_cast<StoreInst>(BBI)) {
       // Prev store isn't volatile, and stores to the same location?
-      if (PrevSI->isSimple() && equivalentAddressValues(PrevSI->getOperand(1),
+      if (PrevSI->isUnordered() && equivalentAddressValues(PrevSI->getOperand(1),
                                                         SI.getOperand(1))) {
         ++NumDeadStore;
         ++BBI;
@@ -1086,9 +1088,10 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
     // the pointer we're loading and is producing the pointer we're storing,
     // then *this* store is dead (X = load P; store X -> P).
     if (LoadInst *LI = dyn_cast<LoadInst>(BBI)) {
-      if (LI == Val && equivalentAddressValues(LI->getOperand(0), Ptr) &&
-          LI->isSimple())
+      if (LI == Val && equivalentAddressValues(LI->getOperand(0), Ptr)) {
+        assert(SI.isUnordered() && "can't eliminate ordering operation");
         return EraseInstFromFunction(SI);
+      }
 
       // Otherwise, this is a load from some other location.  Stores before it
       // may not be dead.
@@ -1113,6 +1116,10 @@ Instruction *InstCombiner::visitStoreInst(StoreInst &SI) {
   // store undef, Ptr -> noop
   if (isa<UndefValue>(Val))
     return EraseInstFromFunction(SI);
+
+  // The code below needs to be audited and adjusted for unordered atomics
+  if (!SI.isSimple())
+    return nullptr;
 
   // If this store is the last instruction in the basic block (possibly
   // excepting debug info instructions), and if the block ends with an

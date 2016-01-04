@@ -83,7 +83,9 @@ enum class ClrHandlerType { Catch, Finally, Fault, Filter };
 struct ClrEHUnwindMapEntry {
   MBBOrBasicBlock Handler;
   uint32_t TypeToken;
-  int Parent;
+  int HandlerParentState; ///< Outer handler enclosing this entry's handler
+  int TryParentState; ///< Outer try region enclosing this entry's try region,
+                      ///< treating later catches on same try as "outer"
   ClrHandlerType HandlerType;
 };
 
@@ -108,8 +110,9 @@ struct WinEHFuncInfo {
 
   int EHRegNodeFrameIndex = INT_MAX;
   int EHRegNodeEndOffset = INT_MAX;
+  int SEHSetFrameOffset = INT_MAX;
 
-  WinEHFuncInfo() {}
+  WinEHFuncInfo();
 };
 
 /// Analyze the IR in ParentFn and it's handlers to build WinEHFuncInfo, which

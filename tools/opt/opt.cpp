@@ -376,7 +376,7 @@ int main(int argc, char **argv) {
         M.swap(MM);
         L = make_unique<Linker>(*M);
       } else {
-        if (L->linkInModule(*MM))
+        if (L->linkInModule(std::move(MM)))
           return 1;
       }
     }

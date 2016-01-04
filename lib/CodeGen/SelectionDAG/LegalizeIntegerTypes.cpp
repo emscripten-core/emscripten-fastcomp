@@ -76,9 +76,10 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::SELECT_CC:   Res = PromoteIntRes_SELECT_CC(N); break;
   case ISD::SETCC:       Res = PromoteIntRes_SETCC(N); break;
   case ISD::SMIN:
-  case ISD::SMAX:
+  case ISD::SMAX:        Res = PromoteIntRes_SExtIntBinOp(N); break;
   case ISD::UMIN:
-  case ISD::UMAX:        Res = PromoteIntRes_SimpleIntBinOp(N); break;
+  case ISD::UMAX:        Res = PromoteIntRes_ZExtIntBinOp(N); break;
+
   case ISD::SHL:         Res = PromoteIntRes_SHL(N); break;
   case ISD::SIGN_EXTEND_INREG:
                          Res = PromoteIntRes_SIGN_EXTEND_INREG(N); break;
@@ -118,10 +119,10 @@ void DAGTypeLegalizer::PromoteIntegerResult(SDNode *N, unsigned ResNo) {
   case ISD::MUL:         Res = PromoteIntRes_SimpleIntBinOp(N); break;
 
   case ISD::SDIV:
-  case ISD::SREM:        Res = PromoteIntRes_SDIV(N); break;
+  case ISD::SREM:        Res = PromoteIntRes_SExtIntBinOp(N); break;
 
   case ISD::UDIV:
-  case ISD::UREM:        Res = PromoteIntRes_UDIV(N); break;
+  case ISD::UREM:        Res = PromoteIntRes_ZExtIntBinOp(N); break;
 
   case ISD::SADDO:
   case ISD::SSUBO:       Res = PromoteIntRes_SADDSUBO(N, ResNo); break;
@@ -565,14 +566,6 @@ SDValue DAGTypeLegalizer::PromoteIntRes_SADDSUBO(SDNode *N, unsigned ResNo) {
   return Res;
 }
 
-SDValue DAGTypeLegalizer::PromoteIntRes_SDIV(SDNode *N) {
-  // Sign extend the input.
-  SDValue LHS = SExtPromotedInteger(N->getOperand(0));
-  SDValue RHS = SExtPromotedInteger(N->getOperand(1));
-  return DAG.getNode(N->getOpcode(), SDLoc(N),
-                     LHS.getValueType(), LHS, RHS);
-}
-
 SDValue DAGTypeLegalizer::PromoteIntRes_SELECT(SDNode *N) {
   SDValue LHS = GetPromotedInteger(N->getOperand(1));
   SDValue RHS = GetPromotedInteger(N->getOperand(2));
@@ -656,6 +649,22 @@ SDValue DAGTypeLegalizer::PromoteIntRes_SimpleIntBinOp(SDNode *N) {
   // that too is okay if they are integer operations.
   SDValue LHS = GetPromotedInteger(N->getOperand(0));
   SDValue RHS = GetPromotedInteger(N->getOperand(1));
+  return DAG.getNode(N->getOpcode(), SDLoc(N),
+                     LHS.getValueType(), LHS, RHS);
+}
+
+SDValue DAGTypeLegalizer::PromoteIntRes_SExtIntBinOp(SDNode *N) {
+  // Sign extend the input.
+  SDValue LHS = SExtPromotedInteger(N->getOperand(0));
+  SDValue RHS = SExtPromotedInteger(N->getOperand(1));
+  return DAG.getNode(N->getOpcode(), SDLoc(N),
+                     LHS.getValueType(), LHS, RHS);
+}
+
+SDValue DAGTypeLegalizer::PromoteIntRes_ZExtIntBinOp(SDNode *N) {
+  // Zero extend the input.
+  SDValue LHS = ZExtPromotedInteger(N->getOperand(0));
+  SDValue RHS = ZExtPromotedInteger(N->getOperand(1));
   return DAG.getNode(N->getOpcode(), SDLoc(N),
                      LHS.getValueType(), LHS, RHS);
 }
@@ -799,14 +808,6 @@ SDValue DAGTypeLegalizer::PromoteIntRes_XMULO(SDNode *N, unsigned ResNo) {
   // Use the calculated overflow everywhere.
   ReplaceValueWith(SDValue(N, 1), Overflow);
   return Mul;
-}
-
-SDValue DAGTypeLegalizer::PromoteIntRes_UDIV(SDNode *N) {
-  // Zero extend the input.
-  SDValue LHS = ZExtPromotedInteger(N->getOperand(0));
-  SDValue RHS = ZExtPromotedInteger(N->getOperand(1));
-  return DAG.getNode(N->getOpcode(), SDLoc(N),
-                     LHS.getValueType(), LHS, RHS);
 }
 
 SDValue DAGTypeLegalizer::PromoteIntRes_UNDEF(SDNode *N) {

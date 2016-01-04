@@ -17,7 +17,6 @@
 #include "WebAssemblyMachineFunctionInfo.h"
 #include "WebAssemblySubtarget.h"
 #include "WebAssemblyTargetMachine.h"
-#include "WebAssemblyTargetObjectFile.h"
 #include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/CallingConvLower.h"
 #include "llvm/CodeGen/MachineJumpTableInfo.h"
@@ -207,6 +206,13 @@ MVT WebAssemblyTargetLowering::getScalarShiftAmountTy(const DataLayout & /*DL*/,
   unsigned BitWidth = NextPowerOf2(VT.getSizeInBits() - 1);
   if (BitWidth > 1 && BitWidth < 8)
     BitWidth = 8;
+
+  if (BitWidth > 64) {
+    BitWidth = 64;
+    assert(BitWidth >= Log2_32_Ceil(VT.getSizeInBits()) &&
+           "64-bit shift counts ought to be enough for anyone");
+  }
+
   MVT Result = MVT::getIntegerVT(BitWidth);
   assert(Result != MVT::INVALID_SIMPLE_VALUE_TYPE &&
          "Unable to represent scalar shift amount type");
@@ -258,6 +264,24 @@ bool WebAssemblyTargetLowering::isCheapToSpeculateCttz() const {
 
 bool WebAssemblyTargetLowering::isCheapToSpeculateCtlz() const {
   // Assume clz is a relatively cheap operation.
+  return true;
+}
+
+bool WebAssemblyTargetLowering::isLegalAddressingMode(const DataLayout &DL,
+                                                      const AddrMode &AM,
+                                                      Type *Ty,
+                                                      unsigned AS) const {
+  // WebAssembly offsets are added as unsigned without wrapping. The
+  // isLegalAddressingMode gives us no way to determine if wrapping could be
+  // happening, so we approximate this by accepting only non-negative offsets.
+  if (AM.BaseOffs < 0)
+    return false;
+
+  // WebAssembly has no scale register operands.
+  if (AM.Scale != 0)
+    return false;
+
+  // Everything else is legal.
   return true;
 }
 
@@ -408,7 +432,8 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
     if (In.Flags.isInConsecutiveRegs())
       fail(DL, DAG, "WebAssembly hasn't implemented cons regs return values");
     if (In.Flags.isInConsecutiveRegsLast())
-      fail(DL, DAG, "WebAssembly hasn't implemented cons regs last return values");
+      fail(DL, DAG,
+           "WebAssembly hasn't implemented cons regs last return values");
     // Ignore In.getOrigAlign() because all our arguments are passed in
     // registers.
     Tys.push_back(In.VT);
@@ -426,7 +451,7 @@ WebAssemblyTargetLowering::LowerCall(CallLoweringInfo &CLI,
   }
 
   if (NumBytes) {
-    SDValue Unused = DAG.getUNDEF(PtrVT);
+    SDValue Unused = DAG.getTargetConstant(0, DL, PtrVT);
     Chain = DAG.getCALLSEQ_END(Chain, NB, Unused, SDValue(), DL);
   }
 
@@ -551,9 +576,9 @@ SDValue WebAssemblyTargetLowering::LowerGlobalAddress(SDValue Op,
   assert(GA->getTargetFlags() == 0 && "WebAssembly doesn't set target flags");
   if (GA->getAddressSpace() != 0)
     fail(DL, DAG, "WebAssembly only expects the 0 address space");
-  return DAG.getNode(WebAssemblyISD::Wrapper, DL, VT,
-                     DAG.getTargetGlobalAddress(GA->getGlobal(), DL, VT,
-                                                GA->getOffset()));
+  return DAG.getNode(
+      WebAssemblyISD::Wrapper, DL, VT,
+      DAG.getTargetGlobalAddress(GA->getGlobal(), DL, VT, GA->getOffset()));
 }
 
 SDValue
@@ -624,10 +649,3 @@ SDValue WebAssemblyTargetLowering::LowerVASTART(SDValue Op,
 //===----------------------------------------------------------------------===//
 //                          WebAssembly Optimization Hooks
 //===----------------------------------------------------------------------===//
-
-MCSection *WebAssemblyTargetObjectFile::SelectSectionForGlobal(
-    const GlobalValue *GV, SectionKind /*Kind*/, Mangler & /*Mang*/,
-    const TargetMachine & /*TM*/) const {
-  // TODO: Be more sophisticated than this.
-  return isa<Function>(GV) ? getTextSection() : getDataSection();
-}

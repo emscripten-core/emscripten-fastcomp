@@ -2264,8 +2264,14 @@ public:
   }
 
   /// Return true if the target supports that a subset of CSRs for the given
-  /// calling convention is handled explicitly via copies.
-  virtual bool supportSplitCSR(CallingConv::ID CC) const {
+  /// machine function is handled explicitly via copies.
+  virtual bool supportSplitCSR(MachineFunction *MF) const {
+    return false;
+  }
+
+  /// Return true if the MachineFunction contains a COPY which would imply
+  /// HasOpaqueSPAdjustment.
+  virtual bool hasCopyImplyingStackAdjustment(MachineFunction *MF) const {
     return false;
   }
 
@@ -2452,13 +2458,6 @@ public:
     }
 
   };
-
-  // Mark inreg arguments for lib-calls. For normal calls this is done by
-  // the frontend ABI code.
-  virtual void markInRegArguments(SelectionDAG &DAG, 
-                 TargetLowering::ArgListTy &Args) const {
-    return;
-  }
 
   /// This function lowers an abstract call to a function into an actual call.
   /// This returns a pair of operands.  The first element is the return value
