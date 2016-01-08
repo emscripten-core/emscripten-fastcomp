@@ -358,32 +358,8 @@ bool GlobalsAAResult::AnalyzeUsesOfPointer(Value *V,
         if (CS.isArgOperand(&U) && isFreeCall(I, &TLI)) {
           if (Writers)
             Writers->insert(CS->getParent()->getParent());
-        } else if (CS.doesNotCapture(CS.getDataOperandNo(&U))) {
-          Function *ParentF = CS->getParent()->getParent();
-          // A nocapture argument may be read from or written to, but does not
-          // escape unless the call can somehow recurse.
-          //
-          // nocapture "indicates that the callee does not make any copies of
-          // the pointer that outlive itself". Therefore if we directly or
-          // indirectly recurse, we must treat the pointer as escaping.
-          if (FunctionToSCCMap[ParentF] ==
-              FunctionToSCCMap[CS.getCalledFunction()])
-            return true;
-          if (Readers)
-            Readers->insert(ParentF);
-          if (Writers)
-            Writers->insert(ParentF);
         } else {
           return true; // Argument of an unknown call.
-        }
-        // If the Callee is not ReadNone, it may read the global,
-        // and if it is not ReadOnly, it may also write to it.
-        Function *CalleeF = CS.getCalledFunction();
-        if (!CalleeF->doesNotAccessMemory()) {
-          if (Readers)
-            Readers->insert(CalleeF);
-          if (Writers && !CalleeF->onlyReadsMemory())
-            Writers->insert(CalleeF);
         }
       }
     } else if (ICmpInst *ICI = dyn_cast<ICmpInst>(I)) {
@@ -516,7 +492,7 @@ void GlobalsAAResult::AnalyzeCallGraph(CallGraph &CG, Module &M) {
 
       if (F->isDeclaration()) {
         // Try to get mod/ref behaviour from function attributes.
-        if (F->doesNotAccessMemory() || F->onlyAccessesInaccessibleMemory()) {
+        if (F->doesNotAccessMemory()) {
           // Can't do better than that!
         } else if (F->onlyReadsMemory()) {
           FI.addModRefInfo(MRI_Ref);
@@ -524,12 +500,6 @@ void GlobalsAAResult::AnalyzeCallGraph(CallGraph &CG, Module &M) {
             // This function might call back into the module and read a global -
             // consider every global as possibly being read by this function.
             FI.setMayReadAnyGlobal();
-        } else if (F->onlyAccessesArgMemory() || 
-                   F->onlyAccessesInaccessibleMemOrArgMem()) {
-          // This function may only access (read/write) memory pointed to by its
-          // arguments. If this pointer is to a global, this escaping use of the
-          // pointer is captured in AnalyzeUsesOfPointer().
-          FI.addModRefInfo(MRI_ModRef);
         } else {
           FI.addModRefInfo(MRI_ModRef);
           // Can't say anything useful unless it's an intrinsic - they don't
