@@ -281,11 +281,12 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   if (Flags.verbosity > 0 && !Dictionary.empty())
     Printf("Dictionary: %zd entries\n", Dictionary.size());
   Options.SaveArtifacts = !Flags.test_single_input;
+  Options.PrintNewCovPcs = Flags.print_new_cov_pcs;
 
   Fuzzer F(USF, Options);
 
   for (auto &U: Dictionary)
-    USF.GetMD().AddWordToDictionary(U.data(), U.size());
+    USF.GetMD().AddWordToManualDictionary(U);
 
   // Timer
   if (Flags.timeout > 0)
