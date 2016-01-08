@@ -1022,11 +1022,37 @@ void ExpandI64::ensureFuncs() {
 
   Type *i32 = Type::getInt32Ty(TheModule->getContext());
 
+  SmallVector<Type*, 3> ThreeArgTypes;
+  ThreeArgTypes.push_back(i32);
+  ThreeArgTypes.push_back(i32);
+  ThreeArgTypes.push_back(i32);
+  FunctionType *ThreeFunc = FunctionType::get(i32, ThreeArgTypes, false);
+
   AtomicAdd = TheModule->getFunction("_emscripten_atomic_fetch_and_add_u64");
+  if (!AtomicAdd) {
+    AtomicAdd = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                                 "_emscripten_atomic_fetch_and_add_u64", TheModule);
+  }
   AtomicSub = TheModule->getFunction("_emscripten_atomic_fetch_and_sub_u64");
+  if (!AtomicSub) {
+    AtomicSub = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                                 "_emscripten_atomic_fetch_and_sub_u64", TheModule);
+  }
   AtomicAnd = TheModule->getFunction("_emscripten_atomic_fetch_and_and_u64");
+  if (!AtomicAnd) {
+    AtomicAnd = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                                 "_emscripten_atomic_fetch_and_and_u64", TheModule);
+  }
   AtomicOr = TheModule->getFunction("_emscripten_atomic_fetch_and_or_u64");
+  if (!AtomicOr) {
+    AtomicOr = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                                 "_emscripten_atomic_fetch_and_or_u64", TheModule);
+  }
   AtomicXor = TheModule->getFunction("_emscripten_atomic_fetch_and_xor_u64");
+  if (!AtomicXor) {
+    AtomicXor = Function::Create(ThreeFunc, GlobalValue::ExternalLinkage,
+                                 "_emscripten_atomic_fetch_and_xor_u64", TheModule);
+  }
 
   SmallVector<Type*, 4> FourArgTypes;
   FourArgTypes.push_back(i32);
