@@ -1023,7 +1023,7 @@ void ExpandI64::ensureFuncs() {
   Type *i32 = Type::getInt32Ty(TheModule->getContext());
 
   SmallVector<Type*, 3> ThreeArgTypes;
-  ThreeArgTypes.push_back(i32);
+  ThreeArgTypes.push_back(Type::getInt8PtrTy(TheModule->getContext()));
   ThreeArgTypes.push_back(i32);
   ThreeArgTypes.push_back(i32);
   FunctionType *ThreeFunc = FunctionType::get(i32, ThreeArgTypes, false);
