@@ -6,7 +6,7 @@ target triple = "asmjs-unknown-emscripten"
 ; CHECK: function _test0($a,$b,$cond) {
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = SIMD_Int32x4_check($b);
-; CHECK:  $cond = SIMD_Int32x4_check($cond);
+; CHECK:  $cond = SIMD_Bool32x4_check($cond);
 ; CHECK:  $cmp = SIMD_Int32x4_select($cond,$a,$b);
 ; CHECK:  return (SIMD_Int32x4_check($cmp));
 ; CHECK: }
@@ -19,7 +19,7 @@ entry:
 ; CHECK: function _test1($a,$b,$cond) {
 ; CHECK:  $a = SIMD_Float32x4_check($a);
 ; CHECK:  $b = SIMD_Float32x4_check($b);
-; CHECK:  $cond = SIMD_Int32x4_check($cond);
+; CHECK:  $cond = SIMD_Bool32x4_check($cond);
 ; CHECK:  $cmp = SIMD_Float32x4_select($cond,$a,$b);
 ; CHECK:  return (SIMD_Float32x4_check($cmp));
 ; CHECK: }
