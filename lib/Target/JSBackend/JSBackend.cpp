@@ -909,30 +909,24 @@ const char *SIMDType(VectorType *t) {
 
   if (t->getElementType()->isIntegerTy()) {
     if (t->getElementType()->getPrimitiveSizeInBits() == 1) {
-      switch (t->getNumElements()) {
-        case 2: return "Bool64x2";
-        case 4: return "Bool32x4";
-        case 8: return "Bool16x8";
-        case 16: return "Bool8x16";
-        default: break; // fall-through to error
-      }
+      if (t->getNumElements() == 2) return "Bool64x2";
+      if (t->getNumElements() <= 4) return "Bool32x4";
+      if (t->getNumElements() <= 8) return "Bool16x8";
+      if (t->getNumElements() <= 16) return "Bool8x16";
+      // fall-through to error
     } else {
-      switch (t->getNumElements()) {
-        case 2: return "Int64x2";
-        case 4: return "Int32x4";
-        case 8: return "Int16x8";
-        case 16: return "Int8x16";
-        default: break; // fall-through to error
-      }
+      if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Int64x2";
+      if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Int32x4";
+      if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Int16x8";
+      if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Int8x16";
+      // fall-through to error
     }
   } else { // float type
-    switch (t->getNumElements()) {
-      case 2: return "Float64x2";
-      case 4: return "Float32x4";
-      case 8: return "Float16x8";
-      case 16: return "Float8x16";
-        default: break; // fall-through to error
-    }
+    if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Float64x2";
+    if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Float32x4";
+    if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Float16x8";
+    if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Float8x16";
+    // fall-through to error
   }
   errs() << *t << "\n";
   report_fatal_error("Unsupported type!");
@@ -2884,7 +2878,16 @@ void JSWriter::printFunctionBody(const Function *F) {
         case Type::VectorTyID: {
           VectorType *VT = cast<VectorType>(VI->second);
           Out << "SIMD_" << SIMDType(VT) << "(0";
-          for (unsigned i = 1; i < VT->getNumElements(); ++i) {
+
+          // SIMD.js has only a fixed set of SIMD types, and no arbitrary vector sizes like <float x 3> or <i8 x 7>, so
+          // codegen rounds up to the smallest appropriate size where the LLVM vector fits.
+          unsigned simdJsNumElements = VT->getNumElements();
+          if (simdJsNumElements < 2 && VT->getElementType()->getPrimitiveSizeInBits() > 32) simdJsNumElements = 2;
+          else if (simdJsNumElements < 4 && VT->getElementType()->getPrimitiveSizeInBits() <= 32) simdJsNumElements = 4;
+          else if (simdJsNumElements < 8 && VT->getElementType()->getPrimitiveSizeInBits() <= 16) simdJsNumElements = 8;
+          else if (simdJsNumElements < 16 && VT->getElementType()->getPrimitiveSizeInBits() <= 8) simdJsNumElements = 16;
+
+          for (unsigned i = 1; i < simdJsNumElements; ++i) {
             Out << ",0";
           }
           Out << ')';
