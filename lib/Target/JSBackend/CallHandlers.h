@@ -329,7 +329,7 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
 DEF_CALL_HANDLER(name, { \
   const Value *P = CI->getOperand(0); \
   if (EnablePthreads) { \
-    return getAssign(CI) + "Atomics_compareExchange(" HeapName ", " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")"; \
+    return getAssign(CI) + "(Atomics_compareExchange(" HeapName ", " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
   } else { \
     return getLoad(CI, P, CI->getType(), 0) + ';' + \
              "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
@@ -586,33 +586,33 @@ DEF_CALL_HANDLER(emscripten_asm_const_double, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
-  return getAssign(CI) + "Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u16, {
-  return getAssign(CI) + "Atomics_exchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_exchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u32, {
-  return getAssign(CI) + "Atomics_exchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_exchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_cas_u8, {
-  return getAssign(CI) + "Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u16, {
-  return getAssign(CI) + "Atomics_compareExchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u32, {
-  return getAssign(CI) + "Atomics_compareExchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_load_u8, {
-  return getAssign(CI) + "Atomics_load(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "(Atomics_load(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_u16, {
-  return getAssign(CI) + "Atomics_load(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ")";
+  return getAssign(CI) + "(Atomics_load(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_u32, {
-  return getAssign(CI) + "Atomics_load(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ")";
+  return getAssign(CI) + "(Atomics_load(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
@@ -628,13 +628,13 @@ DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_store_u8, {
-  return getAssign(CI) + "Atomics_store(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_store(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u16, {
-  return getAssign(CI) + "Atomics_store(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_store(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
-  return getAssign(CI) + "Atomics_store(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_store(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
@@ -650,53 +650,53 @@ DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_add_u8, {
-  return getAssign(CI) + "Atomics_add(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_add(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u16, {
-  return getAssign(CI) + "Atomics_add(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_add(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u32, {
-  return getAssign(CI) + "Atomics_add(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_add(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_sub_u8, {
-  return getAssign(CI) + "Atomics_sub(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_sub(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u16, {
-  return getAssign(CI) + "Atomics_sub(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_sub(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u32, {
-  return getAssign(CI) + "Atomics_sub(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_sub(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_and_u8, {
-  return getAssign(CI) + "Atomics_and(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_and(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u16, {
-  return getAssign(CI) + "Atomics_and(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_and(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u32, {
-  return getAssign(CI) + "Atomics_and(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_and(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_or_u8, {
-  return getAssign(CI) + "Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u16, {
-  return getAssign(CI) + "Atomics_or(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_or(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u32, {
-  return getAssign(CI) + "Atomics_or(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_or(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_xor_u8, {
-  return getAssign(CI) + "Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u16, {
-  return getAssign(CI) + "Atomics_xor(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_xor(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u32, {
-  return getAssign(CI) + "Atomics_xor(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "(Atomics_xor(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
