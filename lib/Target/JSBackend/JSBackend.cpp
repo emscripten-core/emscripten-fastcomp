@@ -1088,7 +1088,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         // implemented, we could remove the emulation, but until then we must emulate manually.
         text = Assign + (fround ? "Math_fround(" : "+") + "_emscripten_atomic_load_" + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + (fround ? "))" : ")");
       } else {
-        text = Assign + "Atomics_load(" + HeapName + ',' + Index + ')';
+        text = Assign + "(Atomics_load(" + HeapName + ',' + Index + ")|0)";
       }
     } else {
       text = Assign + getPtrLoad(P);
@@ -1209,7 +1209,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         else
           text = "+" + text;
       } else {
-        text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ')';
+        text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ")|0";
       }
     } else {
       text = getPtrUse(P) + " = " + VS;
@@ -2661,7 +2661,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         Code << Assign << "_emscripten_atomic_exchange_u32(" << getValueAsStr(P) << ", " << VS << ")|0"; break;
 
       } else {
-        Code << Assign << "Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")"; break;
+        Code << Assign << "(Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")|0)"; break;
       }
     } else {
       Code << getLoad(rmwi, P, I->getType(), 0) << ';';
