@@ -1808,7 +1808,7 @@ def : InstAlias<"cvtss2si{q}\t{$src, $dst|$dst, $src}",
 def : InstAlias<"cvtsd2si{q}\t{$src, $dst|$dst, $src}",
                 (CVTSD2SI64rr GR64:$dst, VR128:$src), 0>;
 def : InstAlias<"cvtsd2si{q}\t{$src, $dst|$dst, $src}",
-                (CVTSD2SI64rm GR64:$dst, sdmem:$src)>;
+                (CVTSD2SI64rm GR64:$dst, sdmem:$src), 0>;
 
 /// SSE 2 Only
 
@@ -8256,6 +8256,9 @@ let Predicates = [HasF16C] in {
   def : Pat<(int_x86_vcvtph2ps_128 (vzmovl_v2i64 addr:$src)),
             (VCVTPH2PSrm addr:$src)>;
   def : Pat<(int_x86_vcvtph2ps_128 (vzload_v2i64 addr:$src)),
+            (VCVTPH2PSrm addr:$src)>;
+  def : Pat<(int_x86_vcvtph2ps_128 (bitconvert
+              (v2i64 (scalar_to_vector (loadi64 addr:$src))))),
             (VCVTPH2PSrm addr:$src)>;
 
   def : Pat<(store (f64 (extractelt (bc_v2f64 (v8i16

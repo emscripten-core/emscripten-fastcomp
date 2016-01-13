@@ -21,7 +21,7 @@ define i32 @foo() {
 ; CHECK-LABEL: call_memcpy:
 ; CHECK-NEXT: .param          i32, i32, i32{{$}}
 ; CHECK-NEXT: .result         i32{{$}}
-; CHECK-NEXT: call            memcpy, $0, $1, $2{{$}}
+; CHECK-NEXT: call            memcpy@FUNCTION, $0, $1, $2{{$}}
 ; CHECK-NEXT: return          $0{{$}}
 declare void @llvm.memcpy.p0i8.p0i8.i32(i8* nocapture, i8* nocapture readonly, i32, i32, i1)
 define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
@@ -37,7 +37,7 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 @g = private global i32 1337
 
 ; CHECK-LABEL: ud:
-; CHECK-NEXT: .zero 4{{$}}
+; CHECK-NEXT: .skip 4{{$}}
 ; CHECK-NEXT: .size ud, 4{{$}}
 @ud = internal global i32 undef
 
@@ -73,7 +73,7 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 ; CHECK: .type ud64,@object
 ; CHECK: .align 3{{$}}
 ; CHECK-NEXT: ud64:
-; CHECK-NEXT: .zero 8{{$}}
+; CHECK-NEXT: .skip 8{{$}}
 ; CHECK-NEXT: .size ud64, 8{{$}}
 @ud64 = internal global i64 undef
 
@@ -102,7 +102,7 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 ; CHECK: .type f32ud,@object
 ; CHECK: .align 2{{$}}
 ; CHECK-NEXT: f32ud:
-; CHECK-NEXT: .zero 4{{$}}
+; CHECK-NEXT: .skip 4{{$}}
 ; CHECK-NEXT: .size f32ud, 4{{$}}
 @f32ud = internal global float undef
 
@@ -131,7 +131,7 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 ; CHECK: .type f64ud,@object
 ; CHECK: .align 3{{$}}
 ; CHECK-NEXT: f64ud:
-; CHECK-NEXT: .zero 8{{$}}
+; CHECK-NEXT: .skip 8{{$}}
 ; CHECK-NEXT: .size f64ud, 8{{$}}
 @f64ud = internal global double undef
 
@@ -172,6 +172,20 @@ define i8* @call_memcpy(i8* %p, i8* nocapture readonly %q, i32 %n) {
 ; CHECK: .globl   rom{{$}}
 ; CHECK: .align   4{{$}}
 ; CHECK: rom:
-; CHECK: .zero    512{{$}}
+; CHECK: .skip    512{{$}}
 ; CHECK: .size    rom, 512{{$}}
 @rom = constant [128 x i32] zeroinitializer, align 16
+
+; CHECK: .type       array,@object
+; CHECK-NEXT: array:
+; CHECK-NEXT: .skip       8
+; CHECK-NEXT: .size       array, 8
+; CHECK: .type       pointer_to_array,@object
+; CHECK-NEXT: .section    .data.rel.ro,"aw",@progbits
+; CHECK-NEXT: .globl      pointer_to_array
+; CHECK-NEXT: .align      2
+; CHECK-NEXT: pointer_to_array:
+; CHECK-NEXT: .int32      array+4
+; CHECK-NEXT: .size       pointer_to_array, 4
+@array = internal constant [8 x i8] zeroinitializer, align 1
+@pointer_to_array = constant i8* getelementptr inbounds ([8 x i8], [8 x i8]* @array, i32 0, i32 4), align 4
