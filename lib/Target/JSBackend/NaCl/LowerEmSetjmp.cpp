@@ -182,6 +182,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   SmallVector<Type*, 1> IntArgTypes;
   IntArgTypes.push_back(i32);
   FunctionType *IntIntFunc = FunctionType::get(i32, IntArgTypes, false);
+  FunctionType *VoidIntFunc = FunctionType::get(Void, IntArgTypes, false);
 
   Function *CheckLongjmp = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_check_longjmp", TheModule); // gets control flow
 
@@ -193,11 +194,10 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
   Function *CleanupSetjmp = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_cleanup_setjmp", TheModule);
 
   Function *PreInvoke = TheModule->getFunction("emscripten_preinvoke");
-  if (!PreInvoke) PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
+  if (!PreInvoke) PreInvoke = Function::Create(VoidIntFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
 
-  FunctionType *IntFunc = FunctionType::get(i32, false);
   Function *PostInvoke = TheModule->getFunction("emscripten_postinvoke");
-  if (!PostInvoke) PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+  if (!PostInvoke) PostInvoke = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
 
   // Process all callers of setjmp and longjmp. Start with setjmp.
 
@@ -242,6 +242,8 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
 
   // Update all setjmping functions
 
+  unsigned InvokeId = 0;
+
   for (FunctionPhisMap::iterator I = SetjmpOutputPhis.begin(); I != SetjmpOutputPhis.end(); I++) {
     Function *F = I->first;
     Phis& P = I->second;
@@ -272,8 +274,11 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
           TerminatorInst *TI = BB->getTerminator();
           if (!Check) {
             // no existing pre|postinvoke, create our own
-            CallInst::Create(PreInvoke, "", CI);
-            Check = CallInst::Create(PostInvoke, "", TI); // CI is at the end of the block
+            SmallVector<Value*,1> HelperArgs;
+            HelperArgs.push_back(ConstantInt::get(i32, InvokeId++));
+
+            CallInst::Create(PreInvoke, HelperArgs, "", CI);
+            Check = CallInst::Create(PostInvoke, HelperArgs, "", TI); // CI is at the end of the block
 
             // If we are calling a function that is noreturn, we must remove that attribute. The code we
             // insert here does expect it to return, after we catch the exception.

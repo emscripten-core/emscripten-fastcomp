@@ -12,9 +12,9 @@
 //  1) Lower
 //         invoke() to l1 unwind l2
 //     into
-//         preinvoke(); // (will clear __THREW__)
+//         preinvoke(id); // (will clear __THREW__)
 //         call();
-//         threw = postinvoke(); (check __THREW__)
+//         threw = postinvoke(id); (check __THREW__)
 //         br threw, l1, l2
 //
 //     We do this to avoid introducing a new LLVM IR type, or to try to reuse
@@ -108,13 +108,17 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   }
 
   if (!(PreInvoke = TheModule->getFunction("emscripten_preinvoke"))) {
-    FunctionType *VoidFunc = FunctionType::get(Void, false);
-    PreInvoke = Function::Create(VoidFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
+    SmallVector<Type*, 1> IntArgTypes;
+    IntArgTypes.push_back(i32);
+    FunctionType *VoidIntFunc = FunctionType::get(Void, IntArgTypes, false);
+    PreInvoke = Function::Create(VoidIntFunc, GlobalValue::ExternalLinkage, "emscripten_preinvoke", TheModule);
   }
 
   if (!(PostInvoke = TheModule->getFunction("emscripten_postinvoke"))) {
-    FunctionType *IntFunc = FunctionType::get(i32, false);
-    PostInvoke = Function::Create(IntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
+    SmallVector<Type*, 1> IntArgTypes;
+    IntArgTypes.push_back(i32);
+    FunctionType *IntIntFunc = FunctionType::get(i32, IntArgTypes, false);
+    PostInvoke = Function::Create(IntIntFunc, GlobalValue::ExternalLinkage, "emscripten_postinvoke", TheModule);
   }
 
   FunctionType *LandingPadFunc = FunctionType::get(i8P, true);
@@ -128,6 +132,8 @@ bool LowerEmExceptions::runOnModule(Module &M) {
   std::set<std::string> WhitelistSet(Whitelist.begin(), Whitelist.end());
 
   bool Changed = false;
+
+  unsigned InvokeId = 0;
 
   for (Module::iterator Iter = M.begin(), E = M.end(); Iter != E; ) {
     Function *F = &*Iter++;
@@ -156,7 +162,9 @@ bool LowerEmExceptions::runOnModule(Module &M) {
           }
 
           // Insert a normal call instruction folded in between pre- and post-invoke
-          CallInst::Create(PreInvoke, "", II);
+          SmallVector<Value*,1> HelperArgs;
+          HelperArgs.push_back(ConstantInt::get(i32, InvokeId++));
+          CallInst::Create(PreInvoke, HelperArgs, "", II);
 
           SmallVector<Value*,16> CallArgs(II->op_begin(), II->op_end() - 3);
           CallInst *NewCall = CallInst::Create(II->getCalledValue(),
@@ -168,7 +176,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
           II->replaceAllUsesWith(NewCall);
           ToErase.push_back(II);
 
-          CallInst *Post = CallInst::Create(PostInvoke, "", II);
+          CallInst *Post = CallInst::Create(PostInvoke, HelperArgs, "", II);
           Instruction *Post1 = new TruncInst(Post, i1, "", II);
 
           // Insert a branch based on the postInvoke
