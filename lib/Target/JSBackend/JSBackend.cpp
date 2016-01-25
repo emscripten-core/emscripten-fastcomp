@@ -2882,10 +2882,10 @@ void JSWriter::printFunctionBody(const Function *F) {
           // SIMD.js has only a fixed set of SIMD types, and no arbitrary vector sizes like <float x 3> or <i8 x 7>, so
           // codegen rounds up to the smallest appropriate size where the LLVM vector fits.
           unsigned simdJsNumElements = VT->getNumElements();
-          if (simdJsNumElements < 2 && VT->getElementType()->getPrimitiveSizeInBits() > 32) simdJsNumElements = 2;
-          else if (simdJsNumElements < 4 && VT->getElementType()->getPrimitiveSizeInBits() <= 32) simdJsNumElements = 4;
-          else if (simdJsNumElements < 8 && VT->getElementType()->getPrimitiveSizeInBits() <= 16) simdJsNumElements = 8;
-          else if (simdJsNumElements < 16 && VT->getElementType()->getPrimitiveSizeInBits() <= 8) simdJsNumElements = 16;
+          if (simdJsNumElements <= 2 && VT->getElementType()->getPrimitiveSizeInBits() > 32) simdJsNumElements = 2;
+          else if (simdJsNumElements <= 4 && VT->getElementType()->getPrimitiveSizeInBits() <= 32) simdJsNumElements = 4;
+          else if (simdJsNumElements <= 8 && VT->getElementType()->getPrimitiveSizeInBits() <= 16) simdJsNumElements = 8;
+          else if (simdJsNumElements <= 16 && VT->getElementType()->getPrimitiveSizeInBits() <= 8) simdJsNumElements = 16;
 
           for (unsigned i = 1; i < simdJsNumElements; ++i) {
             Out << ",0";
