@@ -1687,12 +1687,6 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
   error("SIMD extract element with non-constant index not implemented yet");
 }
 
-std::string castBoolVecToIntVec(int numElems, const std::string &str, bool signExtend)
-{
-  int elemWidth = 128 / numElems;
-  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
-  return simdType + "_select(" + str + ", " + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
-}
 
 std::string castIntVecToBoolVec(int numElems, const std::string &str)
 {

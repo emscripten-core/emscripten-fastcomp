@@ -520,41 +520,6 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
-// vector ops
-DEF_CALL_HANDLER(emscripten_float32x4_signmask, {
-  // The following code is obviously quite suboptimal. The goal is to avoid
-  // using it whenever possible by optimizing signmask calls into anyTrue() or
-  // allTrue() calls.
-  std::string Op = getValueAsStr(CI->getOperand(0));
-  UsesSIMDInt32x4 = true;
-  UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "("
-         "(SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),0)<0)|"
-         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),1)<0)<<1)|"
-         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),2)<0)<<2)|"
-         "((SIMD_Int32x4_extractLane(SIMD_Int32x4_fromFloat32x4Bits(" + Op + "),3)<0)<<3))";
-})
-
-DEF_CALL_HANDLER(emscripten_float32x4_load1, {
-  UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
-})
-
-DEF_CALL_HANDLER(emscripten_float32x4_load2, {
-  UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
-})
-
-DEF_CALL_HANDLER(emscripten_float32x4_store1, {
-  UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-
-DEF_CALL_HANDLER(emscripten_float32x4_store2, {
-  UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-})
-
 // EM_ASM support
 
 std::string handleAsmConst(const Instruction *CI) {
@@ -762,120 +727,116 @@ DEF_BUILTIN_HANDLER(llvm_log_f64, Math_log);
 DEF_BUILTIN_HANDLER(llvm_exp_f32, Math_exp);
 DEF_BUILTIN_HANDLER(llvm_exp_f64, Math_exp);
 
-DEF_BUILTIN_HANDLER(emscripten_float32x4_min, SIMD_Float32x4_min);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_minNum, SIMD_Float32x4_minNum);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_max, SIMD.Float32x4_max);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_maxNum, SIMD.Float32x4_maxNum);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_Float32x4_abs);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_sqrt, SIMD_Float32x4_sqrt);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalApproximation, SIMD_Float32x4_reciprocalApproximation);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation, SIMD_Float32x4_reciprocalSqrtApproximation);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4Bits, SIMD_Float32x4_fromInt32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4, SIMD_Float32x4_fromInt32x4);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_equal, SIMD_Float32x4_equal);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_notEqual, SIMD_Float32x4_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_lessThan, SIMD_Float32x4_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_lessThanOrEqual, SIMD_Float32x4_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_greaterThan, SIMD_Float32x4_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_greaterThanOrEqual, SIMD_Float32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_and, SIMD_Float32x4_and);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_or, SIMD_Float32x4_or);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_xor, SIMD_Float32x4_xor);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_not, SIMD_Float32x4_not);
-
-DEF_BUILTIN_HANDLER(emscripten_float64x2_min, SIMD_Float64x2_min);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_minNum, SIMD_Float64x2_minNum);
+// SIMD.js Float64x2
+DEF_BUILTIN_HANDLER(emscripten_float64x2_set, SIMD_Float64x2);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_splat, SIMD_Float64x2_splat);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_add, SIMD_Float64x2_add);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_sub, SIMD_Float64x2_sub);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_mul, SIMD_Float64x2_mul);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_div, SIMD_Float64x2_div);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_max, SIMD.Float64x2_max);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_min, SIMD_Float64x2_min);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_maxNum, SIMD.Float64x2_maxNum);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_abs, SIMD_Float64x2_abs);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_minNum, SIMD_Float64x2_minNum);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_neg, SIMD_Float64x2_neg);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_sqrt, SIMD_Float64x2_sqrt);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_reciprocalApproximation, SIMD_Float64x2_reciprocalApproximation);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_reciprocalSqrtApproximation, SIMD_Float64x2_reciprocalSqrtApproximation);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt8x16Bits, SIMD_Float64x2_fromInt8x16Bits);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt16x8Bits, SIMD_Float64x2_fromInt16x8Bits);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4Bits, SIMD_Float64x2_fromInt32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4, SIMD_Float64x2_fromInt32x4);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4, SIMD_Float64x2_fromFloat32x4);
-
+DEF_BUILTIN_HANDLER(emscripten_float64x2_abs, SIMD_Float64x2_abs);
+// n.b. No emscripten_float64x2_and, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float64x2_xor, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float64x2_or, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float64x2_not, only defined on boolean and integer SIMD types.
 static std::string castBool64x2ToInt32x4(const std::string &valueStr) {
   return std::string("SIMD_Int32x4_fromBool64x2Bits(") + valueStr + ')';
 }
-
-DEF_CALL_HANDLER(emscripten_float64x2_equal, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
-})
-
-DEF_CALL_HANDLER(emscripten_float64x2_notEqual, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
-})
-
 DEF_CALL_HANDLER(emscripten_float64x2_lessThan, {
   return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
 })
-
 DEF_CALL_HANDLER(emscripten_float64x2_lessThanOrEqual, {
   return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
 })
-
 DEF_CALL_HANDLER(emscripten_float64x2_greaterThan, {
   return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
 })
-
 DEF_CALL_HANDLER(emscripten_float64x2_greaterThanOrEqual, {
   return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
 })
-
-// The above code to handle Float64x2 comparisons to a booleans is temporary. Once Bool64x2 is in the spec and SpiderMonkey has the type, revert to the code below.
-#if 0
-DEF_BUILTIN_HANDLER(emscripten_float64x2_equal, SIMD_Float64x2_equal);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_notEqual, SIMD_Float64x2_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_lessThan, SIMD_Float64x2_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_lessThanOrEqual, SIMD_Float64x2_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_greaterThan, SIMD_Float64x2_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_greaterThanOrEqual, SIMD_Float64x2_greaterThanOrEqual);
-#endif
-
-DEF_BUILTIN_HANDLER(emscripten_float64x2_and, SIMD_Float64x2_and);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_or, SIMD_Float64x2_or);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_xor, SIMD_Float64x2_xor);
-DEF_BUILTIN_HANDLER(emscripten_float64x2_select, SIMD_Float64x2_select);
-
-DEF_BUILTIN_HANDLER(emscripten_int32x4_equal, SIMD_Int32x4_equal);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_notEqual, SIMD_Int32x4_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_Int32x4_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThanOrEqual, SIMD_Int32x4_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThan, SIMD_Int32x4_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThanOrEqual, SIMD_Int32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4Bits, SIMD_Int32x4_fromFloat32x4Bits);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4, SIMD_Int32x4_fromFloat32x4);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2Bits, SIMD_Int32x4_fromFloat64x2Bits);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2, SIMD_Int32x4_fromFloat64x2);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftLeftByScalar, SIMD_Int8x16_shiftLeftByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftRightLogicalByScalar, SIMD_Int8x16_shiftRightLogicalByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftRightArithmeticByScalar, SIMD_Int8x16_shiftRightArithmeticByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_not, SIMD_Int8x16_not);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_and, SIMD_Int8x16_and);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_or, SIMD_Int8x16_or);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_xor, SIMD_Int8x16_xor);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftLeftByScalar, SIMD_Int16x8_shiftLeftByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftRightLogicalByScalar, SIMD_Int16x8_shiftRightLogicalByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftRightArithmeticByScalar, SIMD_Int16x8_shiftRightArithmeticByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_not, SIMD_Int16x8_not);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_and, SIMD_Int16x8_and);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_or, SIMD_Int16x8_or);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_xor, SIMD_Int16x8_xor);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftLeftByScalar, SIMD_Int32x4_shiftLeftByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftRightLogicalByScalar, SIMD_Int32x4_shiftRightLogicalByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftRightArithmeticByScalar, SIMD_Int32x4_shiftRightArithmeticByScalar);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_not, SIMD_Int32x4_not);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_and, SIMD_Int32x4_and);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_or, SIMD_Int32x4_or);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_xor, SIMD_Int32x4_xor);
-DEF_CALL_HANDLER(emscripten_atomic_fence, {
-  return "/* fence */";
+DEF_CALL_HANDLER(emscripten_float64x2_equal, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
 })
+DEF_CALL_HANDLER(emscripten_float64x2_notEqual, {
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+})
+// n.b. No emscripten_float64x2_anyTrue, only defined on boolean SIMD types.
+// n.b. No emscripten_float64x2_allTrue, only defined on boolean SIMD types.
+DEF_BUILTIN_HANDLER(emscripten_float64x2_select, SIMD_Float64x2_select);
+// n.b. No emscripten_float64x2_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_float64x2_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_float64x2_shiftLeftByScalar, only defined on integer SIMD types.
+// n.b. No emscripten_float64x2_shiftRightByScalar, only defined on integer SIMD types.
+DEF_BUILTIN_HANDLER(emscripten_float64x2_extractLane, SIMD_Float64x2_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_replaceLane, SIMD_Float64x2_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_store, SIMD_Float64x2_store);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_store1, SIMD_Float64x2_store1);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_load, SIMD_Float64x2_load);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_load1, SIMD_Float64x2_load1);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4Bits, SIMD_Float64x2_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromUint32x4Bits, SIMD_Float64x2_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt16x8Bits, SIMD_Float64x2_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromUint16x8Bits, SIMD_Float64x2_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt8x16Bits, SIMD_Float64x2_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_fromUint8x16Bits, SIMD_Float64x2_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_swizzle, SIMD_Float64x2_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_float64x2_shuffle, SIMD_Float64x2_shuffle);
 
+// SIMD.js Float32x4
+DEF_BUILTIN_HANDLER(emscripten_float32x4_set, SIMD_Float32x4);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_splat, SIMD_Float32x4_splat);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_add, SIMD_Float32x4_add);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_sub, SIMD_Float32x4_sub);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_mul, SIMD_Float32x4_mul);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_div, SIMD_Float32x4_div);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_max, SIMD.Float32x4_max);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_min, SIMD_Float32x4_min);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_maxNum, SIMD.Float32x4_maxNum);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_minNum, SIMD_Float32x4_minNum);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_neg, SIMD_Float32x4_neg);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_sqrt, SIMD_Float32x4_sqrt);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalApproximation, SIMD_Float32x4_reciprocalApproximation);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation, SIMD_Float32x4_reciprocalSqrtApproximation);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_Float32x4_abs);
+// n.b. No emscripten_float32x4_and, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float32x4_xor, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float32x4_or, only defined on boolean and integer SIMD types.
+// n.b. No emscripten_float32x4_not, only defined on boolean and integer SIMD types.
+std::string castBoolVecToIntVec(int numElems, const std::string &str, bool signExtend)
+{
+  int elemWidth = 128 / numElems;
+  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
+  return simdType + "_select(" + str + ", " + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
+}
+DEF_CALL_HANDLER(emscripten_float32x4_lessThan, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_float32x4_equal, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_float32x4_notEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+// n.b. No emscripten_float32x4_anyTrue, only defined on boolean SIMD types.
+// n.b. No emscripten_float32x4_allTrue, only defined on boolean SIMD types.
 DEF_CALL_HANDLER(emscripten_float32x4_select, {
   // FIXME: We really need a more general way of handling boolean types,
   // including an optimization to allow more Int32x4 operations to be
@@ -884,20 +845,409 @@ DEF_CALL_HANDLER(emscripten_float32x4_select, {
   if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
     Op = getValueAsStr(SE->getOperand(0));
   } else {
-    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ",SIMD_Int32x4_splat(0))";
+    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int32x4_splat(0))";
   }
-  return getAssign(CI) + "SIMD_Float32x4_select(" + Op + "," +
-         getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
 })
-DEF_CALL_HANDLER(emscripten_int32x4_select, {
-  std::string Op;
-  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
-    Op = getValueAsStr(SE->getOperand(0));
-  } else {
-    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ",SIMD_Int32x4_splat(0))";
-  }
-  return getAssign(CI) + "SIMD_Int32x4_select(" + Op + "," +
-         getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+// n.b. No emscripten_float32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_float32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_float32x4_shiftLeftByScalar, only defined on integer SIMD types.
+// n.b. No emscripten_float32x4_shiftRightByScalar, only defined on integer SIMD types.
+DEF_BUILTIN_HANDLER(emscripten_float32x4_extractLane, SIMD_Float32x4_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_replaceLane, SIMD_Float32x4_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_store, SIMD_Float32x4_store);
+DEF_CALL_HANDLER(emscripten_float32x4_store1, {
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_store2, {
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_store3, {
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_float32x4_load, SIMD_Float32x4_load);
+DEF_CALL_HANDLER(emscripten_float32x4_load1, {
+  UsesSIMDFloat32x4 = true;
+  return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_load2, {
+  UsesSIMDFloat32x4 = true;
+  return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_float32x4_load3, {
+  UsesSIMDFloat32x4 = true;
+  return getAssign(CI) + "SIMD_Float32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromFloat64x2Bits, SIMD_Float32x4_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4Bits, SIMD_Float32x4_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromUint32x4Bits, SIMD_Float32x4_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt16x8Bits, SIMD_Float32x4_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromUint16x8Bits, SIMD_Float32x4_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt8x16Bits, SIMD_Float32x4_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromUint8x16Bits, SIMD_Float32x4_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4, SIMD_Float32x4_fromInt32x4);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_fromUint32x4, SIMD_Float32x4_fromUint32x4);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_swizzle, SIMD_Float32x4_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_float32x4_shuffle, SIMD_Float32x4_shuffle);
+
+// SIMD.js Int32x4
+DEF_BUILTIN_HANDLER(emscripten_int32x4_set, SIMD_Int32x4);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_splat, SIMD_Int32x4_splat);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_add, SIMD_Int32x4_add);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_sub, SIMD_Int32x4_sub);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_mul, SIMD_Int32x4_mul);
+// n.b. No emscripten_int32x4_div, division is only defined on floating point types.
+// n.b. No emscripten_int32x4_max, only defined on floating point types.
+// n.b. No emscripten_int32x4_min, only defined on floating point types.
+// n.b. No emscripten_int32x4_maxNum, only defined on floating point types.
+// n.b. No emscripten_int32x4_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int32x4_neg, SIMD_Int32x4_neg);
+// n.b. No emscripten_int32x4_sqrt, only defined on floating point types.
+// n.b. No emscripten_int32x4_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_int32x4_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_int32x4_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int32x4_and, SIMD_Int32x4_and);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_xor, SIMD_Int32x4_xor);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_or, SIMD_Int32x4_or);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_not, SIMD_Int32x4_not);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_Int32x4_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThanOrEqual, SIMD_Int32x4_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThan, SIMD_Int32x4_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThanOrEqual, SIMD_Int32x4_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_equal, SIMD_Int32x4_equal);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_notEqual, SIMD_Int32x4_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_select, SIMD_Int32x4_select);
+// n.b. No emscripten_int32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_int32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftLeftByScalar, SIMD_Int32x4_shiftLeftByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftRightByScalar, SIMD_Int32x4_shiftRightByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_extractLane, SIMD_Int32x4_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_replaceLane, SIMD_Int32x4_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_store, SIMD_Int32x4_store);
+DEF_CALL_HANDLER(emscripten_int32x4_store1, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Int32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_store2, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Int32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_store3, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Int32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_int32x4_load, SIMD_Int32x4_load);
+DEF_CALL_HANDLER(emscripten_int32x4_load1, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Int32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_load2, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Int32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int32x4_load3, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Int32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2Bits, SIMD_Int32x4_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4Bits, SIMD_Int32x4_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromUint32x4Bits, SIMD_Int32x4_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromInt16x8Bits, SIMD_Int32x4_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromUint16x8Bits, SIMD_Int32x4_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromInt8x16Bits, SIMD_Int32x4_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromUint8x16Bits, SIMD_Int32x4_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4, SIMD_Int32x4_fromFloat32x4);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_fromUint32x4, SIMD_Int32x4_fromUint32x4);
+// TODO: emscripten_int32x4_fromFloat64x2?
+DEF_BUILTIN_HANDLER(emscripten_int32x4_swizzle, SIMD_Int32x4_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_int32x4_shuffle, SIMD_Int32x4_shuffle);
+
+// SIMD.js Uint32x4
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_set, SIMD_Uint32x4);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_splat, SIMD_Uint32x4_splat);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_add, SIMD_Uint32x4_add);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_sub, SIMD_Uint32x4_sub);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_mul, SIMD_Uint32x4_mul);
+// n.b. No emscripten_uint32x4_div, division is only defined on floating point types.
+// n.b. No emscripten_uint32x4_max, only defined on floating point types.
+// n.b. No emscripten_uint32x4_min, only defined on floating point types.
+// n.b. No emscripten_uint32x4_maxNum, only defined on floating point types.
+// n.b. No emscripten_uint32x4_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_neg, SIMD_Uint32x4_neg);
+// n.b. No emscripten_uint32x4_sqrt, only defined on floating point types.
+// n.b. No emscripten_uint32x4_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_uint32x4_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_uint32x4_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_and, SIMD_Uint32x4_and);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_xor, SIMD_Uint32x4_xor);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_or, SIMD_Uint32x4_or);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_not, SIMD_Uint32x4_not);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_lessThan, SIMD_Uint32x4_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_lessThanOrEqual, SIMD_Uint32x4_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_greaterThan, SIMD_Uint32x4_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_greaterThanOrEqual, SIMD_Uint32x4_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_equal, SIMD_Uint32x4_equal);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_notEqual, SIMD_Uint32x4_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_select, SIMD_Uint32x4_select);
+// n.b. No emscripten_uint32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+// n.b. No emscripten_uint32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_shiftLeftByScalar, SIMD_Uint32x4_shiftLeftByScalar);
+DEF_CALL_HANDLER(emscripten_uint32x4_shiftRightByScalar, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Int32x4_fromUint32x4Bits(SIMD_Uint32x4_shiftRightByScalar(SIMD_Uint32x4_fromInt32x4Bits(" + getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
+})
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_extractLane, SIMD_Uint32x4_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_replaceLane, SIMD_Uint32x4_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_store, SIMD_Uint32x4_store);
+DEF_CALL_HANDLER(emscripten_uint32x4_store1, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Uint32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_uint32x4_store2, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Uint32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_uint32x4_store3, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Uint32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_load, SIMD_Uint32x4_load);
+DEF_CALL_HANDLER(emscripten_uint32x4_load1, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Uint32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_uint32x4_load2, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Uint32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_uint32x4_load3, {
+  UsesSIMDInt32x4 = true;
+  return getAssign(CI) + "SIMD_Uint32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat64x2Bits, SIMD_Uint32x4_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat32x4Bits, SIMD_Uint32x4_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromInt32x4Bits, SIMD_Uint32x4_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromInt16x8Bits, SIMD_Uint32x4_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromUint16x8Bits, SIMD_Uint32x4_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromInt8x16Bits, SIMD_Uint32x4_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromUint8x16Bits, SIMD_Uint32x4_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat32x4, SIMD_Uint32x4_fromFloat32x4);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromInt32x4, SIMD_Uint32x4_fromInt32x4);
+// TODO: emscripten_uint32x4_fromFloat64x2?
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_swizzle, SIMD_Uint32x4_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_uint32x4_shuffle, SIMD_Uint32x4_shuffle);
+
+// SIMD.js Int16x8
+DEF_BUILTIN_HANDLER(emscripten_int16x8_set, SIMD_Int16x8);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_splat, SIMD_Int16x8_splat);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_add, SIMD_Int16x8_add);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_sub, SIMD_Int16x8_sub);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_mul, SIMD_Int16x8_mul);
+// n.b. No emscripten_int16x8_div, division is only defined on floating point types.
+// n.b. No emscripten_int16x8_max, only defined on floating point types.
+// n.b. No emscripten_int16x8_min, only defined on floating point types.
+// n.b. No emscripten_int16x8_maxNum, only defined on floating point types.
+// n.b. No emscripten_int16x8_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int16x8_neg, SIMD_Int16x8_neg);
+// n.b. No emscripten_int16x8_sqrt, only defined on floating point types.
+// n.b. No emscripten_int16x8_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_int16x8_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_int16x8_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int16x8_and, SIMD_Int16x8_and);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_xor, SIMD_Int16x8_xor);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_or, SIMD_Int16x8_or);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_not, SIMD_Int16x8_not);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_lessThan, SIMD_Int16x8_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_lessThanOrEqual, SIMD_Int16x8_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_greaterThan, SIMD_Int16x8_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_greaterThanOrEqual, SIMD_Int16x8_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_equal, SIMD_Int16x8_equal);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_notEqual, SIMD_Int16x8_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_select, SIMD_Int16x8_select);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_addSaturate, SIMD_Int16x8_addSaturate);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_subSaturate, SIMD_Int16x8_subSaturate);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftLeftByScalar, SIMD_Int16x8_shiftLeftByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftRightByScalar, SIMD_Int16x8_shiftRightByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_extractLane, SIMD_Int16x8_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_replaceLane, SIMD_Int16x8_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_store, SIMD_Int16x8_store);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_load, SIMD_Int16x8_load);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat64x2Bits, SIMD_Int16x8_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat32x4Bits, SIMD_Int16x8_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromInt32x4Bits, SIMD_Int16x8_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromUint32x4Bits, SIMD_Int16x8_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromUint16x8Bits, SIMD_Int16x8_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromInt8x16Bits, SIMD_Int16x8_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromUint8x16Bits, SIMD_Int16x8_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_fromUint16x8, SIMD_Int16x8_fromUint16x8);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_swizzle, SIMD_Int16x8_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_int16x8_shuffle, SIMD_Int16x8_shuffle);
+
+// SIMD.js Uint16x8
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_set, SIMD_Uint16x8);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_splat, SIMD_Uint16x8_splat);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_add, SIMD_Uint16x8_add);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_sub, SIMD_Uint16x8_sub);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_mul, SIMD_Uint16x8_mul);
+// n.b. No emscripten_uint16x8_div, division is only defined on floating point types.
+// n.b. No emscripten_uint16x8_max, only defined on floating point types.
+// n.b. No emscripten_uint16x8_min, only defined on floating point types.
+// n.b. No emscripten_uint16x8_maxNum, only defined on floating point types.
+// n.b. No emscripten_uint16x8_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_neg, SIMD_Uint16x8_neg);
+// n.b. No emscripten_uint16x8_sqrt, only defined on floating point types.
+// n.b. No emscripten_uint16x8_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_uint16x8_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_uint16x8_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_and, SIMD_Uint16x8_and);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_xor, SIMD_Uint16x8_xor);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_or, SIMD_Uint16x8_or);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_not, SIMD_Uint16x8_not);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_lessThan, SIMD_Uint16x8_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_lessThanOrEqual, SIMD_Uint16x8_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_greaterThan, SIMD_Uint16x8_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_greaterThanOrEqual, SIMD_Uint16x8_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_equal, SIMD_Uint16x8_equal);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_notEqual, SIMD_Uint16x8_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_select, SIMD_Uint16x8_select);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_addSaturate, SIMD_Uint16x8_addSaturate);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_subSaturate, SIMD_Uint16x8_subSaturate);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_shiftLeftByScalar, SIMD_Uint16x8_shiftLeftByScalar);
+DEF_CALL_HANDLER(emscripten_uint16x8_shiftRightByScalar, {
+  UsesSIMDInt16x8 = true;
+  return getAssign(CI) + "SIMD_Int16x8_fromUint16x8Bits(SIMD_Uint16x8_shiftRightByScalar(SIMD_Uint16x8_fromInt16x8Bits(" + getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
+})
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_extractLane, SIMD_Uint16x8_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_replaceLane, SIMD_Uint16x8_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_store, SIMD_Uint16x8_store);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_load, SIMD_Uint16x8_load);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromFloat64x2Bits, SIMD_Uint16x8_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromFloat32x4Bits, SIMD_Uint16x8_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromInt32x4Bits, SIMD_Uint16x8_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromUint32x4Bits, SIMD_Uint16x8_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromInt16x8Bits, SIMD_Uint16x8_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromInt8x16Bits, SIMD_Uint16x8_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromUint8x16Bits, SIMD_Uint16x8_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_fromInt16x8, SIMD_Uint16x8_fromInt16x8);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_swizzle, SIMD_Uint16x8_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_uint16x8_shuffle, SIMD_Uint16x8_shuffle);
+
+// SIMD.js Int8x16
+DEF_BUILTIN_HANDLER(emscripten_int8x16_set, SIMD_Int8x16);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_splat, SIMD_Int8x16_splat);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_add, SIMD_Int8x16_add);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_sub, SIMD_Int8x16_sub);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_mul, SIMD_Int8x16_mul);
+// n.b. No emscripten_int8x16_div, division is only defined on floating point types.
+// n.b. No emscripten_int8x16_max, only defined on floating point types.
+// n.b. No emscripten_int8x16_min, only defined on floating point types.
+// n.b. No emscripten_int8x16_maxNum, only defined on floating point types.
+// n.b. No emscripten_int8x16_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int8x16_neg, SIMD_Int8x16_neg);
+// n.b. No emscripten_int8x16_sqrt, only defined on floating point types.
+// n.b. No emscripten_int8x16_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_int8x16_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_int8x16_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_int8x16_and, SIMD_Int8x16_and);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_xor, SIMD_Int8x16_xor);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_or, SIMD_Int8x16_or);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_not, SIMD_Int8x16_not);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_lessThan, SIMD_Int8x16_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_lessThanOrEqual, SIMD_Int8x16_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_greaterThan, SIMD_Int8x16_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_greaterThanOrEqual, SIMD_Int8x16_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_equal, SIMD_Int8x16_equal);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_notEqual, SIMD_Int8x16_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_select, SIMD_Int8x16_select);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_addSaturate, SIMD_Int8x16_addSaturate);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_subSaturate, SIMD_Int8x16_subSaturate);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftLeftByScalar, SIMD_Int8x16_shiftLeftByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftRightByScalar, SIMD_Int8x16_shiftRightByScalar);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_extractLane, SIMD_Int8x16_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_replaceLane, SIMD_Int8x16_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_store, SIMD_Int8x16_store);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_load, SIMD_Int8x16_load);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat64x2Bits, SIMD_Int8x16_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat32x4Bits, SIMD_Int8x16_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromInt32x4Bits, SIMD_Int8x16_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromUint32x4Bits, SIMD_Int8x16_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromInt16x8Bits, SIMD_Int8x16_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromUint16x8Bits, SIMD_Int8x16_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromUint8x16Bits, SIMD_Int8x16_fromUint8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_fromUint8x16, SIMD_Int8x16_fromUint8x16);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_swizzle, SIMD_Int8x16_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_int8x16_shuffle, SIMD_Int8x16_shuffle);
+
+// SIMD.js Uint8x16
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_set, SIMD_Uint8x16);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_splat, SIMD_Uint8x16_splat);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_add, SIMD_Uint8x16_add);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_sub, SIMD_Uint8x16_sub);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_mul, SIMD_Uint8x16_mul);
+// n.b. No emscripten_uint8x16_div, division is only defined on floating point types.
+// n.b. No emscripten_uint8x16_max, only defined on floating point types.
+// n.b. No emscripten_uint8x16_min, only defined on floating point types.
+// n.b. No emscripten_uint8x16_maxNum, only defined on floating point types.
+// n.b. No emscripten_uint8x16_minNum, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_neg, SIMD_Uint8x16_neg);
+// n.b. No emscripten_uint8x16_sqrt, only defined on floating point types.
+// n.b. No emscripten_uint8x16_reciprocalApproximation, only defined on floating point types.
+// n.b. No emscripten_uint8x16_reciprocalSqrtApproximation, only defined on floating point types.
+// n.b. No emscripten_uint8x16_abs, only defined on floating point types.
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_and, SIMD_Uint8x16_and);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_xor, SIMD_Uint8x16_xor);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_or, SIMD_Uint8x16_or);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_not, SIMD_Uint8x16_not);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_lessThan, SIMD_Uint8x16_lessThan);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_lessThanOrEqual, SIMD_Uint8x16_lessThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_greaterThan, SIMD_Uint8x16_greaterThan);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_greaterThanOrEqual, SIMD_Uint8x16_greaterThanOrEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_equal, SIMD_Uint8x16_equal);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_notEqual, SIMD_Uint8x16_notEqual);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_select, SIMD_Uint8x16_select);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_addSaturate, SIMD_Uint8x16_addSaturate);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_subSaturate, SIMD_Uint8x16_subSaturate);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_shiftLeftByScalar, SIMD_Uint8x16_shiftLeftByScalar);
+DEF_CALL_HANDLER(emscripten_uint8x16_shiftRightByScalar, {
+  UsesSIMDInt8x16 = true;
+  return getAssign(CI) + "SIMD_Int8x16_fromUint8x16Bits(SIMD_Uint8x16_shiftRightByScalar(SIMD_Uint8x16_fromInt8x16Bits(" + getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
+})
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_extractLane, SIMD_Uint8x16_extractLane);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_replaceLane, SIMD_Uint8x16_replaceLane);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_store, SIMD_Uint8x16_store);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_load, SIMD_Uint8x16_load);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromFloat64x2Bits, SIMD_Uint8x16_fromFloat64x2Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromFloat32x4Bits, SIMD_Uint8x16_fromFloat32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromInt32x4Bits, SIMD_Uint8x16_fromInt32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromUint32x4Bits, SIMD_Uint8x16_fromUint32x4Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromInt16x8Bits, SIMD_Uint8x16_fromInt16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromUint16x8Bits, SIMD_Uint8x16_fromUint16x8Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromInt8x16Bits, SIMD_Uint8x16_fromInt8x16Bits);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_fromInt8x16, SIMD_Uint8x16_fromInt8x16);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_swizzle, SIMD_Uint8x16_swizzle);
+DEF_BUILTIN_HANDLER(emscripten_uint8x16_shuffle, SIMD_Uint8x16_shuffle);
+
+// SIMD.js Bool64x2
+DEF_BUILTIN_HANDLER(emscripten_bool64x2_anyTrue, SIMD_Bool64x2_anyTrue);
+DEF_BUILTIN_HANDLER(emscripten_bool64x2_allTrue, SIMD_Bool64x2_allTrue);
+
+// SIMD.js Bool32x4
+DEF_BUILTIN_HANDLER(emscripten_bool32x4_anyTrue, SIMD_Bool32x4_anyTrue);
+DEF_BUILTIN_HANDLER(emscripten_bool32x4_allTrue, SIMD_Bool32x4_allTrue);
+
+// SIMD.js Bool16x8
+DEF_BUILTIN_HANDLER(emscripten_bool16x8_anyTrue, SIMD_Bool16x8_anyTrue);
+DEF_BUILTIN_HANDLER(emscripten_bool16x8_allTrue, SIMD_Bool16x8_allTrue);
+
+// SIMD.js Bool8x16
+DEF_BUILTIN_HANDLER(emscripten_bool8x16_anyTrue, SIMD_Bool8x16_anyTrue);
+DEF_BUILTIN_HANDLER(emscripten_bool8x16_allTrue, SIMD_Bool8x16_allTrue);
+
+DEF_CALL_HANDLER(emscripten_atomic_fence, {
+  return "/* fence */";
 })
 
 // Setups
@@ -961,78 +1311,431 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(llvm_ctlz_i32);
   SETUP_CALL_HANDLER(llvm_cttz_i32);
-  SETUP_CALL_HANDLER(emscripten_float32x4_signmask);
-  SETUP_CALL_HANDLER(emscripten_float32x4_min);
-  SETUP_CALL_HANDLER(emscripten_float32x4_minNum);
-  SETUP_CALL_HANDLER(emscripten_float32x4_max);
-  SETUP_CALL_HANDLER(emscripten_float32x4_maxNum);
-  SETUP_CALL_HANDLER(emscripten_float32x4_abs);
-  SETUP_CALL_HANDLER(emscripten_float32x4_sqrt);
-  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalApproximation);
-  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation);
-  SETUP_CALL_HANDLER(emscripten_float32x4_select);
-  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
 
-  SETUP_CALL_HANDLER(emscripten_float64x2_min);
-  SETUP_CALL_HANDLER(emscripten_float64x2_minNum);
+  // SIMD.js Float64x2
+  SETUP_CALL_HANDLER(emscripten_float64x2_set);
+  SETUP_CALL_HANDLER(emscripten_float64x2_splat);
+  SETUP_CALL_HANDLER(emscripten_float64x2_add);
+  SETUP_CALL_HANDLER(emscripten_float64x2_sub);
+  SETUP_CALL_HANDLER(emscripten_float64x2_mul);
+  SETUP_CALL_HANDLER(emscripten_float64x2_div);
   SETUP_CALL_HANDLER(emscripten_float64x2_max);
+  SETUP_CALL_HANDLER(emscripten_float64x2_min);
   SETUP_CALL_HANDLER(emscripten_float64x2_maxNum);
-  SETUP_CALL_HANDLER(emscripten_float64x2_abs);
+  SETUP_CALL_HANDLER(emscripten_float64x2_minNum);
+  SETUP_CALL_HANDLER(emscripten_float64x2_neg);
   SETUP_CALL_HANDLER(emscripten_float64x2_sqrt);
   SETUP_CALL_HANDLER(emscripten_float64x2_reciprocalApproximation);
   SETUP_CALL_HANDLER(emscripten_float64x2_reciprocalSqrtApproximation);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt8x16Bits);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt16x8Bits);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt32x4);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromFloat32x4);
-  SETUP_CALL_HANDLER(emscripten_float64x2_fromFloat32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_float64x2_min);
-  SETUP_CALL_HANDLER(emscripten_float64x2_minNum);
-  SETUP_CALL_HANDLER(emscripten_float64x2_max);
-  SETUP_CALL_HANDLER(emscripten_float64x2_maxNum);
-  SETUP_CALL_HANDLER(emscripten_float64x2_equal);
-  SETUP_CALL_HANDLER(emscripten_float64x2_notEqual);
+  SETUP_CALL_HANDLER(emscripten_float64x2_abs);
+  // n.b. No emscripten_float64x2_and, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float64x2_xor, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float64x2_or, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float64x2_not, only defined on boolean and integer SIMD types.
   SETUP_CALL_HANDLER(emscripten_float64x2_lessThan);
   SETUP_CALL_HANDLER(emscripten_float64x2_lessThanOrEqual);
   SETUP_CALL_HANDLER(emscripten_float64x2_greaterThan);
   SETUP_CALL_HANDLER(emscripten_float64x2_greaterThanOrEqual);
-  SETUP_CALL_HANDLER(emscripten_float64x2_and);
-  SETUP_CALL_HANDLER(emscripten_float64x2_or);
-  SETUP_CALL_HANDLER(emscripten_float64x2_xor);
+  SETUP_CALL_HANDLER(emscripten_float64x2_equal);
+  SETUP_CALL_HANDLER(emscripten_float64x2_notEqual);
+  // n.b. No emscripten_float64x2_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_float64x2_allTrue, only defined on boolean SIMD types.
   SETUP_CALL_HANDLER(emscripten_float64x2_select);
+  // n.b. No emscripten_float64x2_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_float64x2_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_float64x2_shiftLeftByScalar, only defined on integer SIMD types.
+  // n.b. No emscripten_float64x2_shiftRightByScalar, only defined on integer SIMD types.
+  SETUP_CALL_HANDLER(emscripten_float64x2_extractLane);
+  SETUP_CALL_HANDLER(emscripten_float64x2_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_float64x2_store);
+  SETUP_CALL_HANDLER(emscripten_float64x2_store1);
+  SETUP_CALL_HANDLER(emscripten_float64x2_load);
+  SETUP_CALL_HANDLER(emscripten_float64x2_load1);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_float64x2_swizzle);
+  SETUP_CALL_HANDLER(emscripten_float64x2_shuffle);
 
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat64x2Bits);
-  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat64x2);
-  SETUP_CALL_HANDLER(emscripten_int8x16_shiftLeftByScalar);
-  SETUP_CALL_HANDLER(emscripten_int8x16_shiftRightLogicalByScalar);
-  SETUP_CALL_HANDLER(emscripten_int8x16_shiftRightArithmeticByScalar);
-  SETUP_CALL_HANDLER(emscripten_int8x16_not);
-  SETUP_CALL_HANDLER(emscripten_int8x16_and);
-  SETUP_CALL_HANDLER(emscripten_int8x16_or);
-  SETUP_CALL_HANDLER(emscripten_int8x16_xor);
-  SETUP_CALL_HANDLER(emscripten_int16x8_shiftLeftByScalar);
-  SETUP_CALL_HANDLER(emscripten_int16x8_shiftRightLogicalByScalar);
-  SETUP_CALL_HANDLER(emscripten_int16x8_shiftRightArithmeticByScalar);
-  SETUP_CALL_HANDLER(emscripten_int16x8_not);
-  SETUP_CALL_HANDLER(emscripten_int16x8_and);
-  SETUP_CALL_HANDLER(emscripten_int16x8_or);
-  SETUP_CALL_HANDLER(emscripten_int16x8_xor);
-  SETUP_CALL_HANDLER(emscripten_int32x4_shiftLeftByScalar);
-  SETUP_CALL_HANDLER(emscripten_int32x4_shiftRightLogicalByScalar);
-  SETUP_CALL_HANDLER(emscripten_int32x4_shiftRightArithmeticByScalar);
-  SETUP_CALL_HANDLER(emscripten_int32x4_not);
-  SETUP_CALL_HANDLER(emscripten_int32x4_and);
-  SETUP_CALL_HANDLER(emscripten_int32x4_or);
-  SETUP_CALL_HANDLER(emscripten_int32x4_xor);
-  SETUP_CALL_HANDLER(emscripten_float32x4_load1);
-  SETUP_CALL_HANDLER(emscripten_float32x4_load2);
+  // SIMD.js Float32x4
+  SETUP_CALL_HANDLER(emscripten_float32x4_set);
+  SETUP_CALL_HANDLER(emscripten_float32x4_splat);
+  SETUP_CALL_HANDLER(emscripten_float32x4_add);
+  SETUP_CALL_HANDLER(emscripten_float32x4_sub);
+  SETUP_CALL_HANDLER(emscripten_float32x4_mul);
+  SETUP_CALL_HANDLER(emscripten_float32x4_div);
+  SETUP_CALL_HANDLER(emscripten_float32x4_max);
+  SETUP_CALL_HANDLER(emscripten_float32x4_min);
+  SETUP_CALL_HANDLER(emscripten_float32x4_maxNum);
+  SETUP_CALL_HANDLER(emscripten_float32x4_minNum);
+  SETUP_CALL_HANDLER(emscripten_float32x4_neg);
+  SETUP_CALL_HANDLER(emscripten_float32x4_sqrt);
+  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalApproximation);
+  SETUP_CALL_HANDLER(emscripten_float32x4_reciprocalSqrtApproximation);
+  SETUP_CALL_HANDLER(emscripten_float32x4_abs);
+  // n.b. No emscripten_float32x4_and, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float32x4_xor, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float32x4_or, only defined on boolean and integer SIMD types.
+  // n.b. No emscripten_float32x4_not, only defined on boolean and integer SIMD types.
+  SETUP_CALL_HANDLER(emscripten_float32x4_lessThan);
+  SETUP_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_float32x4_equal);
+  SETUP_CALL_HANDLER(emscripten_float32x4_notEqual);
+  // n.b. No emscripten_float32x4_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_float32x4_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_float32x4_select);
+  // n.b. No emscripten_float32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_float32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_float32x4_shiftLeftByScalar, only defined on integer SIMD types.
+  // n.b. No emscripten_float32x4_shiftRightByScalar, only defined on integer SIMD types.
+  SETUP_CALL_HANDLER(emscripten_float32x4_extractLane);
+  SETUP_CALL_HANDLER(emscripten_float32x4_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_float32x4_store);
   SETUP_CALL_HANDLER(emscripten_float32x4_store1);
   SETUP_CALL_HANDLER(emscripten_float32x4_store2);
+  SETUP_CALL_HANDLER(emscripten_float32x4_store3);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load1);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load2);
+  SETUP_CALL_HANDLER(emscripten_float32x4_load3);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromInt32x4);
+  SETUP_CALL_HANDLER(emscripten_float32x4_fromUint32x4);
+  SETUP_CALL_HANDLER(emscripten_float32x4_swizzle);
+  SETUP_CALL_HANDLER(emscripten_float32x4_shuffle);
+
+  // SIMD.js Int32x4
+  SETUP_CALL_HANDLER(emscripten_int32x4_set);
+  SETUP_CALL_HANDLER(emscripten_int32x4_splat);
+  SETUP_CALL_HANDLER(emscripten_int32x4_add);
+  SETUP_CALL_HANDLER(emscripten_int32x4_sub);
+  SETUP_CALL_HANDLER(emscripten_int32x4_mul);
+  // n.b. No emscripten_int32x4_div, division is only defined on floating point types.
+  // n.b. No emscripten_int32x4_max, only defined on floating point types.
+  // n.b. No emscripten_int32x4_min, only defined on floating point types.
+  // n.b. No emscripten_int32x4_maxNum, only defined on floating point types.
+  // n.b. No emscripten_int32x4_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int32x4_neg);
+  // n.b. No emscripten_int32x4_sqrt, only defined on floating point types.
+  // n.b. No emscripten_int32x4_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_int32x4_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_int32x4_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int32x4_and);
+  SETUP_CALL_HANDLER(emscripten_int32x4_xor);
+  SETUP_CALL_HANDLER(emscripten_int32x4_or);
+  SETUP_CALL_HANDLER(emscripten_int32x4_not);
+  SETUP_CALL_HANDLER(emscripten_int32x4_lessThan);
+  SETUP_CALL_HANDLER(emscripten_int32x4_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int32x4_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_int32x4_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int32x4_equal);
+  SETUP_CALL_HANDLER(emscripten_int32x4_notEqual);
+  // n.b. No emscripten_int32x4_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_int32x4_allTrue, only defined on boolean SIMD types.
   SETUP_CALL_HANDLER(emscripten_int32x4_select);
+  // n.b. No emscripten_int32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_int32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  SETUP_CALL_HANDLER(emscripten_int32x4_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_int32x4_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_int32x4_extractLane);
+  SETUP_CALL_HANDLER(emscripten_int32x4_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_int32x4_store);
+  SETUP_CALL_HANDLER(emscripten_int32x4_store1);
+  SETUP_CALL_HANDLER(emscripten_int32x4_store2);
+  SETUP_CALL_HANDLER(emscripten_int32x4_store3);
+  SETUP_CALL_HANDLER(emscripten_int32x4_load);
+  SETUP_CALL_HANDLER(emscripten_int32x4_load1);
+  SETUP_CALL_HANDLER(emscripten_int32x4_load2);
+  SETUP_CALL_HANDLER(emscripten_int32x4_load3);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_int32x4_fromUint32x4);
+//  SETUP_CALL_HANDLER(emscripten_int32x4_fromFloat64x2); // TODO: Unofficial extension
+  SETUP_CALL_HANDLER(emscripten_int32x4_swizzle);
+  SETUP_CALL_HANDLER(emscripten_int32x4_shuffle);
+
+  // SIMD.js Uint32x4
+  SETUP_CALL_HANDLER(emscripten_uint32x4_set);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_splat);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_add);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_sub);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_mul);
+  // n.b. No emscripten_uint32x4_div, division is only defined on floating point types.
+  // n.b. No emscripten_uint32x4_max, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_min, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_maxNum, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint32x4_neg);
+  // n.b. No emscripten_uint32x4_sqrt, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint32x4_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint32x4_and);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_xor);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_or);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_not);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_lessThan);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_equal);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_notEqual);
+  // n.b. No emscripten_uint32x4_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_uint32x4_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_uint32x4_select);
+  // n.b. No emscripten_uint32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  // n.b. No emscripten_uint32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
+  SETUP_CALL_HANDLER(emscripten_uint32x4_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_extractLane);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_store);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_store1);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_store2);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_store3);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_load);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_load1);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_load2);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_load3);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromFloat32x4);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_fromInt32x4);
+  //  SETUP_CALL_HANDLER(emscripten_uint32x4_fromFloat64x2); // TODO: Unofficial extension
+  SETUP_CALL_HANDLER(emscripten_uint32x4_swizzle);
+  SETUP_CALL_HANDLER(emscripten_uint32x4_shuffle);
+
+  // SIMD.js Int16x8
+  SETUP_CALL_HANDLER(emscripten_int16x8_set);
+  SETUP_CALL_HANDLER(emscripten_int16x8_splat);
+  SETUP_CALL_HANDLER(emscripten_int16x8_add);
+  SETUP_CALL_HANDLER(emscripten_int16x8_sub);
+  SETUP_CALL_HANDLER(emscripten_int16x8_mul);
+  // n.b. No emscripten_int16x8_div, division is only defined on floating point types.
+  // n.b. No emscripten_int16x8_max, only defined on floating point types.
+  // n.b. No emscripten_int16x8_min, only defined on floating point types.
+  // n.b. No emscripten_int16x8_maxNum, only defined on floating point types.
+  // n.b. No emscripten_int16x8_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int16x8_neg);
+  // n.b. No emscripten_int16x8_sqrt, only defined on floating point types.
+  // n.b. No emscripten_int16x8_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_int16x8_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_int16x8_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int16x8_and);
+  SETUP_CALL_HANDLER(emscripten_int16x8_xor);
+  SETUP_CALL_HANDLER(emscripten_int16x8_or);
+  SETUP_CALL_HANDLER(emscripten_int16x8_not);
+  SETUP_CALL_HANDLER(emscripten_int16x8_lessThan);
+  SETUP_CALL_HANDLER(emscripten_int16x8_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int16x8_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_int16x8_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int16x8_equal);
+  SETUP_CALL_HANDLER(emscripten_int16x8_notEqual);
+  // n.b. No emscripten_int16x8_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_int16x8_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_int16x8_select);
+  SETUP_CALL_HANDLER(emscripten_int16x8_addSaturate);
+  SETUP_CALL_HANDLER(emscripten_int16x8_subSaturate);
+  SETUP_CALL_HANDLER(emscripten_int16x8_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_int16x8_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_int16x8_extractLane);
+  SETUP_CALL_HANDLER(emscripten_int16x8_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_int16x8_store);
+  SETUP_CALL_HANDLER(emscripten_int16x8_load);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_int16x8_fromUint16x8);
+  SETUP_CALL_HANDLER(emscripten_int16x8_swizzle);
+  SETUP_CALL_HANDLER(emscripten_int16x8_shuffle);
+
+  // SIMD.js Uint16x8
+  SETUP_CALL_HANDLER(emscripten_uint16x8_set);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_splat);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_add);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_sub);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_mul);
+  // n.b. No emscripten_uint16x8_div, division is only defined on floating point types.
+  // n.b. No emscripten_uint16x8_max, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_min, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_maxNum, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint16x8_neg);
+  // n.b. No emscripten_uint16x8_sqrt, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint16x8_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint16x8_and);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_xor);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_or);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_not);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_lessThan);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_equal);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_notEqual);
+  // n.b. No emscripten_uint16x8_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_uint16x8_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_uint16x8_select);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_addSaturate);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_subSaturate);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_extractLane);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_store);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_load);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_fromInt16x8);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_swizzle);
+  SETUP_CALL_HANDLER(emscripten_uint16x8_shuffle);
+
+  // SIMD.js Int8x16
+  SETUP_CALL_HANDLER(emscripten_int8x16_set);
+  SETUP_CALL_HANDLER(emscripten_int8x16_splat);
+  SETUP_CALL_HANDLER(emscripten_int8x16_add);
+  SETUP_CALL_HANDLER(emscripten_int8x16_sub);
+  SETUP_CALL_HANDLER(emscripten_int8x16_mul);
+  // n.b. No emscripten_int8x16_div, division is only defined on floating point types.
+  // n.b. No emscripten_int8x16_max, only defined on floating point types.
+  // n.b. No emscripten_int8x16_min, only defined on floating point types.
+  // n.b. No emscripten_int8x16_maxNum, only defined on floating point types.
+  // n.b. No emscripten_int8x16_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int8x16_neg);
+  // n.b. No emscripten_int8x16_sqrt, only defined on floating point types.
+  // n.b. No emscripten_int8x16_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_int8x16_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_int8x16_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_int8x16_and);
+  SETUP_CALL_HANDLER(emscripten_int8x16_xor);
+  SETUP_CALL_HANDLER(emscripten_int8x16_or);
+  SETUP_CALL_HANDLER(emscripten_int8x16_not);
+  SETUP_CALL_HANDLER(emscripten_int8x16_lessThan);
+  SETUP_CALL_HANDLER(emscripten_int8x16_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int8x16_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_int8x16_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_int8x16_equal);
+  SETUP_CALL_HANDLER(emscripten_int8x16_notEqual);
+  // n.b. No emscripten_int8x16_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_int8x16_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_int8x16_select);
+  SETUP_CALL_HANDLER(emscripten_int8x16_addSaturate);
+  SETUP_CALL_HANDLER(emscripten_int8x16_subSaturate);
+  SETUP_CALL_HANDLER(emscripten_int8x16_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_int8x16_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_int8x16_extractLane);
+  SETUP_CALL_HANDLER(emscripten_int8x16_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_int8x16_store);
+  SETUP_CALL_HANDLER(emscripten_int8x16_load);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromUint8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_int8x16_fromUint8x16);
+  SETUP_CALL_HANDLER(emscripten_int8x16_swizzle);
+  SETUP_CALL_HANDLER(emscripten_int8x16_shuffle);
+
+  // SIMD.js Uint8x16
+  SETUP_CALL_HANDLER(emscripten_uint8x16_set);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_splat);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_add);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_sub);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_mul);
+  // n.b. No emscripten_uint8x16_div, division is only defined on floating point types.
+  // n.b. No emscripten_uint8x16_max, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_min, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_maxNum, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_minNum, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint8x16_neg);
+  // n.b. No emscripten_uint8x16_sqrt, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_reciprocalApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_reciprocalSqrtApproximation, only defined on floating point types.
+  // n.b. No emscripten_uint8x16_abs, only defined on floating point types.
+  SETUP_CALL_HANDLER(emscripten_uint8x16_and);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_xor);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_or);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_not);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_lessThan);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_lessThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_greaterThan);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_greaterThanOrEqual);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_equal);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_notEqual);
+  // n.b. No emscripten_uint8x16_anyTrue, only defined on boolean SIMD types.
+  // n.b. No emscripten_uint8x16_allTrue, only defined on boolean SIMD types.
+  SETUP_CALL_HANDLER(emscripten_uint8x16_select);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_addSaturate);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_subSaturate);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_shiftLeftByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_shiftRightByScalar);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_extractLane);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_replaceLane);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_store);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_load);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromFloat64x2Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromFloat32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromInt32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromUint32x4Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromInt16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromUint16x8Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromInt8x16Bits);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_fromInt8x16);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_swizzle);
+  SETUP_CALL_HANDLER(emscripten_uint8x16_shuffle);
+
+  // SIMD.js Bool64x2
+  SETUP_CALL_HANDLER(emscripten_bool64x2_anyTrue);
+  SETUP_CALL_HANDLER(emscripten_bool64x2_allTrue);
+
+  // SIMD.js Bool32x4
+  SETUP_CALL_HANDLER(emscripten_bool32x4_anyTrue);
+  SETUP_CALL_HANDLER(emscripten_bool32x4_allTrue);
+
+  // SIMD.js Bool16x8
+  SETUP_CALL_HANDLER(emscripten_bool16x8_anyTrue);
+  SETUP_CALL_HANDLER(emscripten_bool16x8_allTrue);
+
+  // SIMD.js Bool8x16
+  SETUP_CALL_HANDLER(emscripten_bool8x16_anyTrue);
+  SETUP_CALL_HANDLER(emscripten_bool8x16_allTrue);
+
   SETUP_CALL_HANDLER(emscripten_asm_const);
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
