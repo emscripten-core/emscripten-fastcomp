@@ -490,18 +490,6 @@ static bool ExpandExtractValues(Function &Func) {
     }
   }
 
-  // Delete the insertvalue instructions.  These can reference each
-  // other, so we must do dropAllReferences() before doing
-  // eraseFromParent(), otherwise we will try to erase instructions
-  // that are still referenced.
-  for (Instruction *I : ToErase) {
-    I->dropAllReferences();
-  }
-
-  for (Instruction *I : ToErase) {
-    I->eraseFromParent();
-  }
-
   return Changed;
 }
 
