@@ -855,7 +855,10 @@ DEF_CALL_HANDLER(emscripten_float32x4_select, {
 // n.b. No emscripten_float32x4_shiftRightByScalar, only defined on integer SIMD types.
 DEF_BUILTIN_HANDLER(emscripten_float32x4_extractLane, SIMD_Float32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_replaceLane, SIMD_Float32x4_replaceLane);
-DEF_BUILTIN_HANDLER(emscripten_float32x4_store, SIMD_Float32x4_store);
+DEF_CALL_HANDLER(emscripten_float32x4_store, {
+  UsesSIMDFloat32x4 = true;
+  return "SIMD_Float32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
 DEF_CALL_HANDLER(emscripten_float32x4_store1, {
   UsesSIMDFloat32x4 = true;
   return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
