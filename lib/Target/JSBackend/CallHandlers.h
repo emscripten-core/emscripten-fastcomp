@@ -1102,13 +1102,36 @@ DEF_BUILTIN_HANDLER(emscripten_int16x8_and, SIMD_Int16x8_and);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_xor, SIMD_Int16x8_xor);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_or, SIMD_Int16x8_or);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_not, SIMD_Int16x8_not);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_lessThan, SIMD_Int16x8_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_lessThanOrEqual, SIMD_Int16x8_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_greaterThan, SIMD_Int16x8_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_greaterThanOrEqual, SIMD_Int16x8_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_equal, SIMD_Int16x8_equal);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_notEqual, SIMD_Int16x8_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_select, SIMD_Int16x8_select);
+DEF_CALL_HANDLER(emscripten_int16x8_lessThan, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_lessThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_greaterThan, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_greaterThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_equal, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_notEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int16x8_select, {
+  // FIXME: We really need a more general way of handling boolean types,
+  // including an optimization to allow more Int16x8 operations to be
+  // translated as Bool16x8 operations.
+  std::string Op;
+  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
+    Op = getValueAsStr(SE->getOperand(0));
+  } else {
+    Op = "SIMD_Int16x8_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int16x8_splat(0))";
+  }
+  return getAssign(CI) + "SIMD_Int16x8_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+})
 DEF_BUILTIN_HANDLER(emscripten_int16x8_addSaturate, SIMD_Int16x8_addSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_subSaturate, SIMD_Int16x8_subSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftLeftByScalar, SIMD_Int16x8_shiftLeftByScalar);
@@ -1197,13 +1220,36 @@ DEF_BUILTIN_HANDLER(emscripten_int8x16_and, SIMD_Int8x16_and);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_xor, SIMD_Int8x16_xor);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_or, SIMD_Int8x16_or);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_not, SIMD_Int8x16_not);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_lessThan, SIMD_Int8x16_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_lessThanOrEqual, SIMD_Int8x16_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_greaterThan, SIMD_Int8x16_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_greaterThanOrEqual, SIMD_Int8x16_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_equal, SIMD_Int8x16_equal);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_notEqual, SIMD_Int8x16_notEqual);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_select, SIMD_Int8x16_select);
+DEF_CALL_HANDLER(emscripten_int8x16_lessThan, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_lessThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_greaterThan, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_greaterThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_equal, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_notEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int8x16_select, {
+  // FIXME: We really need a more general way of handling boolean types,
+  // including an optimization to allow more Int8x16 operations to be
+  // translated as Bool8x16 operations.
+  std::string Op;
+  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
+    Op = getValueAsStr(SE->getOperand(0));
+  } else {
+    Op = "SIMD_Int8x16_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int8x16_splat(0))";
+  }
+  return getAssign(CI) + "SIMD_Int8x16_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+})
 DEF_BUILTIN_HANDLER(emscripten_int8x16_addSaturate, SIMD_Int8x16_addSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_subSaturate, SIMD_Int8x16_subSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftLeftByScalar, SIMD_Int8x16_shiftLeftByScalar);
