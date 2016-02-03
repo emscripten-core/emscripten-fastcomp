@@ -937,7 +937,18 @@ DEF_CALL_HANDLER(emscripten_int32x4_equal, {
 DEF_CALL_HANDLER(emscripten_int32x4_notEqual, {
   return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
 })
-DEF_BUILTIN_HANDLER(emscripten_int32x4_select, SIMD_Int32x4_select);
+DEF_CALL_HANDLER(emscripten_int32x4_select, {
+  // FIXME: We really need a more general way of handling boolean types,
+  // including an optimization to allow more Int32x4 operations to be
+  // translated as Bool32x4 operations.
+  std::string Op;
+  if (SExtInst *SE = dyn_cast<SExtInst>(CI->getOperand(0))) {
+    Op = getValueAsStr(SE->getOperand(0));
+  } else {
+    Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int32x4_splat(0))";
+  }
+  return getAssign(CI) + "SIMD_Int32x4_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+})
 // n.b. No emscripten_int32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
 // n.b. No emscripten_int32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
 DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftLeftByScalar, SIMD_Int32x4_shiftLeftByScalar);
