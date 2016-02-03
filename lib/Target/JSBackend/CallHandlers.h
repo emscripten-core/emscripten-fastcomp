@@ -919,12 +919,24 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_and, SIMD_Int32x4_and);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_xor, SIMD_Int32x4_xor);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_or, SIMD_Int32x4_or);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_not, SIMD_Int32x4_not);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThan, SIMD_Int32x4_lessThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_lessThanOrEqual, SIMD_Int32x4_lessThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThan, SIMD_Int32x4_greaterThan);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_greaterThanOrEqual, SIMD_Int32x4_greaterThanOrEqual);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_equal, SIMD_Int32x4_equal);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_notEqual, SIMD_Int32x4_notEqual);
+DEF_CALL_HANDLER(emscripten_int32x4_lessThan, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int32x4_lessThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int32x4_greaterThan, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int32x4_greaterThanOrEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int32x4_equal, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
+DEF_CALL_HANDLER(emscripten_int32x4_notEqual, {
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+})
 DEF_BUILTIN_HANDLER(emscripten_int32x4_select, SIMD_Int32x4_select);
 // n.b. No emscripten_int32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
 // n.b. No emscripten_int32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
