@@ -1138,8 +1138,14 @@ DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftLeftByScalar, SIMD_Int16x8_shiftLeft
 DEF_BUILTIN_HANDLER(emscripten_int16x8_shiftRightByScalar, SIMD_Int16x8_shiftRightByScalar);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_extractLane, SIMD_Int16x8_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_replaceLane, SIMD_Int16x8_replaceLane);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_store, SIMD_Int16x8_store);
-DEF_BUILTIN_HANDLER(emscripten_int16x8_load, SIMD_Int16x8_load);
+DEF_CALL_HANDLER(emscripten_int16x8_store, {
+  UsesSIMDInt16x8 = true;
+  return "SIMD_Int16x8_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int16x8_load, {
+  UsesSIMDInt16x8 = true;
+  return getAssign(CI) + "SIMD_Int16x8_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat64x2Bits, SIMD_Int16x8_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat32x4Bits, SIMD_Int16x8_fromFloat32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromInt32x4Bits, SIMD_Int16x8_fromInt32x4Bits);
@@ -1256,8 +1262,14 @@ DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftLeftByScalar, SIMD_Int8x16_shiftLeft
 DEF_BUILTIN_HANDLER(emscripten_int8x16_shiftRightByScalar, SIMD_Int8x16_shiftRightByScalar);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_extractLane, SIMD_Int8x16_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_replaceLane, SIMD_Int8x16_replaceLane);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_store, SIMD_Int8x16_store);
-DEF_BUILTIN_HANDLER(emscripten_int8x16_load, SIMD_Int8x16_load);
+DEF_CALL_HANDLER(emscripten_int8x16_store, {
+  UsesSIMDInt8x16 = true;
+  return "SIMD_Int8x16_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
+DEF_CALL_HANDLER(emscripten_int8x16_load, {
+  UsesSIMDInt8x16 = true;
+  return getAssign(CI) + "SIMD_Int8x16_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat64x2Bits, SIMD_Int8x16_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat32x4Bits, SIMD_Int8x16_fromFloat32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromInt32x4Bits, SIMD_Int8x16_fromInt32x4Bits);
