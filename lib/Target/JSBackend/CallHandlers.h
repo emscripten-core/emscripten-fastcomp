@@ -955,7 +955,10 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftLeftByScalar, SIMD_Int32x4_shiftLeft
 DEF_BUILTIN_HANDLER(emscripten_int32x4_shiftRightByScalar, SIMD_Int32x4_shiftRightByScalar);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_extractLane, SIMD_Int32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_replaceLane, SIMD_Int32x4_replaceLane);
-DEF_BUILTIN_HANDLER(emscripten_int32x4_store, SIMD_Int32x4_store);
+DEF_CALL_HANDLER(emscripten_int32x4_store, {
+  UsesSIMDInt32x4 = true;
+  return "SIMD_Int32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
 DEF_CALL_HANDLER(emscripten_int32x4_store1, {
   UsesSIMDInt32x4 = true;
   return "SIMD_Int32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
@@ -1034,7 +1037,10 @@ DEF_CALL_HANDLER(emscripten_uint32x4_shiftRightByScalar, {
 })
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_extractLane, SIMD_Uint32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_replaceLane, SIMD_Uint32x4_replaceLane);
-DEF_BUILTIN_HANDLER(emscripten_uint32x4_store, SIMD_Uint32x4_store);
+DEF_CALL_HANDLER(emscripten_uint32x4_store, {
+  UsesSIMDUint32x4 = true;
+  return "SIMD_Uint32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+})
 DEF_CALL_HANDLER(emscripten_uint32x4_store1, {
   UsesSIMDUint32x4 = true;
   return "SIMD_Uint32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
