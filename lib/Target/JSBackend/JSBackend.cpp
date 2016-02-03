@@ -208,8 +208,11 @@ namespace {
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
 
     std::string CantValidate;
+    bool UsesSIMDUint8x16;
     bool UsesSIMDInt8x16;
+    bool UsesSIMDUint16x8;
     bool UsesSIMDInt16x8;
+    bool UsesSIMDUint32x4;
     bool UsesSIMDInt32x4;
     bool UsesSIMDFloat32x4;
     bool UsesSIMDFloat64x2;
@@ -232,7 +235,8 @@ namespace {
     static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
-        UsesSIMDInt8x16(false), UsesSIMDInt16x8(false), UsesSIMDInt32x4(false),
+        UsesSIMDUint8x16(false), UsesSIMDInt8x16(false), UsesSIMDUint16x8(false),
+        UsesSIMDInt16x8(false), UsesSIMDUint32x4(false), UsesSIMDInt32x4(false),
         UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), UsesSIMDBool8x16(false),
         UsesSIMDBool16x8(false), UsesSIMDBool32x4(false), UsesSIMDBool64x2(false), InvokeState(0),
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
@@ -3317,9 +3321,12 @@ void JSWriter::printModuleBody() {
 
   Out << "\"cantValidate\": \"" << CantValidate << "\",";
 
-  Out << "\"simd\": " << (UsesSIMDInt8x16 || UsesSIMDInt8x16 || UsesSIMDInt32x4 || UsesSIMDFloat32x4 || UsesSIMDFloat64x2 ? "1" : "0") << ",";
+  Out << "\"simd\": " << (UsesSIMDUint8x16 || UsesSIMDInt8x16 || UsesSIMDUint16x8 || UsesSIMDInt16x8 || UsesSIMDUint32x4 || UsesSIMDInt32x4 || UsesSIMDFloat32x4 || UsesSIMDFloat64x2 ? "1" : "0") << ",";
+  Out << "\"simdUint8x16\": " << (UsesSIMDUint8x16 ? "1" : "0") << ",";
   Out << "\"simdInt8x16\": " << (UsesSIMDInt8x16 ? "1" : "0") << ",";
+  Out << "\"simdUint16x8\": " << (UsesSIMDUint16x8 ? "1" : "0") << ",";
   Out << "\"simdInt16x8\": " << (UsesSIMDInt16x8 ? "1" : "0") << ",";
+  Out << "\"simdUint32x4\": " << (UsesSIMDUint32x4 ? "1" : "0") << ",";
   Out << "\"simdInt32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
   Out << "\"simdFloat32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
   Out << "\"simdFloat64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
