@@ -871,7 +871,10 @@ DEF_CALL_HANDLER(emscripten_float32x4_store3, {
   UsesSIMDFloat32x4 = true;
   return "SIMD_Float32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
-DEF_BUILTIN_HANDLER(emscripten_float32x4_load, SIMD_Float32x4_load);
+DEF_CALL_HANDLER(emscripten_float32x4_load, {
+  UsesSIMDFloat32x4 = true;
+  return getAssign(CI) + "SIMD_Float32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+})
 DEF_CALL_HANDLER(emscripten_float32x4_load1, {
   UsesSIMDFloat32x4 = true;
   return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
