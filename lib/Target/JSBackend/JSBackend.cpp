@@ -1837,10 +1837,15 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
     default: I->dump(); error("invalid vector icmp"); break;
   }
 
+  checkVectorType(I->getOperand(0)->getType());
+  checkVectorType(I->getOperand(1)->getType());
+
+  Code << getAssignIfNeeded(I);
+
   if (Invert)
     Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
 
-  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << '_' << Name << '('
+  Code << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << '_' << Name << '('
        << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(1)) << ')';
 
   if (Invert)
@@ -1908,12 +1913,15 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
     default: I->dump(); error("invalid vector fcmp"); break;
   }
 
+  checkVectorType(I->getOperand(0)->getType());
+  checkVectorType(I->getOperand(1)->getType());
+
+  Code << getAssignIfNeeded(I);
+
   if (Invert)
     Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
 
-  checkVectorType(I->getOperand(0)->getType());
-  checkVectorType(I->getOperand(1)->getType());
-  Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_" << Name << "("
+  Code << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_" << Name << "("
        << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
 
   if (Invert)
