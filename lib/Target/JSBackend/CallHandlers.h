@@ -1201,6 +1201,7 @@ DEF_BUILTIN_HANDLER(emscripten_uint16x8_subSaturate, SIMD_Uint16x8_subSaturate);
 DEF_BUILTIN_HANDLER(emscripten_uint16x8_shiftLeftByScalar, SIMD_Uint16x8_shiftLeftByScalar);
 DEF_CALL_HANDLER(emscripten_uint16x8_shiftRightByScalar, {
   UsesSIMDInt16x8 = true;
+  UsesSIMDUint16x8 = true;
   return getAssign(CI) + "SIMD_Int16x8_fromUint16x8Bits(SIMD_Uint16x8_shiftRightByScalar(SIMD_Uint16x8_fromInt16x8Bits(" + getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
 })
 DEF_BUILTIN_HANDLER(emscripten_uint16x8_extractLane, SIMD_Uint16x8_extractLane);
@@ -1325,6 +1326,7 @@ DEF_BUILTIN_HANDLER(emscripten_uint8x16_subSaturate, SIMD_Uint8x16_subSaturate);
 DEF_BUILTIN_HANDLER(emscripten_uint8x16_shiftLeftByScalar, SIMD_Uint8x16_shiftLeftByScalar);
 DEF_CALL_HANDLER(emscripten_uint8x16_shiftRightByScalar, {
   UsesSIMDInt8x16 = true;
+  UsesSIMDUint8x16 = true;
   return getAssign(CI) + "SIMD_Int8x16_fromUint8x16Bits(SIMD_Uint8x16_shiftRightByScalar(SIMD_Uint8x16_fromInt8x16Bits(" + getValueAsStr(CI->getOperand(0)) + "), " + getValueAsStr(CI->getOperand(1)) + "))";
 })
 DEF_BUILTIN_HANDLER(emscripten_uint8x16_extractLane, SIMD_Uint8x16_extractLane);
