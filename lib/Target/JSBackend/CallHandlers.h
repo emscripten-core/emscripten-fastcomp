@@ -2,6 +2,10 @@
 //
 // Each handler needs DEF_CALL_HANDLER and SETUP_CALL_HANDLER
 //
+// Call handlers emit the code that the call will be replaced by. If that
+// emitted code contains calls, it must add the targets to Declares,
+// which are reported as declared but not implemented symbols, so that
+// JS linking brings them in.
 
 typedef std::string (JSWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
@@ -32,7 +36,7 @@ bool canInvoke(const Value *V) {
   const Function *F = dyn_cast<const Function>(V);
   if (F && F->isDeclaration() && F->isIntrinsic()) {
     auto Intrin = F->getIntrinsicID();
-    if (Intrin == Intrinsic::memcpy || Intrin == Intrinsic::memset) {
+    if (Intrin == Intrinsic::memcpy || Intrin == Intrinsic::memset || Intrin == Intrinsic::memmove) {
       return false;
     }
   }
@@ -185,6 +189,7 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
   return Ret;
 })
 DEF_CALL_HANDLER(emscripten_resume, {
+  Declares.insert("__resumeException");
   return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
 })
 
@@ -232,6 +237,7 @@ DEF_CALL_HANDLER(emscripten_get_longjmp_result, {
 
 // supporting async functions, see `<emscripten>/src/library_async.js` for detail.
 DEF_CALL_HANDLER(emscripten_alloc_async_context, {
+  Declares.insert("emscripten_alloc_async_context");
   // insert sp as the 2nd parameter
   return getAssign(CI) + "_emscripten_alloc_async_context(" + getValueAsStr(CI->getOperand(0)) + ",sp)|0";
 })
@@ -501,14 +507,17 @@ DEF_CALL_HANDLER(llvm_flt_rounds, {
 })
 
 DEF_CALL_HANDLER(bitshift64Lshr, {
+  Declares.insert("bitshift64Lshr");
   return CH___default__(CI, "_bitshift64Lshr", 3);
 })
 
 DEF_CALL_HANDLER(bitshift64Ashr, {
+  Declares.insert("bitshift64Ashr");
   return CH___default__(CI, "_bitshift64Ashr", 3);
 })
 
 DEF_CALL_HANDLER(bitshift64Shl, {
+  Declares.insert("bitshift64Shl");
   return CH___default__(CI, "_bitshift64Shl", 3);
 })
 
@@ -517,6 +526,7 @@ DEF_CALL_HANDLER(llvm_ctlz_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_cttz_i32, {
+  Declares.insert("llvm_cttz_i32");
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
@@ -582,12 +592,14 @@ DEF_CALL_HANDLER(emscripten_atomic_load_u32, {
 DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
+  Declares.insert("_Atomics_load_f32_emulated");
   return getAssign(CI) + (PreciseF32 ? "Math_fround(" : "+") + "__Atomics_load_f32_emulated(" + getShiftedPtr(CI->getOperand(0), 4) + (PreciseF32 ? "))" : ")");
 //  return getAssign(CI) + "Atomics_load(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
+  Declares.insert("emscripten_atomic_load_f64");
   return getAssign(CI) + "+_emscripten_atomic_load_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ")";
 //  return getAssign(CI) + "Atomics_load(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ")";
 })
@@ -604,12 +616,14 @@ DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
+  Declares.insert("emscripten_atomic_store_f32");
   return getAssign(CI) + "_emscripten_atomic_store_f32(" + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 //  return getAssign(CI) + "Atomics_store(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
+  Declares.insert("emscripten_atomic_store_f64");
   return getAssign(CI) + "+_emscripten_atomic_store_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 //  return getAssign(CI) + "Atomics_store(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
 })

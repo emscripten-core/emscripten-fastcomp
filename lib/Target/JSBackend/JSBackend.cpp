@@ -3208,6 +3208,17 @@ void JSWriter::printModuleBody() {
           continue;
         }
       }
+      // Do not report methods implemented in a call handler, unless
+      // they are accessed by a function pointer (in which case, we
+      // need the expected name to be available TODO: optimize
+      // that out, call handlers can declare their "function table
+      // name").
+      std::string fullName = std::string("_") + I->getName().str();
+      if (CallHandlers.count(fullName) > 0) {
+        if (IndexedFunctions.find(fullName) == IndexedFunctions.end()) {
+          continue;
+        }
+      }
 
       if (first) {
         first = false;
