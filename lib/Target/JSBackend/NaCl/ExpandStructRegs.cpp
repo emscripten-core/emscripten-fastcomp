@@ -491,17 +491,17 @@ static bool ExpandExtractValues(Function &Func, bool Finalize) {
   }
 
   if (Finalize) {
-	  // Delete the insertvalue instructions. These can reference each
-	  // other, so we must do dropAllReferences() before doing
-	  // eraseFromParent(), otherwise we will try to erase instructions
-	  // that are still referenced.
-	  for (Instruction *I : ToErase) {
-		I->dropAllReferences();
-	  }
+      // Delete the insertvalue instructions. These can reference each
+      // other, so we must do dropAllReferences() before doing
+      // eraseFromParent(), otherwise we will try to erase instructions
+      // that are still referenced.
+      for (Instruction *I : ToErase) {
+        I->dropAllReferences();
+      }
 
-	  for (Instruction *I : ToErase) {
-		  I->eraseFromParent();
-	  }
+      for (Instruction *I : ToErase) {
+          I->eraseFromParent();
+      }
   }
 
   return Changed;
@@ -512,56 +512,56 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
   const DataLayout *DL = &Func.getParent()->getDataLayout();
 
   auto SplitUpInstructions = [&]() {
-	  bool NeedsAnotherPass;
-	  do {
-		NeedsAnotherPass = false;
-		// Split up aggregate loads, stores and phi nodes into operations on
-		// scalar types.  This inserts extractvalue and insertvalue
-		// instructions which we will expand out later.
-		for (Function::iterator BB = Func.begin(), E = Func.end(); BB != E; ++BB) {
-		  for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E;) {
-			Instruction *Inst = &*Iter++;
-			if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
-			  if (Store->getValueOperand()->getType()->isStructTy()) {
-				NeedsAnotherPass |= SplitUpStore(Store, DL);
-				Changed = true;
-			  } else if (Store->getValueOperand()->getType()->isArrayTy()) {
-				NeedsAnotherPass |= SplitUpArrayStore(Store, DL);
-				Changed = true;
-			  }
-			} else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
-			  if (Load->getType()->isStructTy()) {
-				NeedsAnotherPass |= SplitUpLoad(Load, DL);
-				Changed = true;
-			  } else if (Load->getType()->isArrayTy()) {
-				NeedsAnotherPass |= SplitUpArrayLoad(Load, DL);
-				Changed = true;
-			  }
-			} else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
-			  if (Phi->getType()->isStructTy()) {
-				NeedsAnotherPass |= SplitUpPHINode(Phi);
-				Changed = true;
-			  }
-			} else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
-			  if (Select->getType()->isStructTy()) {
-				NeedsAnotherPass |= SplitUpSelect(Select);
-				Changed = true;
-			  }
-			}
-		  }
-		}
-	  } while (NeedsAnotherPass);
+      bool NeedsAnotherPass;
+      do {
+        NeedsAnotherPass = false;
+        // Split up aggregate loads, stores and phi nodes into operations on
+        // scalar types.  This inserts extractvalue and insertvalue
+        // instructions which we will expand out later.
+        for (Function::iterator BB = Func.begin(), E = Func.end(); BB != E; ++BB) {
+          for (BasicBlock::iterator Iter = BB->begin(), E = BB->end(); Iter != E;) {
+            Instruction *Inst = &*Iter++;
+            if (StoreInst *Store = dyn_cast<StoreInst>(Inst)) {
+              if (Store->getValueOperand()->getType()->isStructTy()) {
+                NeedsAnotherPass |= SplitUpStore(Store, DL);
+                Changed = true;
+              } else if (Store->getValueOperand()->getType()->isArrayTy()) {
+                NeedsAnotherPass |= SplitUpArrayStore(Store, DL);
+                Changed = true;
+              }
+            } else if (LoadInst *Load = dyn_cast<LoadInst>(Inst)) {
+              if (Load->getType()->isStructTy()) {
+                NeedsAnotherPass |= SplitUpLoad(Load, DL);
+                Changed = true;
+              } else if (Load->getType()->isArrayTy()) {
+                NeedsAnotherPass |= SplitUpArrayLoad(Load, DL);
+                Changed = true;
+              }
+            } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
+              if (Phi->getType()->isStructTy()) {
+                NeedsAnotherPass |= SplitUpPHINode(Phi);
+                Changed = true;
+              }
+            } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
+              if (Select->getType()->isStructTy()) {
+                NeedsAnotherPass |= SplitUpSelect(Select);
+                Changed = true;
+              }
+            }
+          }
+        }
+      } while (NeedsAnotherPass);
   };
 
   SplitUpInstructions();
   Changed |= ExpandExtractValues(Func, false);
 
   if (Changed) {
-	// insertvalues that receive insertvalues may require additional splitting
-	// and expansion.
-	// TODO: do we need an arbitrary amount of such passes?
-	SplitUpInstructions();
-	ExpandExtractValues(Func, true);
+    // insertvalues that receive insertvalues may require additional splitting
+    // and expansion.
+    // TODO: do we need an arbitrary amount of such passes?
+    SplitUpInstructions();
+    ExpandExtractValues(Func, true);
   }
 
   return Changed;
