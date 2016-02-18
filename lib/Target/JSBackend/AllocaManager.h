@@ -144,7 +144,7 @@ class AllocaManager {
   void computeInterBlockLiveness();
   void computeIntraBlockLiveness();
   void computeRepresentatives();
-  void computeFrameOffsets();
+  void computeFrameOffsets(const std::set<const Value*> &nativizedVars);
 
   unsigned MaxAlignment;
 
@@ -153,7 +153,7 @@ public:
 
   /// Analyze the given function and prepare for getRepresentative queries.
   void analyze(const Function &Func, const DataLayout &Layout,
-               bool PerformColoring);
+               bool PerformColoring, const std::set<const Value*> &nativizedVars);
 
   /// Reset all stored state.
   void clear();

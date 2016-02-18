@@ -436,7 +436,7 @@ void AllocaManager::computeRepresentatives() {
   }
 }
 
-void AllocaManager::computeFrameOffsets() {
+void AllocaManager::computeFrameOffsets(const std::set<const Value*> &nativizedVars) {
   NamedRegionTimer Timer("Compute Frame Offsets", "AllocaManager",
                          TimePassesIsEnabled);
 
@@ -472,19 +472,22 @@ void AllocaManager::computeFrameOffsets() {
   for (SmallVectorImpl<AllocaInfo>::const_iterator I = SortedAllocas.begin(),
        E = SortedAllocas.end(); I != E; ++I) {
     const AllocaInfo &Info = *I;
-    uint64_t NewOffset = RoundUpToAlignment(CurrentOffset, Info.getAlignment());
+    const AllocaInst *AI = Info.getInst();
+
+    // Skip any allocas that have been nativized
+    if (nativizedVars.count(AI)) continue;
 
     // For backwards compatibility, align every power-of-two multiple alloca to
     // its greatest power-of-two factor, up to 8 bytes. In particular, cube2hash
     // is known to depend on this.
     // TODO: Consider disabling this and making people fix their code.
+    uint64_t NewOffset = RoundUpToAlignment(CurrentOffset, Info.getAlignment());
     if (uint64_t Size = Info.getSize()) {
       uint64_t P2 = uint64_t(1) << countTrailingZeros(Size);
       unsigned CompatAlign = unsigned(std::min(P2, uint64_t(8)));
       NewOffset = RoundUpToAlignment(NewOffset, CompatAlign);
     }
 
-    const AllocaInst *AI = Info.getInst();
     StaticAllocas[AI] = StaticAllocation(AI, NewOffset);
 
     CurrentOffset = NewOffset + Info.getSize();
@@ -520,7 +523,7 @@ AllocaManager::AllocaManager() : MaxAlignment(0) {
 }
 
 void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
-                            bool PerformColoring) {
+                            bool PerformColoring, const std::set<const Value*> &nativizedVars) {
   NamedRegionTimer Timer("AllocaManager", TimePassesIsEnabled);
   assert(Allocas.empty());
   assert(AllocasByIndex.empty());
@@ -560,7 +563,7 @@ void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
     }
   }
 
-  computeFrameOffsets();
+  computeFrameOffsets(nativizedVars);
   SortedAllocas.clear();
   Allocas.clear();
   AllocasByIndex.clear();

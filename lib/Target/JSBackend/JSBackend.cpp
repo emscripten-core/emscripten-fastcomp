@@ -689,6 +689,7 @@ namespace {
     NativizedVarsMap NativizedVars;
 
     void calculateNativizedVars(const Function *F);
+    bool isNativizedVar(const Value*) const;
 
     // special analyses
 
@@ -867,7 +868,7 @@ const std::string &JSWriter::getJSName(const Value* val) {
 
   // If this is an alloca we've replaced with another, use the other name.
   if (const AllocaInst *AI = dyn_cast<AllocaInst>(val)) {
-    if (AI->isStaticAlloca()) {
+    if (AI->isStaticAlloca() && !isNativizedVar(AI)) {
       const AllocaInst *Rep = Allocas.getRepresentative(AI);
       if (Rep != AI) {
         return getJSName(Rep);
@@ -2418,18 +2419,15 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::Alloca: {
     const AllocaInst* AI = cast<AllocaInst>(I);
 
-    // We've done an alloca, so we'll have bumped the stack and will
-    // need to restore it.
-    // Yes, we shouldn't have to bump it for nativized vars, however
-    // they are included in the frame offset, so the restore is still
-    // needed until that is fixed.
-    StackBumped = true;
-
-    if (NativizedVars.count(AI)) {
+    if (isNativizedVar(AI)) {
       // nativized stack variable, we just need a 'var' definition
       UsedVars[getJSName(AI)] = AI->getType()->getElementType();
       return;
     }
+
+    // We've done an alloca, so we'll have bumped the stack and will
+    // need to restore it.
+    StackBumped = true;
 
     // Fixed-size entry-block allocations are allocated all at once in the
     // function prologue.
@@ -2470,7 +2468,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const LoadInst *LI = cast<LoadInst>(I);
     const Value *P = LI->getPointerOperand();
     unsigned Alignment = LI->getAlignment();
-    if (NativizedVars.count(P)) {
+    if (isNativizedVar(P)) {
       Code << getAssign(LI) << getValueAsStr(P);
     } else {
       Code << getLoad(LI, P, LI->getType(), Alignment);
@@ -2483,7 +2481,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     const Value *V = SI->getValueOperand();
     unsigned Alignment = SI->getAlignment();
     std::string VS = getValueAsStr(V);
-    if (NativizedVars.count(P)) {
+    if (isNativizedVar(P)) {
       Code << getValueAsStr(P) << " = " << VS;
     } else {
       Code << getStore(SI, P, V->getType(), VS, Alignment);
@@ -3062,7 +3060,7 @@ void JSWriter::printFunction(const Function *F) {
     calculateNativizedVars(F);
 
   // Do alloca coloring at -O1 and higher.
-  Allocas.analyze(*F, *DL, OptLevel != CodeGenOpt::None);
+  Allocas.analyze(*F, *DL, OptLevel != CodeGenOpt::None, NativizedVars);
 
   // Emit the function
 
@@ -3638,6 +3636,10 @@ void JSWriter::calculateNativizedVars(const Function *F) {
       }
     }
   }
+}
+
+bool JSWriter::isNativizedVar(const Value *AI) const {
+  return NativizedVars.count(AI) > 0;
 }
 
 // special analyses
