@@ -734,8 +734,14 @@ DEF_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow);
 DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow);
-DEF_BUILTIN_HANDLER(llvm_powi_f32, Math_pow);
-DEF_BUILTIN_HANDLER(llvm_powi_f64, Math_pow);
+
+DEF_CALL_HANDLER(llvm_powi_f32, {
+  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
+})
+DEF_CALL_HANDLER(llvm_powi_f64, {
+  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
+})
+
 DEF_BUILTIN_HANDLER(llvm_log_f32, Math_log);
 DEF_BUILTIN_HANDLER(llvm_log_f64, Math_log);
 DEF_BUILTIN_HANDLER(llvm_exp_f32, Math_exp);
