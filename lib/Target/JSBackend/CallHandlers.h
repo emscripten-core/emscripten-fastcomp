@@ -468,63 +468,45 @@ DEF_CALL_HANDLER(llvm_expect_i1, {
   return getAssign(CI) + getValueAsStr(CI->getOperand(0));
 })
 
-DEF_CALL_HANDLER(llvm_dbg_declare, {
+std::string IntrinsicFunctionNames[2][2] = { { "metadata_llvm_dbg_value_local_d", "metadata_llvm_dbg_value_local_i" },
+                                   { "metadata_llvm_dbg_value_constant_d", "metadata_llvm_dbg_value_constant_i" } };
+
+std::string makeMetadataIntrinsic(const Instruction *CI, std::string vo, size_t lmdi, size_t dwopi ) {
   if (!EnableCyberDWARF || !EnableCyberDWARFIntrinsics)
     return "";
 
-  auto VariableOffset = "0";
+  auto VariableOffset = vo;
   auto AssignedValue = cast<MetadataAsValue>(CI->getOperand(0))->getMetadata();
-  auto const LocalVariableMD = cast<MetadataAsValue>(CI->getOperand(1))->getMetadata();
+  auto const LocalVariableMD = cast<MetadataAsValue>(CI->getOperand(lmdi))->getMetadata();
   auto const LocalVariableDI = cast<DILocalVariable>(LocalVariableMD);
   auto const LocalVariableType = LocalVariableDI->getRawType();
-  auto const DwarfOp = cast<MetadataAsValue>(CI->getOperand(2))->getMetadata();
+  auto const DwarfOp = cast<MetadataAsValue>(CI->getOperand(dwopi))->getMetadata();
   std::string LocalVariableName = LocalVariableDI->getName().str();
-
-  auto VarMD = utostr(getIDForMetadata(LocalVariableType))
-  + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
-  + ",\"" + LocalVariableName + "\"";
-
-
+  generateDebugRecordForVar(LocalVariableType);
+  auto MDIntrinsicID = utostr(cyberDWARFData.IntrinsicNum++);
+  cyberDWARFData.MetadataIntrinsics << "\"" << MDIntrinsicID << "\":[" << getIDForMetadata(LocalVariableType)
+                                    << "," << VariableOffset << "," << generateDebugRecordForVar(DwarfOp)
+                                    << ",\"" << LocalVariableName + "\"],";
   if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
-    Declares.insert("metadata_llvm_dbg_value_local");
+    Declares.insert(IntrinsicFunctionNames[0][(ValAsAssign->getValue()->getType()->isFloatingPointTy() ? 0 : 1)]);
     auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
-    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
+    return "_" + IntrinsicFunctionNames[0][ValAsAssign->getValue()->getType()->isFloatingPointTy() ? 0 : 1] + "(" +
+           LocalVarName + "," + MDIntrinsicID + ")";
   } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
-    Declares.insert("metadata_llvm_dbg_value_constant");
-    return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
-    + "," + VarMD + ")";
+    Declares.insert(IntrinsicFunctionNames[1][ValAsAssign->getValue()->getType()->isFloatingPointTy() ? 0 : 1]);
+    return "_" + IntrinsicFunctionNames[1][ValAsAssign->getValue()->getType()->isFloatingPointTy() ? 0 : 1] + "(" +
+           getValueAsStr(ValAsAssign->getValue()) + "," + MDIntrinsicID + ")";
   }
 
   return "";
+}
+
+DEF_CALL_HANDLER(llvm_dbg_declare, {
+  return makeMetadataIntrinsic(CI, "0", 1, 2);
 })
 
 DEF_CALL_HANDLER(llvm_dbg_value, {
-  if (!EnableCyberDWARF || !EnableCyberDWARFIntrinsics)
-    return "";
-
-  auto VariableOffset = getValueAsStr(CI->getOperand(1));
-  auto AssignedValue = cast<MetadataAsValue>(CI->getOperand(0))->getMetadata();
-  auto const LocalVariableMD = cast<MetadataAsValue>(CI->getOperand(1))->getMetadata();
-  auto const LocalVariableDI = cast<DILocalVariable>(LocalVariableMD);
-  auto const LocalVariableType = LocalVariableDI->getRawType();
-  auto const DwarfOp = cast<MetadataAsValue>(CI->getOperand(2))->getMetadata();
-  std::string LocalVariableName = LocalVariableDI->getName().str();
-
-  auto VarMD = utostr(getIDForMetadata(LocalVariableType))
-               + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
-               + ",\"" + LocalVariableName + "\"";
-
-  if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
-    Declares.insert("metadata_llvm_dbg_value_local");
-    auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
-    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
-  } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
-    Declares.insert("metadata_llvm_dbg_value_constant");
-    return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
-    + "," + VarMD + ")";
-  }
-
-  return "";
+  return makeMetadataIntrinsic(CI, getValueAsStr(CI->getOperand(1)), 2, 3);
 })
 
 DEF_CALL_HANDLER(llvm_lifetime_start, {

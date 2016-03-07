@@ -138,7 +138,6 @@ NoExitRuntime("emscripten-no-exit-runtime",
               cl::init(false));
 
 static cl::opt<bool>
-
 EnableCyberDWARF("enable-cyberdwarf",
                  cl::desc("Include CyberDWARF debug information"),
                  cl::init(false));
@@ -227,11 +226,14 @@ namespace {
     struct {
       // 0 is reserved for void type
       unsigned MetadataNum = 1;
+      unsigned IntrinsicNum = 1;
       std::map<Metadata *, unsigned> IndexedMetadata;
       std::map<unsigned, std::string> VtableOffsets;
+      std::map<std::string, unsigned> MDStringTypeIDs;
       std::ostringstream TypeDebugData;
       std::ostringstream TypeNameMap;
       std::ostringstream FunctionMembers;
+      std::ostringstream MetadataIntrinsics;
     } cyberDWARFData;
 
     std::string CantValidate;
@@ -453,6 +455,9 @@ namespace {
     }
 
     unsigned getIDForMetadata(Metadata *MD) {
+      if (MDString *MDS = dyn_cast<MDString>(MD)) {
+        return cyberDWARFData.MDStringTypeIDs[MDS->getString().str()];
+      }
       if (cyberDWARFData.IndexedMetadata.find(MD) == cyberDWARFData.IndexedMetadata.end()) {
         cyberDWARFData.IndexedMetadata[MD] = cyberDWARFData.MetadataNum++;
       }
@@ -3446,7 +3451,10 @@ void JSWriter::printModuleBody() {
 
     std::string FM = cyberDWARFData.FunctionMembers.str().substr(0, cyberDWARFData.FunctionMembers.str().length() - 1);
     std::replace(FM.begin(), FM.end(), '\\', '/');
-    Out << FM << "}, \"vtable_offsets\": {";
+    Out << FM << "}, \"intrinsics\": {";
+
+    std::string IMD = cyberDWARFData.MetadataIntrinsics.str().substr(0, cyberDWARFData.MetadataIntrinsics.str().length() - 1);
+    Out << IMD << "}, \"vtable_offsets\": {";
     bool first_elem = true;
     for (auto VTO: cyberDWARFData.VtableOffsets) {
       if (!first_elem) {
@@ -3749,8 +3757,13 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
 
     if (CT->getIdentifier().str() != "") {
       if (CT->isForwardDecl()) {
+        // If it's a forward declaration, don't overwrite an existing record
+        if (cyberDWARFData.MDStringTypeIDs.find(CT->getIdentifier().str()) == cyberDWARFData.MDStringTypeIDs.end()) {
+          cyberDWARFData.MDStringTypeIDs[CT->getIdentifier().str()] = cyberDWARFData.IndexedMetadata[MD];
+        }
         cyberDWARFData.TypeNameMap << "\"" << "fd_" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
       } else {
+        cyberDWARFData.MDStringTypeIDs[CT->getIdentifier().str()] = cyberDWARFData.IndexedMetadata[MD];
         cyberDWARFData.TypeNameMap << "\"" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
       }
     }
@@ -3810,6 +3823,19 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
   else if (DIEnumerator *E = dyn_cast<DIEnumerator>(MD)) {
     cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[6,\"" << E->getName().str() << "\"," << E->getValue() << "],";
+  }
+  else if (DIExpression *E = dyn_cast<DIExpression>(MD)) {
+    // DIExrpressions are associated with metadata intrinsics
+    // They represent a sequence of DWARF operations or arguments to those operations
+    // The element values are well defined in the DWARF spec, and should be stable
+
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":[99";
+
+    for (auto elem: E->getElements()) {
+      cyberDWARFData.TypeDebugData << "," << elem;
+    }
+
+    cyberDWARFData.TypeDebugData << "],";
   }
   else {
     //MD->dump();
