@@ -148,6 +148,7 @@ EnableCyberDWARFIntrinsics("enable-debug-intrinsics",
                            cl::desc("Include debug intrinsics in generated output"),
                            cl::init(false));
 
+static cl::opt<bool>
 WebAssembly("emscripten-wasm",
             cl::desc("Generate asm.js which will later be compiled to WebAssembly (see emscripten BINARYEN setting)"),
             cl::init(false));
