@@ -138,6 +138,7 @@ NoExitRuntime("emscripten-no-exit-runtime",
               cl::init(false));
 
 static cl::opt<bool>
+
 EnableCyberDWARF("enable-cyberdwarf",
                  cl::desc("Include CyberDWARF debug information"),
                  cl::init(false));
@@ -146,6 +147,11 @@ static cl::opt<bool>
 EnableCyberDWARFIntrinsics("enable-debug-intrinsics",
                            cl::desc("Include debug intrinsics in generated output"),
                            cl::init(false));
+
+WebAssembly("emscripten-wasm",
+            cl::desc("Generate asm.js which will later be compiled to WebAssembly (see emscripten BINARYEN setting)"),
+            cl::init(false));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.

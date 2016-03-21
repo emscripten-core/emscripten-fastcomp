@@ -734,36 +734,42 @@ DEF_CALL_HANDLER(name, { \
   return CH___default__(CI, #to); \
 })
 
+#define DEF_MAYBE_BUILTIN_HANDLER(name, to) \
+DEF_CALL_HANDLER(name, { \
+  if (!WebAssembly) return CH___default__(CI, #to); \
+  return CH___default__(CI, "_" #name); \
+})
+
 // Various simple redirects for our js libc, see library.js and LibraryManager.load
 DEF_BUILTIN_HANDLER(abs, Math_abs);
 DEF_BUILTIN_HANDLER(labs, Math_abs);
-DEF_BUILTIN_HANDLER(cos, Math_cos);
-DEF_BUILTIN_HANDLER(cosf, Math_cos);
-DEF_BUILTIN_HANDLER(cosl, Math_cos);
-DEF_BUILTIN_HANDLER(sin, Math_sin);
-DEF_BUILTIN_HANDLER(sinf, Math_sin);
-DEF_BUILTIN_HANDLER(sinl, Math_sin);
-DEF_BUILTIN_HANDLER(tan, Math_tan);
-DEF_BUILTIN_HANDLER(tanf, Math_tan);
-DEF_BUILTIN_HANDLER(tanl, Math_tan);
-DEF_BUILTIN_HANDLER(acos, Math_acos);
-DEF_BUILTIN_HANDLER(acosf, Math_acos);
-DEF_BUILTIN_HANDLER(acosl, Math_acos);
-DEF_BUILTIN_HANDLER(asin, Math_asin);
-DEF_BUILTIN_HANDLER(asinf, Math_asin);
-DEF_BUILTIN_HANDLER(asinl, Math_asin);
-DEF_BUILTIN_HANDLER(atan, Math_atan);
-DEF_BUILTIN_HANDLER(atanf, Math_atan);
-DEF_BUILTIN_HANDLER(atanl, Math_atan);
-DEF_BUILTIN_HANDLER(atan2, Math_atan2);
-DEF_BUILTIN_HANDLER(atan2f, Math_atan2);
-DEF_BUILTIN_HANDLER(atan2l, Math_atan2);
-DEF_BUILTIN_HANDLER(exp, Math_exp);
-DEF_BUILTIN_HANDLER(expf, Math_exp);
-DEF_BUILTIN_HANDLER(expl, Math_exp);
-DEF_BUILTIN_HANDLER(log, Math_log);
-DEF_BUILTIN_HANDLER(logf, Math_log);
-DEF_BUILTIN_HANDLER(logl, Math_log);
+DEF_MAYBE_BUILTIN_HANDLER(cos, Math_cos);
+DEF_MAYBE_BUILTIN_HANDLER(cosf, Math_cos);
+DEF_MAYBE_BUILTIN_HANDLER(cosl, Math_cos);
+DEF_MAYBE_BUILTIN_HANDLER(sin, Math_sin);
+DEF_MAYBE_BUILTIN_HANDLER(sinf, Math_sin);
+DEF_MAYBE_BUILTIN_HANDLER(sinl, Math_sin);
+DEF_MAYBE_BUILTIN_HANDLER(tan, Math_tan);
+DEF_MAYBE_BUILTIN_HANDLER(tanf, Math_tan);
+DEF_MAYBE_BUILTIN_HANDLER(tanl, Math_tan);
+DEF_MAYBE_BUILTIN_HANDLER(acos, Math_acos);
+DEF_MAYBE_BUILTIN_HANDLER(acosf, Math_acos);
+DEF_MAYBE_BUILTIN_HANDLER(acosl, Math_acos);
+DEF_MAYBE_BUILTIN_HANDLER(asin, Math_asin);
+DEF_MAYBE_BUILTIN_HANDLER(asinf, Math_asin);
+DEF_MAYBE_BUILTIN_HANDLER(asinl, Math_asin);
+DEF_MAYBE_BUILTIN_HANDLER(atan, Math_atan);
+DEF_MAYBE_BUILTIN_HANDLER(atanf, Math_atan);
+DEF_MAYBE_BUILTIN_HANDLER(atanl, Math_atan);
+DEF_MAYBE_BUILTIN_HANDLER(atan2, Math_atan2);
+DEF_MAYBE_BUILTIN_HANDLER(atan2f, Math_atan2);
+DEF_MAYBE_BUILTIN_HANDLER(atan2l, Math_atan2);
+DEF_MAYBE_BUILTIN_HANDLER(exp, Math_exp);
+DEF_MAYBE_BUILTIN_HANDLER(expf, Math_exp);
+DEF_MAYBE_BUILTIN_HANDLER(expl, Math_exp);
+DEF_MAYBE_BUILTIN_HANDLER(log, Math_log);
+DEF_MAYBE_BUILTIN_HANDLER(logf, Math_log);
+DEF_MAYBE_BUILTIN_HANDLER(logl, Math_log);
 DEF_BUILTIN_HANDLER(sqrt, Math_sqrt);
 DEF_BUILTIN_HANDLER(sqrtf, Math_sqrt);
 DEF_BUILTIN_HANDLER(sqrtl, Math_sqrt);
@@ -778,13 +784,13 @@ DEF_BUILTIN_HANDLER(ceill, Math_ceil);
 DEF_BUILTIN_HANDLER(floor, Math_floor);
 DEF_BUILTIN_HANDLER(floorf, Math_floor);
 DEF_BUILTIN_HANDLER(floorl, Math_floor);
-DEF_BUILTIN_HANDLER(pow, Math_pow);
-DEF_BUILTIN_HANDLER(powf, Math_pow);
-DEF_BUILTIN_HANDLER(powl, Math_pow);
+DEF_MAYBE_BUILTIN_HANDLER(pow, Math_pow);
+DEF_MAYBE_BUILTIN_HANDLER(powf, Math_pow);
+DEF_MAYBE_BUILTIN_HANDLER(powl, Math_pow);
 DEF_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt);
-DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow);
-DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow);
+DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow); // XXX these will be slow in wasm, but need to link in libc before getting here, or stop
+DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow); //     LLVM from creating these intrinsics
 
 DEF_CALL_HANDLER(llvm_powi_f32, {
   return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
