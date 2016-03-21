@@ -469,10 +469,61 @@ DEF_CALL_HANDLER(llvm_expect_i1, {
 })
 
 DEF_CALL_HANDLER(llvm_dbg_declare, {
+  if (!EnableCyberDWARF || !EnableCyberDWARFIntrinsics)
+    return "";
+
+  auto VariableOffset = "0";
+  auto AssignedValue = cast<MetadataAsValue>(CI->getOperand(0))->getMetadata();
+  auto const LocalVariableMD = cast<MetadataAsValue>(CI->getOperand(1))->getMetadata();
+  auto const LocalVariableDI = cast<DILocalVariable>(LocalVariableMD);
+  auto const LocalVariableType = LocalVariableDI->getRawType();
+  auto const DwarfOp = cast<MetadataAsValue>(CI->getOperand(2))->getMetadata();
+  std::string LocalVariableName = LocalVariableDI->getName().str();
+
+  auto VarMD = utostr(getIDForMetadata(LocalVariableType))
+  + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
+  + ",\"" + LocalVariableName + "\"";
+
+
+  if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
+    Declares.insert("metadata_llvm_dbg_value_local");
+    auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
+    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
+  } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
+    Declares.insert("metadata_llvm_dbg_value_constant");
+    return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
+    + "," + VarMD + ")";
+  }
+
   return "";
 })
 
 DEF_CALL_HANDLER(llvm_dbg_value, {
+  if (!EnableCyberDWARF || !EnableCyberDWARFIntrinsics)
+    return "";
+
+  auto VariableOffset = getValueAsStr(CI->getOperand(1));
+  auto AssignedValue = cast<MetadataAsValue>(CI->getOperand(0))->getMetadata();
+  auto const LocalVariableMD = cast<MetadataAsValue>(CI->getOperand(1))->getMetadata();
+  auto const LocalVariableDI = cast<DILocalVariable>(LocalVariableMD);
+  auto const LocalVariableType = LocalVariableDI->getRawType();
+  auto const DwarfOp = cast<MetadataAsValue>(CI->getOperand(2))->getMetadata();
+  std::string LocalVariableName = LocalVariableDI->getName().str();
+
+  auto VarMD = utostr(getIDForMetadata(LocalVariableType))
+               + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
+               + ",\"" + LocalVariableName + "\"";
+
+  if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
+    Declares.insert("metadata_llvm_dbg_value_local");
+    auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
+    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
+  } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
+    Declares.insert("metadata_llvm_dbg_value_constant");
+    return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
+    + "," + VarMD + ")";
+  }
+
   return "";
 })
 
@@ -1998,4 +2049,3 @@ std::string handleCall(const Instruction *CI) {
   }
   return (this->*(CH->second))(CI, Name, -1);
 }
-
