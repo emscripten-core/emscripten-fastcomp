@@ -216,12 +216,16 @@ namespace {
     BlockAddressMap BlockAddresses;
     std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
-    unsigned MetadataNum;
-    std::map<Metadata *, unsigned> IndexedMetadata;
-    std::map<unsigned, std::string> VtableOffsets;
-    std::ostringstream TypeDebugData;
-    std::ostringstream TypeNameMap;
-    std::ostringstream FunctionMembers;
+
+    struct {
+      // 0 is reserved for void type
+      unsigned MetadataNum = 1;
+      std::map<Metadata *, unsigned> IndexedMetadata;
+      std::map<unsigned, std::string> VtableOffsets;
+      std::ostringstream TypeDebugData;
+      std::ostringstream TypeNameMap;
+      std::ostringstream FunctionMembers;
+    } cyberDWARFData;
 
     std::string CantValidate;
     bool UsesSIMDUint8x16;
@@ -250,7 +254,7 @@ namespace {
   public:
     static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
-      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), MetadataNum(1), CantValidate(""),
+      : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
         UsesSIMDUint8x16(false), UsesSIMDInt8x16(false), UsesSIMDUint16x8(false),
         UsesSIMDInt16x8(false), UsesSIMDUint32x4(false), UsesSIMDInt32x4(false),
         UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), UsesSIMDBool8x16(false),
@@ -442,10 +446,10 @@ namespace {
     }
 
     unsigned getIDForMetadata(Metadata *MD) {
-      if (IndexedMetadata.find(MD) == IndexedMetadata.end()) {
-        IndexedMetadata[MD] = MetadataNum++;
+      if (cyberDWARFData.IndexedMetadata.find(MD) == cyberDWARFData.IndexedMetadata.end()) {
+        cyberDWARFData.IndexedMetadata[MD] = cyberDWARFData.MetadataNum++;
       }
-      return IndexedMetadata[MD];
+      return cyberDWARFData.IndexedMetadata[MD];
     }
 
     // Return a constant we are about to write into a global as a numeric offset. If the
@@ -3423,20 +3427,20 @@ void JSWriter::printModuleBody() {
     Out << "\"types\": {";
 
     // Remove trailing comma
-    std::string TDD = TypeDebugData.str().substr(0, TypeDebugData.str().length() - 1);
+    std::string TDD = cyberDWARFData.TypeDebugData.str().substr(0, cyberDWARFData.TypeDebugData.str().length() - 1);
     // One Windows, paths can have \ separators
     std::replace(TDD.begin(), TDD.end(), '\\', '/');
     Out << TDD << "}, \"type_name_map\": {";
 
-    std::string TNM = TypeNameMap.str().substr(0, TypeNameMap.str().length() - 1);
+    std::string TNM = cyberDWARFData.TypeNameMap.str().substr(0, cyberDWARFData.TypeNameMap.str().length() - 1);
     std::replace(TNM.begin(), TNM.end(), '\\', '/');
     Out << TNM << "}, \"functions\": {";
 
-    std::string FM = FunctionMembers.str().substr(0, FunctionMembers.str().length() - 1);
+    std::string FM = cyberDWARFData.FunctionMembers.str().substr(0, cyberDWARFData.FunctionMembers.str().length() - 1);
     std::replace(FM.begin(), FM.end(), '\\', '/');
     Out << FM << "}, \"vtable_offsets\": {";
     bool first_elem = true;
-    for (auto VTO: VtableOffsets) {
+    for (auto VTO: cyberDWARFData.VtableOffsets) {
       if (!first_elem) {
         Out << ",";
       }
@@ -3564,7 +3568,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
 
       // VTable for the object
       if (name.compare(0, 4, "_ZTV") == 0) {
-        VtableOffsets[Absolute] = name;
+        cyberDWARFData.VtableOffsets[Absolute] = name;
       }
 
       for (unsigned i = 0; i < Num; i++) {
@@ -3672,20 +3676,20 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
 std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
   // void shows up as nullptr for Metadata
   if (!MD) {
-    IndexedMetadata[0] = 0;
+    cyberDWARFData.IndexedMetadata[0] = 0;
     return "\"0\"";
   }
-  if (IndexedMetadata.find(MD) == IndexedMetadata.end()) {
-    IndexedMetadata[MD] = MetadataNum++;
+  if (cyberDWARFData.IndexedMetadata.find(MD) == cyberDWARFData.IndexedMetadata.end()) {
+    cyberDWARFData.IndexedMetadata[MD] = cyberDWARFData.MetadataNum++;
   }
   else {
-    return "\"" + utostr(IndexedMetadata[MD]) + "\"";
+    return "\"" + utostr(cyberDWARFData.IndexedMetadata[MD]) + "\"";
   }
 
-  std::string VarIDForJSON = "\"" + utostr(IndexedMetadata[MD]) + "\"";
+  std::string VarIDForJSON = "\"" + utostr(cyberDWARFData.IndexedMetadata[MD]) + "\"";
 
   if (DIBasicType *BT = dyn_cast<DIBasicType>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[0,\""
     << BT->getName().str()
     << "\","
@@ -3697,13 +3701,13 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
     << "],";
   }
   else if (MDString *MDS = dyn_cast<MDString>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[10,\"" << MDS->getString().str() << "\"],";
   }
   else if (DIDerivedType *DT = dyn_cast<DIDerivedType>(MD)) {
     if (DT->getRawBaseType() && isa<MDString>(DT->getRawBaseType())) {
       auto MDS = cast<MDString>(DT->getRawBaseType());
-      TypeDebugData << VarIDForJSON << ":"
+      cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
       << "[1, \""
       << DT->getName().str()
       << "\","
@@ -3716,17 +3720,17 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
       << DT->getSizeInBits() << "],";
     }
     else {
-      if (IndexedMetadata.find(DT->getRawBaseType()) == IndexedMetadata.end()) {
+      if (cyberDWARFData.IndexedMetadata.find(DT->getRawBaseType()) == cyberDWARFData.IndexedMetadata.end()) {
         generateDebugRecordForVar(DT->getRawBaseType());
       }
 
-     TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
         << "[1, \""
         << DT->getName().str()
         << "\","
         << DT->getTag()
         << ","
-        << IndexedMetadata[DT->getRawBaseType()]
+        << cyberDWARFData.IndexedMetadata[DT->getRawBaseType()]
         << ","
         << DT->getOffsetInBits()
         << ","
@@ -3737,9 +3741,9 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
 
     if (CT->getIdentifier().str() != "") {
       if (CT->isForwardDecl()) {
-        TypeNameMap << "\"" << "fd_" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
+        cyberDWARFData.TypeNameMap << "\"" << "fd_" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
       } else {
-        TypeNameMap << "\"" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
+        cyberDWARFData.TypeNameMap << "\"" << CT->getIdentifier().str() << "\":" << VarIDForJSON << ",";
       }
     }
 
@@ -3749,17 +3753,17 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
     }
 
     // Build our base type, if we have one (arrays)
-    if (IndexedMetadata.find(CT->getRawBaseType()) == IndexedMetadata.end()) {
+    if (cyberDWARFData.IndexedMetadata.find(CT->getRawBaseType()) == cyberDWARFData.IndexedMetadata.end()) {
       generateDebugRecordForVar(CT->getRawBaseType());
     }
 
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
       << "[2, \""
       << CT->getName().str()
       << "\","
       << CT->getTag()
       << ","
-      << IndexedMetadata[CT->getRawBaseType()]
+      << cyberDWARFData.IndexedMetadata[CT->getRawBaseType()]
       << ","
       << CT->getOffsetInBits()
       << ","
@@ -3774,29 +3778,29 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
       if ((vx && vx->isStaticMember()) || isa<DISubroutineType>(e))
         continue;
       if (!first_elem) {
-        TypeDebugData << ",";
+        cyberDWARFData.TypeDebugData << ",";
       }
       first_elem = false;
-      TypeDebugData << generateDebugRecordForVar(e);
+      cyberDWARFData.TypeDebugData << generateDebugRecordForVar(e);
     }
 
-    TypeDebugData << "]],";
+    cyberDWARFData.TypeDebugData << "]],";
 
   }
   else if (DISubroutineType *ST = dyn_cast<DISubroutineType>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[3," << ST->getTag() << "],";
   }
   else if (DISubrange *SR = dyn_cast<DISubrange>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[4," << SR->getCount() << "],";
   }
   else if (DISubprogram *SP = dyn_cast<DISubprogram>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[5,\"" << SP->getName().str() << "\"],";
   }
   else if (DIEnumerator *E = dyn_cast<DIEnumerator>(MD)) {
-    TypeDebugData << VarIDForJSON << ":"
+    cyberDWARFData.TypeDebugData << VarIDForJSON << ":"
     << "[6,\"" << E->getName().str() << "\"," << E->getValue() << "],";
   }
   else {
@@ -3813,21 +3817,21 @@ void JSWriter::buildCyberDWARFData() {
       auto *SP = cast<DISubprogram>(MD);
 
       if (SP->getLinkageName() != "") {
-        FunctionMembers << "\"" << SP->getLinkageName().str() << "\":{";
+        cyberDWARFData.FunctionMembers << "\"" << SP->getLinkageName().str() << "\":{";
       }
       else {
-        FunctionMembers << "\"" << SP->getName().str() << "\":{";
+        cyberDWARFData.FunctionMembers << "\"" << SP->getName().str() << "\":{";
       }
       bool first_elem = true;
       for (auto V : SP->getVariables()) {
         auto RT = V->getRawType();
         if (!first_elem) {
-          FunctionMembers << ",";
+          cyberDWARFData.FunctionMembers << ",";
         }
         first_elem = false;
-        FunctionMembers << "\"" << V->getName().str() << "\":" << generateDebugRecordForVar(RT);
+        cyberDWARFData.FunctionMembers << "\"" << V->getName().str() << "\":" << generateDebugRecordForVar(RT);
       }
-      FunctionMembers << "},";
+      cyberDWARFData.FunctionMembers << "},";
     }
   }
 
