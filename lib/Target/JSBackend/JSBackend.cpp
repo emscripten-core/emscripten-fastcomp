@@ -2728,7 +2728,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Fence:
-    Code << "/* fence */"; // not in the spec currently, so nothing to do here
+    if (EnablePthreads) Code << "Atomics_add(HEAP32, 0, 0) /* fence */";
+    else Code << "/* fence */";
     break;
   }
 
