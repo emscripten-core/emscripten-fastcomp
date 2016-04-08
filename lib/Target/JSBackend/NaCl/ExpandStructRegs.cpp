@@ -500,7 +500,7 @@ static bool ExpandExtractValues(Function &Func, bool Finalize) {
     }
 
     for (Instruction *I : ToErase) {
-        I->eraseFromParent();
+      I->eraseFromParent();
     }
   }
 
