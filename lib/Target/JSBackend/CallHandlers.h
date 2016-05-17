@@ -1438,7 +1438,7 @@ DEF_BUILTIN_HANDLER(emscripten_bool8x16_anyTrue, SIMD_Bool8x16_anyTrue);
 DEF_BUILTIN_HANDLER(emscripten_bool8x16_allTrue, SIMD_Bool8x16_allTrue);
 
 DEF_CALL_HANDLER(emscripten_atomic_fence, {
-  if (EnablePthreads) return "Atomics_add(HEAP32, 0, 0) /* fence */";
+  if (EnablePthreads) return "(Atomics_add(HEAP32, 0, 0)|0) /* fence */";
   else return "/* fence */";
 })
 
