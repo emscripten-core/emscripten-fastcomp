@@ -205,6 +205,7 @@ set(LLVM_ALL_TARGETS
   AArch64
   AMDGPU
   ARM
+  BinaryenBackend # @LOCALMOD
   BPF
   CppBackend
   Hexagon
