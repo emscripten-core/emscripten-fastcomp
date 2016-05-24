@@ -51,8 +51,8 @@
 using namespace llvm;
 
 #include <OptPasses.h>
-#include <Relooper.h>
 
+// TODO: remove?
 #ifdef NDEBUG
 #undef assert
 #define assert(x) { if (!(x)) report_fatal_error(#x); }
@@ -260,7 +260,7 @@ namespace {
 
   public:
     static char ID;
-    JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
+    BinaryenWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
         UsesSIMDUint8x16(false), UsesSIMDInt8x16(false), UsesSIMDUint16x8(false),
         UsesSIMDInt16x8(false), UsesSIMDUint32x4(false), UsesSIMDInt32x4(false),
@@ -387,7 +387,7 @@ namespace {
       return Table;
     }
     unsigned getFunctionIndex(const Function *F) {
-      const std::string &Name = getJSName(F);
+      const std::string &Name = getSimpleName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
@@ -680,7 +680,7 @@ namespace {
     std::string getValueAsParenStr(const Value*);
     std::string getValueAsCastParenStr(const Value*, AsmCast sign=ASM_SIGNED);
 
-    const std::string &getJSName(const Value* val);
+    const std::string &getSimpleName(const Value* val);
 
     std::string getPhiCode(const BasicBlock *From, const BasicBlock *To);
 
@@ -738,7 +738,7 @@ namespace {
   };
 } // end anonymous namespace.
 
-raw_pwrite_stream &JSWriter::nl(raw_pwrite_stream &Out, int delta) {
+raw_pwrite_stream &BinaryenWriter::nl(raw_pwrite_stream &Out, int delta) {
   Out << '\n';
   return Out;
 }
@@ -825,11 +825,11 @@ static inline std::string ensureFloat(const std::string &value, bool wrap) {
   return value;
 }
 
-void JSWriter::error(const std::string& msg) {
+void BinaryenWriter::error(const std::string& msg) {
   report_fatal_error(msg);
 }
 
-std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
+std::string BinaryenWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   // FIXME this is all quite inefficient, and also done once per incoming to each phi
 
   // Find the phis, and generate assignments and dependencies
@@ -838,7 +838,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
        I != E; ++I) {
     const PHINode* P = dyn_cast<PHINode>(I);
     if (!P) break;
-    PhiVars.insert(getJSName(P));
+    PhiVars.insert(getSimpleName(P));
   }
   typedef std::map<std::string, std::string> StringMap;
   StringMap assigns; // variable -> assign statement
@@ -852,7 +852,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
     int index = P->getBasicBlockIndex(From);
     if (index < 0) continue;
     // we found it
-    const std::string &name = getJSName(P);
+    const std::string &name = getSimpleName(P);
     assigns[name] = getAssign(P);
     // Get the operand, and strip pointer casts, since normal expression
     // translation also strips pointer casts, and we want to see the same
@@ -898,7 +898,7 @@ std::string JSWriter::getPhiCode(const BasicBlock *From, const BasicBlock *To) {
   return pre + post;
 }
 
-const std::string &JSWriter::getJSName(const Value* val) {
+const std::string &BinaryenWriter::getSimpleName(const Value* val) {
   ValueMap::const_iterator I = ValueNames.find(val);
   if (I != ValueNames.end() && I->first == val)
     return I->second;
@@ -908,7 +908,7 @@ const std::string &JSWriter::getJSName(const Value* val) {
     if (AI->isStaticAlloca()) {
       const AllocaInst *Rep = Allocas.getRepresentative(AI);
       if (Rep != AI) {
-        return getJSName(Rep);
+        return getSimpleName(Rep);
       }
     }
   }
@@ -929,16 +929,16 @@ const std::string &JSWriter::getJSName(const Value* val) {
   return ValueNames[val] = name;
 }
 
-std::string JSWriter::getAdHocAssign(const StringRef &s, Type *t) {
+std::string BinaryenWriter::getAdHocAssign(const StringRef &s, Type *t) {
   UsedVars[s] = t;
   return (s + " = ").str();
 }
 
-std::string JSWriter::getAssign(const Instruction *I) {
-  return getAdHocAssign(getJSName(I), I->getType());
+std::string BinaryenWriter::getAssign(const Instruction *I) {
+  return getAdHocAssign(getSimpleName(I), I->getType());
 }
 
-std::string JSWriter::getAssignIfNeeded(const Value *V) {
+std::string BinaryenWriter::getAssignIfNeeded(const Value *V) {
   if (const Instruction *I = dyn_cast<Instruction>(V)) {
     if (!I->use_empty()) return getAssign(I);
   }
@@ -974,7 +974,7 @@ const char *SIMDType(VectorType *t) {
   report_fatal_error("Unsupported type!");
 }
 
-std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
+std::string BinaryenWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
       errs() << *t << "\n";
@@ -1008,15 +1008,15 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   }
 }
 
-std::string JSWriter::getParenCast(const StringRef &s, Type *t, AsmCast sign) {
+std::string BinaryenWriter::getParenCast(const StringRef &s, Type *t, AsmCast sign) {
   return getCast(("(" + s + ")").str(), t, sign);
 }
 
-std::string JSWriter::getDoubleToInt(const StringRef &s) {
+std::string BinaryenWriter::getDoubleToInt(const StringRef &s) {
   return ("~~(" + s + ")").str();
 }
 
-std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
+std::string BinaryenWriter::getIMul(const Value *V1, const Value *V2) {
   const ConstantInt *CI = NULL;
   const Value *Other = NULL;
   if ((CI = dyn_cast<ConstantInt>(V1))) {
@@ -1075,7 +1075,7 @@ static inline const char *getHeapShiftStr(int Bytes)
   }
 }
 
-std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, unsigned Bytes, bool Integer, const char **HeapName)
+std::string BinaryenWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, unsigned Bytes, bool Integer, const char **HeapName)
 {
   unsigned Addr = getGlobalAddress(GV->getName().str());
   *HeapName = getHeapName(Bytes, Integer);
@@ -1086,13 +1086,13 @@ std::string JSWriter::getHeapNameAndIndexToGlobal(const GlobalVariable *GV, unsi
   }
 }
 
-std::string JSWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName)
+std::string BinaryenWriter::getHeapNameAndIndexToPtr(const std::string& Ptr, unsigned Bytes, bool Integer, const char **HeapName)
 {
   *HeapName = getHeapName(Bytes, Integer);
   return Ptr + getHeapShiftStr(Bytes);
 }
 
-std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes, bool Integer)
+std::string BinaryenWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName, unsigned Bytes, bool Integer)
 {
   const GlobalVariable *GV;
   if ((GV = dyn_cast<GlobalVariable>(Ptr->stripPointerCasts())) && GV->hasInitializer()) {
@@ -1103,7 +1103,7 @@ std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapNam
   }
 }
 
-std::string JSWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
+std::string BinaryenWriter::getHeapNameAndIndex(const Value *Ptr, const char **HeapName)
 {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   return getHeapNameAndIndex(Ptr, HeapName, DL->getTypeAllocSize(t), t->isIntegerTy() || t->isPointerTy());
@@ -1116,7 +1116,7 @@ static const char *heapNameToAtomicTypeName(const char *HeapName)
   return "";
 }
 
-std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
+std::string BinaryenWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
@@ -1234,7 +1234,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   return text;
 }
 
-std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
+std::string BinaryenWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
   std::string text;
@@ -1352,11 +1352,11 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   return text;
 }
 
-std::string JSWriter::getStackBump(unsigned Size) {
+std::string BinaryenWriter::getStackBump(unsigned Size) {
   return getStackBump(utostr(Size));
 }
 
-std::string JSWriter::getStackBump(const std::string &Size) {
+std::string BinaryenWriter::getStackBump(const std::string &Size) {
   std::string ret = "STACKTOP = STACKTOP + " + Size + "|0;";
   if (EmscriptenAssertions) {
     ret += " if ((STACKTOP|0) >= (STACK_MAX|0)) abort();";
@@ -1364,33 +1364,33 @@ std::string JSWriter::getStackBump(const std::string &Size) {
   return ret;
 }
 
-std::string JSWriter::getOpName(const Value* V) { // TODO: remove this
-  return getJSName(V);
+std::string BinaryenWriter::getOpName(const Value* V) { // TODO: remove this
+  return getSimpleName(V);
 }
 
-std::string JSWriter::getPtrLoad(const Value* Ptr) {
+std::string BinaryenWriter::getPtrLoad(const Value* Ptr) {
   Type *t = cast<PointerType>(Ptr->getType())->getElementType();
   return getCast(getPtrUse(Ptr), t, ASM_NONSPECIFIC);
 }
 
-std::string JSWriter::getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer) {
+std::string BinaryenWriter::getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer) {
   const char *HeapName = 0;
   std::string Index = getHeapNameAndIndexToPtr(Name, Bytes, Integer, &HeapName);
   return std::string(HeapName) + '[' + Index + ']';
 }
 
-std::string JSWriter::getShiftedPtr(const Value *Ptr, unsigned Bytes) {
+std::string BinaryenWriter::getShiftedPtr(const Value *Ptr, unsigned Bytes) {
   const char *HeapName = 0; // unused
   return getHeapNameAndIndex(Ptr, &HeapName, Bytes, true /* Integer; doesn't matter */);
 }
 
-std::string JSWriter::getPtrUse(const Value* Ptr) {
+std::string BinaryenWriter::getPtrUse(const Value* Ptr) {
   const char *HeapName = 0;
   std::string Index = getHeapNameAndIndex(Ptr, &HeapName);
   return std::string(HeapName) + '[' + Index + ']';
 }
 
-std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
+std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
   if (const Function *F = dyn_cast<Function>(CV)) {
@@ -1482,111 +1482,18 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   }
 }
 
-template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
-class VectorOperandAccessor
-{
-public:
-  static Constant *getOperand(const VectorType *C, unsigned index);
-};
-template<> Constant *VectorOperandAccessor<ConstantVector>::getOperand(const ConstantVector *C, unsigned index) { return C->getOperand(index); }
-template<> Constant *VectorOperandAccessor<ConstantDataVector>::getOperand(const ConstantDataVector *C, unsigned index) { return C->getElementAsConstant(index); }
-
-template<typename ConstantVectorType/*= ConstantVector or ConstantDataVector*/>
-std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
-  checkVectorType(C->getType());
-  unsigned NumElts = cast<VectorType>(C->getType())->getNumElements();
-
-  bool isInt = C->getType()->getElementType()->isIntegerTy();
-
-  // Test if this is a float vector, but it contains NaNs that have non-canonical bits that can't be represented as nans.
-  // These must be casted via an integer vector.
-  bool hasSpecialNaNs = false;
-
-  if (!isInt) {
-    const APInt nan32(32, 0x7FC00000);
-    const APInt nan64(64, 0x7FF8000000000000ULL);
-
-    for (unsigned i = 0; i < NumElts; ++i) {
-      Constant *CV = VectorOperandAccessor<ConstantVectorType>::getOperand(C, i);
-      const ConstantFP *CFP = dyn_cast<ConstantFP>(CV);
-      if (CFP) {
-        const APFloat &flt = CFP->getValueAPF();
-        if (flt.getCategory() == APFloat::fcNaN) {
-          APInt i = flt.bitcastToAPInt();
-          if ((i.getBitWidth() == 32 && i != nan32) || (i.getBitWidth() == 64 && i != nan64)) {
-            hasSpecialNaNs = true;
-            break;
-          }
-        }
-      }
-    }
-  }
-
-  AsmCast cast = hasSpecialNaNs ? ASM_FORCE_FLOAT_AS_INTBITS : 0;
-
-  // Check for a splat.
-  bool allEqual = true;
-  std::string op0 = getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, 0), cast);
-  for (unsigned i = 1; i < NumElts; ++i) {
-    if (getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), cast) != op0) {
-      allEqual = false;
-      break;
-    }
-  }
-  if (allEqual) {
-    if (!hasSpecialNaNs) {
-      return std::string("SIMD_") + SIMDType(C->getType()) + "_splat(" + ensureFloat(op0, !isInt) + ')';
-    } else {
-      VectorType *IntTy = VectorType::getInteger(C->getType());
-      checkVectorType(IntTy);
-      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', true);
-    }
-  }
-
-  int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
-  const int SIMDJsRetNumElements = 128 / primSize;
-
-  std::string c;
-  if (!hasSpecialNaNs) {
-    c = std::string("SIMD_") + SIMDType(C->getType()) + '(' + ensureFloat(op0, !isInt);
-    for (unsigned i = 1; i < NumElts; ++i) {
-      c += ',' + ensureFloat(getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i)), !isInt);
-    }
-    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
-      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
-    }
-
-    return c + ')';
-  } else {
-    VectorType *IntTy = VectorType::getInteger(C->getType());
-    checkVectorType(IntTy);
-    c = std::string("SIMD_") + SIMDType(IntTy) + '(' + op0;
-    for (unsigned i = 1; i < NumElts; ++i) {
-      c += ',' + getConstant(VectorOperandAccessor<ConstantVectorType>::getOperand(C, i), ASM_FORCE_FLOAT_AS_INTBITS);
-    }
-
-    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-    for (int i = NumElts; i < SIMDJsRetNumElements; ++i) {
-      c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
-    }
-
-    return getSIMDCast(IntTy, C->getType(), c + ")", true);
-  }
-}
-
-std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
+std::string BinaryenWriter::getValueAsStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
   V = V->stripPointerCasts();
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
   } else {
-    return getJSName(V);
+    return getSimpleName(V);
   }
 }
 
-std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
+std::string BinaryenWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
   V = V->stripPointerCasts();
 
@@ -1597,7 +1504,7 @@ std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   }
 }
 
-std::string JSWriter::getValueAsParenStr(const Value* V) {
+std::string BinaryenWriter::getValueAsParenStr(const Value* V) {
   // Skip past no-op bitcasts and zero-index geps.
   V = V->stripPointerCasts();
 
@@ -1608,7 +1515,7 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
   }
 }
 
-std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
+std::string BinaryenWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
   V = V->stripPointerCasts();
 
@@ -1619,7 +1526,7 @@ std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   }
 }
 
-void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code) {
+void BinaryenWriter::generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code) {
   // LLVM has no vector type constructor operator; it uses chains of
   // insertelement instructions instead. It also has no splat operator; it
   // uses an insertelement followed by a shuffle instead. If this insertelement
@@ -1712,7 +1619,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
   }
 }
 
-void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code) {
+void BinaryenWriter::generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code) {
   VectorType *VT = cast<VectorType>(EEI->getVectorOperand()->getType());
   checkVectorType(VT);
   const ConstantInt *IndexInt = dyn_cast<const ConstantInt>(EEI->getIndexOperand());
@@ -1729,136 +1636,7 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
   error("SIMD extract element with non-constant index not implemented yet");
 }
 
-
-std::string castIntVecToBoolVec(int numElems, const std::string &str)
-{
-  int elemWidth = 128 / numElems;
-  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
-  return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
-}
-
-std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend)
-{
-  bool toInt = toType->getElementType()->isIntegerTy();
-  bool fromInt = fromType->getElementType()->isIntegerTy();
-  int fromPrimSize = fromType->getElementType()->getPrimitiveSizeInBits();
-  int toPrimSize = toType->getElementType()->getPrimitiveSizeInBits();
-
-  if (fromInt == toInt && fromPrimSize == toPrimSize) {
-    // To and from are the same types, no cast needed.
-    return valueStr;
-  }
-
-  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  int toNumElems = 128 / toPrimSize;
-
-  bool fromIsBool = (fromInt && fromPrimSize == 1);
-  bool toIsBool = (toInt && toPrimSize == 1);
-  if (fromIsBool && !toIsBool) { // Casting from bool vector to a bit vector looks more complicated (e.g. Bool32x4 to Int32x4)
-    return castBoolVecToIntVec(toNumElems, valueStr, signExtend);
-  }
-
-  if (fromType->getBitWidth() != toType->getBitWidth() && !fromIsBool && !toIsBool) {
-    error("Invalid SIMD cast between items of different bit sizes!");
-  }
-
-  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + "Bits(" + valueStr + ")";
-}
-
-void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
-  Code << getAssignIfNeeded(SVI);
-
-  // LLVM has no splat operator, so it makes do by using an insert and a
-  // shuffle. If that's what this shuffle is doing, the code in
-  // generateInsertElementExpression will have also detected it and skipped
-  // emitting the insert, so we can just emit a splat here.
-  if (isa<ConstantAggregateZero>(SVI->getMask()) &&
-      isa<InsertElementInst>(SVI->getOperand(0)))
-  {
-    InsertElementInst *IEI = cast<InsertElementInst>(SVI->getOperand(0));
-    if (ConstantInt *CI = dyn_cast<ConstantInt>(IEI->getOperand(2))) {
-      if (CI->isZero()) {
-        std::string operand = getValueAsStr(IEI->getOperand(1));
-        if (!PreciseF32 && SVI->getType()->getElementType()->isFloatTy()) {
-          // SIMD_Float32x4_splat requires an actual float32 even if we're
-          // otherwise not being precise about it.
-          operand = "Math_fround(" + operand + ")";
-        }
-        Code << "SIMD_" << SIMDType(SVI->getType()) << "_splat(" << operand << ')';
-        return;
-      }
-    }
-  }
-
-  // Check whether can generate SIMD.js swizzle or shuffle.
-  std::string A = getValueAsStr(SVI->getOperand(0));
-  std::string B = getValueAsStr(SVI->getOperand(1));
-  VectorType *op0 = cast<VectorType>(SVI->getOperand(0)->getType());
-  int OpNumElements = op0->getNumElements();
-  int ResultNumElements = SVI->getType()->getNumElements();
-  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  int SIMDJsRetNumElements = 128 / cast<VectorType>(SVI->getType())->getElementType()->getPrimitiveSizeInBits();
-  int SIMDJsOp0NumElements = 128 / op0->getElementType()->getPrimitiveSizeInBits();
-  bool swizzleA = true;
-  bool swizzleB = true;
-  for(int i = 0; i < ResultNumElements; ++i) {
-    if (SVI->getMaskValue(i) >= OpNumElements) swizzleA = false;
-    if (SVI->getMaskValue(i) < OpNumElements) swizzleB = false;
-  }
-  assert(!(swizzleA && swizzleB));
-  if (swizzleA || swizzleB) {
-    std::string T = (swizzleA ? A : B);
-    Code << "SIMD_" << SIMDType(SVI->getType()) << "_swizzle(" << T;
-    int i = 0;
-    for (; i < ResultNumElements; ++i) {
-      Code << ", ";
-      int Mask = SVI->getMaskValue(i);
-      if (Mask < 0) {
-        Code << 0;
-      } else if (Mask < OpNumElements) {
-        Code << Mask;
-      } else {
-        assert(Mask < OpNumElements * 2);
-        Code << (Mask-OpNumElements);
-      }
-    }
-    // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-    for(int i = ResultNumElements; i < SIMDJsRetNumElements; ++i) {
-      Code << ", 0";
-    }
-    Code << ")";
-    return;
-  }
-
-  // Emit a fully-general shuffle.
-  Code << "SIMD_" << SIMDType(SVI->getType()) << "_shuffle(";
-
-  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, true) << ", "
-       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, true) << ", ";
-
-  SmallVector<int, 16> Indices;
-  SVI->getShuffleMask(Indices);
-  for (unsigned int i = 0; i < Indices.size(); ++i) {
-    if (i != 0)
-      Code << ", ";
-    int Mask = Indices[i];
-    if (Mask < 0)
-      Code << 0;
-    else if (Mask < OpNumElements)
-      Code << Mask;
-    else
-      Code << (Mask  + SIMDJsOp0NumElements - OpNumElements); // Fix up indices to second operand, since the first operand has potentially different number of lanes in SIMD.js compared to LLVM.
-  }
-
-  // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  for(int i = Indices.size(); i < SIMDJsRetNumElements; ++i) {
-    Code << ", 0";
-  }
-
-  Code << ')';
-}
-
-void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
+void BinaryenWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
   bool Invert = false;
   const char *Name;
   switch (cast<ICmpInst>(I)->getPredicate()) {
@@ -1890,7 +1668,7 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
     Code << ')';
 }
 
-void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
+void BinaryenWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
   const char *Name;
   bool Invert = false;
   VectorType *VT = cast<VectorType>(I->getType());
@@ -1977,267 +1755,6 @@ static const Value *getElement(const Value *V, unsigned i) {
     return NULL;
 }
 
-static const Value *getSplatValue(const Value *V) {
-    if (const Constant *C = dyn_cast<Constant>(V))
-        return C->getSplatValue();
-
-    VectorType *VTy = cast<VectorType>(V->getType());
-    const Value *Result = NULL;
-    for (unsigned i = 0; i < VTy->getNumElements(); ++i) {
-        const Value *E = getElement(V, i);
-        if (!E)
-            return NULL;
-        if (!Result)
-            Result = E;
-        else if (Result != E)
-            return NULL;
-    }
-    return Result;
-
-}
-
-void JSWriter::generateShiftExpression(const BinaryOperator *I, raw_string_ostream& Code) {
-    // If we're shifting every lane by the same amount (shifting by a splat value
-    // then we can use a ByScalar shift.
-    const Value *Count = I->getOperand(1);
-    if (const Value *Splat = getSplatValue(Count)) {
-        Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << '_';
-        if (I->getOpcode() == Instruction::AShr)
-            Code << "shiftRightArithmeticByScalar";
-        else if (I->getOpcode() == Instruction::LShr)
-            Code << "shiftRightLogicalByScalar";
-        else
-            Code << "shiftLeftByScalar";
-        Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(Splat) << ")";
-        return;
-    }
-
-    // SIMD.js does not currently have vector-vector shifts.
-    generateUnrolledExpression(I, Code);
-}
-
-void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Code) {
-  VectorType *VT = cast<VectorType>(I->getType());
-
-  Code << getAssignIfNeeded(I);
-
-  Code << "SIMD_" << SIMDType(VT) << '(';
-
-  int primSize = VT->getElementType()->getPrimitiveSizeInBits();
-  int numElems = VT->getNumElements();
-  if (primSize == 32 && numElems < 4) {
-    report_fatal_error("generateUnrolledExpression not expected to handle less than four-wide 32-bit vector types!");
-  }
-
-  for (unsigned Index = 0; Index < VT->getNumElements(); ++Index) {
-    if (Index != 0)
-        Code << ", ";
-    if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
-        Code << "Math_fround(";
-    }
-    std::string Extract;
-    if (VT->getElementType()->isIntegerTy()) {
-      Extract = "SIMD_Int32x4_extractLane(";
-      UsesSIMDInt32x4 = true;
-    } else {
-      Extract = "SIMD_Float32x4_extractLane(";
-      UsesSIMDFloat32x4 = true;
-    }
-    switch (Operator::getOpcode(I)) {
-      case Instruction::SDiv:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " / "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
-                "|0";
-        break;
-      case Instruction::UDiv:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")>>>0)"
-                " / "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")>>>0)"
-                ">>>0";
-        break;
-      case Instruction::SRem:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " % "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
-                "|0";
-        break;
-      case Instruction::URem:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")>>>0)"
-                " % "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")>>>0)"
-                ">>>0";
-        break;
-      case Instruction::AShr:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " >> "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
-                "|0";
-        break;
-      case Instruction::LShr:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " >>> "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
-                "|0";
-        break;
-      case Instruction::Shl:
-        Code << "(" << Extract << getValueAsStr(I->getOperand(0)) << "," << Index << ")|0)"
-                " << "
-                "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
-                "|0";
-        break;
-      default: I->dump(); error("invalid unrolled vector instr"); break;
-    }
-    if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
-        Code << ")";
-    }
-  }
-
-  Code << ")";
-}
-
-bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
-  VectorType *VT;
-  if ((VT = dyn_cast<VectorType>(I->getType()))) {
-    // vector-producing instructions
-    checkVectorType(VT);
-    std::string simdType = SIMDType(VT);
-
-    switch (Operator::getOpcode(I)) {
-      default: I->dump(); error("invalid vector instr"); break;
-      case Instruction::Call: // return value is just a SIMD value, no special handling
-        return false;
-      case Instruction::PHI: // handled separately - we push them back into the relooper branchings
-        break;
-      case Instruction::ICmp:
-        generateICmpExpression(cast<ICmpInst>(I), Code);
-        break;
-      case Instruction::FCmp:
-        generateFCmpExpression(cast<FCmpInst>(I), Code);
-        break;
-      case Instruction::SExt:
-        assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
-               "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), true /* signExtend */);
-        break;
-      case Instruction::ZExt:
-        assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
-               "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), false /* signExtend */);
-        break;
-      case Instruction::Select:
-        // Since we represent vectors of i1 as vectors of sign extended wider integers,
-        // selecting on them is just an elementwise select.
-        if (isa<VectorType>(I->getOperand(0)->getType())) {
-          if (cast<VectorType>(I->getType())->getElementType()->isIntegerTy()) {
-            Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
-          } else {
-            Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_select(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << "," << getValueAsStr(I->getOperand(2)) << ")"; break;
-          }
-          return true;
-        }
-        // Otherwise we have a scalar condition, so it's a ?: operator.
-        return false;
-      case Instruction::FAdd: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FMul: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::FDiv: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_div(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Add: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Sub: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Mul: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::And: Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Or:  Code << getAssignIfNeeded(I) << "SIMD_" << simdType << "_or(" <<  getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-      case Instruction::Xor:
-        // LLVM represents a not(x) as -1 ^ x
-        Code << getAssignIfNeeded(I);
-        if (BinaryOperator::isNot(I)) {
-          Code << "SIMD_" << simdType << "_not(" << getValueAsStr(BinaryOperator::getNotArgument(I)) << ")"; break;
-        } else {
-          Code << "SIMD_" << simdType << "_xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-        }
-        break;
-      case Instruction::FSub:
-        // LLVM represents an fneg(x) as -0.0 - x.
-        Code << getAssignIfNeeded(I);
-        if (BinaryOperator::isFNeg(I)) {
-          Code << "SIMD_" << simdType << "_neg(" << getValueAsStr(BinaryOperator::getFNegArgument(I)) << ")";
-        } else {
-          Code << "SIMD_" << simdType << "_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")";
-        }
-        break;
-      case Instruction::BitCast: {
-      case Instruction::SIToFP:
-        Code << getAssignIfNeeded(I);
-        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), true);
-        break;
-      }
-      case Instruction::Load: {
-        const LoadInst *LI = cast<LoadInst>(I);
-        const Value *P = LI->getPointerOperand();
-        std::string PS = getValueAsStr(P);
-        const char *load = "_load";
-        if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-          switch (VT->getNumElements()) {
-            case 1: load = "_load1"; break;
-            case 2: load = "_load2"; break;
-            case 3: load = "_load3"; break;
-            default: break;
-          }
-        }
-        Code << getAssignIfNeeded(I) << "SIMD_" << simdType << load << "(HEAPU8, " << PS << ")";
-        break;
-      }
-      case Instruction::InsertElement:
-        generateInsertElementExpression(cast<InsertElementInst>(I), Code);
-        break;
-      case Instruction::ShuffleVector:
-        generateShuffleVectorExpression(cast<ShuffleVectorInst>(I), Code);
-        break;
-      case Instruction::SDiv:
-      case Instruction::UDiv:
-      case Instruction::SRem:
-      case Instruction::URem:
-        // The SIMD API does not currently support these operations directly.
-        // Emulate them using scalar operations (which is essentially the same
-        // as what would happen if the API did support them, since hardware
-        // doesn't support them).
-        generateUnrolledExpression(I, Code);
-        break;
-      case Instruction::AShr:
-      case Instruction::LShr:
-      case Instruction::Shl:
-        generateShiftExpression(cast<BinaryOperator>(I), Code);
-        break;
-    }
-    return true;
-  } else {
-    // vector-consuming instructions
-    if (Operator::getOpcode(I) == Instruction::Store && (VT = dyn_cast<VectorType>(I->getOperand(0)->getType())) && VT->isVectorTy()) {
-      checkVectorType(VT);
-      std::string simdType = SIMDType(VT);
-      const StoreInst *SI = cast<StoreInst>(I);
-      const Value *P = SI->getPointerOperand();
-      std::string PS = "temp_" + simdType + "_ptr";
-      std::string VS = getValueAsStr(SI->getValueOperand());
-      Code << getAdHocAssign(PS, P->getType()) << getValueAsStr(P) << ';';
-      const char *store = "_store";
-      if (VT->getElementType()->getPrimitiveSizeInBits() == 32) {
-        switch (VT->getNumElements()) {
-          case 1: store = "_store1"; break;
-          case 2: store = "_store2"; break;
-          case 3: store = "_store3"; break;
-          default: break;
-        }
-      }
-      Code << "SIMD_" << simdType << store << "(HEAPU8, " << PS << ", " << VS << ")";
-      return true;
-    } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
-      generateExtractElementExpression(cast<ExtractElementInst>(I), Code);
-      return true;
-    }
-  }
-  return false;
-}
-
 static uint64_t LSBMask(unsigned numBits) {
   return numBits >= 64 ? 0xFFFFFFFFFFFFFFFFULL : (1ULL << numBits) - 1;
 }
@@ -2255,7 +1772,7 @@ static std::string AddOffset(const std::string &base, int32_t Offset) {
 }
 
 // Generate code for and operator, either an Instruction or a ConstantExpr.
-void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
+void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   // To avoid emiting code and variables for the no-op pointer bitcasts
   // and all-zero-index geps that LLVM needs to satisfy its type system, we
   // call stripPointerCasts() on all values before translating them. This
@@ -2271,7 +1788,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   if (!generateSIMDExpression(I, Code)) switch (Operator::getOpcode(I)) {
   default: {
     I->dump();
-    error("Invalid instruction in JSWriter::generateExpression");
+    error("Invalid instruction in BinaryenWriter::generateExpression");
     break;
   }
   case Instruction::Ret: {
@@ -2465,7 +1982,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
 
     if (NativizedVars.count(AI)) {
       // nativized stack variable, we just need a 'var' definition
-      UsedVars[getJSName(AI)] = AI->getType()->getElementType();
+      UsedVars[getSimpleName(AI)] = AI->getType()->getElementType();
       return;
     }
 
@@ -2712,12 +2229,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       // Most bitcasts are no-ops for us. However, the exception is int to float and float to int
       switch (rmwi->getOperation()) {
         case AtomicRMWInst::Xchg: Code << getStore(rmwi, P, I->getType(), VS, 0); break;
-        case AtomicRMWInst::Add:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '+' + VS + ")|0)", 0); break;
-        case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getJSName(I) + '-' + VS + ")|0)", 0); break;
-        case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '&' + VS + ")", 0); break;
-        case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getJSName(I) + '&' + VS + "))", 0); break;
-        case AtomicRMWInst::Or:   Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '|' + VS + ")", 0); break;
-        case AtomicRMWInst::Xor:  Code << getStore(rmwi, P, I->getType(), "(" + getJSName(I) + '^' + VS + ")", 0); break;
+        case AtomicRMWInst::Add:  Code << getStore(rmwi, P, I->getType(), "((" + getSimpleName(I) + '+' + VS + ")|0)", 0); break;
+        case AtomicRMWInst::Sub:  Code << getStore(rmwi, P, I->getType(), "((" + getSimpleName(I) + '-' + VS + ")|0)", 0); break;
+        case AtomicRMWInst::And:  Code << getStore(rmwi, P, I->getType(), "(" + getSimpleName(I) + '&' + VS + ")", 0); break;
+        case AtomicRMWInst::Nand: Code << getStore(rmwi, P, I->getType(), "(~(" + getSimpleName(I) + '&' + VS + "))", 0); break;
+        case AtomicRMWInst::Or:   Code << getStore(rmwi, P, I->getType(), "(" + getSimpleName(I) + '|' + VS + ")", 0); break;
+        case AtomicRMWInst::Xor:  Code << getStore(rmwi, P, I->getType(), "(" + getSimpleName(I) + '^' + VS + ")", 0); break;
         case AtomicRMWInst::Max:
         case AtomicRMWInst::Min:
         case AtomicRMWInst::UMax:
@@ -2752,7 +2269,7 @@ static const Value *considerConditionVar(const Instruction *I) {
   return SI->getCondition();
 }
 
-void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
+void BinaryenWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
   std::string Code;
   raw_string_ostream CodeStream(Code);
   for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
@@ -2771,7 +2288,7 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   R.AddBlock(Curr);
 }
 
-void JSWriter::printFunctionBody(const Function *F) {
+void BinaryenWriter::printFunctionBody(const Function *F) {
   assert(!F->isDeclaration());
 
   // Prepare relooper
@@ -2920,36 +2437,10 @@ void JSWriter::printFunctionBody(const Function *F) {
         case Type::DoubleTyID:
           Out << "+0";
           break;
-        case Type::VectorTyID: {
-          VectorType *VT = cast<VectorType>(VI->second);
-          Out << "SIMD_" << SIMDType(VT) << "(0";
-
-          // SIMD.js has only a fixed set of SIMD types, and no arbitrary vector sizes like <float x 3> or <i8 x 7>, so
-          // codegen rounds up to the smallest appropriate size where the LLVM vector fits.
-          unsigned simdJsNumElements = VT->getNumElements();
-          if (simdJsNumElements <= 2 && VT->getElementType()->getPrimitiveSizeInBits() > 32) simdJsNumElements = 2;
-          else if (simdJsNumElements <= 4 && VT->getElementType()->getPrimitiveSizeInBits() <= 32) simdJsNumElements = 4;
-          else if (simdJsNumElements <= 8 && VT->getElementType()->getPrimitiveSizeInBits() <= 16) simdJsNumElements = 8;
-          else if (simdJsNumElements <= 16 && VT->getElementType()->getPrimitiveSizeInBits() <= 8) simdJsNumElements = 16;
-
-          for (unsigned i = 1; i < simdJsNumElements; ++i) {
-            Out << ",0";
-          }
-          Out << ')';
-          break;
-        }
       }
     }
     Out << ";";
     nl(Out);
-  }
-
-  {
-    static bool Warned = false;
-    if (!Warned && OptLevel < 2 && UsedVars.size() > 2000) {
-      prettyWarning() << "emitted code will contain very large numbers of local variables, which is bad for performance (build to JS with -O2 or above to avoid this - make sure to do so both on source files, and during 'linking')\n";
-      Warned = true;
-    }
   }
 
   // Emit stack entry
@@ -2993,12 +2484,12 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   if (Relocatable) {
     if (!F->hasInternalLinkage()) {
-      Exports.push_back(getJSName(F));
+      Exports.push_back(getSimpleName(F));
     }
   }
 }
 
-void JSWriter::processConstants() {
+void BinaryenWriter::processConstants() {
   // Ensure a name for each global
   for (Module::global_iterator I = TheModule->global_begin(),
          E = TheModule->global_end(); I != E; ++I) {
@@ -3077,8 +2568,8 @@ void JSWriter::processConstants() {
       if (I->hasInitializer() && !I->hasInternalLinkage()) {
         std::string Name = I->getName().str();
         if (GlobalAddresses.find(Name) != GlobalAddresses.end()) {
-          std::string JSName = getJSName(I).substr(1);
-          if (Name == JSName) { // don't export things that have weird internal names, that C can't dlsym anyhow
+          std::string SimpleName = getSimpleName(I).substr(1);
+          if (Name == SimpleName) { // don't export things that have weird internal names, that C can't dlsym anyhow
             NamedGlobals[Name] = getGlobalAddress(Name);
           }
         }
@@ -3087,7 +2578,7 @@ void JSWriter::processConstants() {
   }
 }
 
-void JSWriter::printFunction(const Function *F) {
+void BinaryenWriter::printFunction(const Function *F) {
   ValueNames.clear();
 
   // Prepare and analyze function
@@ -3111,14 +2602,14 @@ void JSWriter::printFunction(const Function *F) {
   for (Function::const_arg_iterator AI = F->arg_begin(), AE = F->arg_end();
        AI != AE; ++AI) {
     if (AI != F->arg_begin()) Out << ",";
-    Out << getJSName(&*AI);
+    Out << getSimpleName(&*AI);
   }
   Out << ") {";
   nl(Out);
   for (Function::const_arg_iterator II = F->arg_begin(), AE = F->arg_end();
        II != AE; ++II) {
     auto AI = &*II;
-    std::string name = getJSName(AI);
+    std::string name = getSimpleName(AI);
     Out << " " << name << " = " << getCast(name, AI->getType(), ASM_NONSPECIFIC) << ";";
     nl(Out);
   }
@@ -3130,7 +2621,7 @@ void JSWriter::printFunction(const Function *F) {
   StackBumped = false;
 }
 
-void JSWriter::printModuleBody() {
+void BinaryenWriter::printModuleBody() {
   processConstants();
 
   if (Relocatable) {
@@ -3138,7 +2629,7 @@ void JSWriter::printModuleBody() {
          I != E; ++I) {
       if (const GlobalAlias *GA = dyn_cast<GlobalAlias>(I)) {
         const Value* Target = resolveFully(GA);
-        Aliases[getJSName(GA)] = getJSName(Target);
+        Aliases[getSimpleName(GA)] = getSimpleName(Target);
       }
     }
   }
@@ -3461,7 +2952,7 @@ void JSWriter::printModuleBody() {
   Out << "\n}\n";
 }
 
-void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate) {
+void BinaryenWriter::parseConstant(const std::string& name, const Constant* CV, int Alignment, bool calculate) {
   if (isa<GlobalValue>(CV))
     return;
   if (Alignment == 0) Alignment = DEFAULT_MEM_ALIGN;
@@ -3534,7 +3025,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
             if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
               C = CE->getOperand(0); // ignore bitcasts
             }
-            if (isa<Function>(C)) Exports.push_back(getJSName(C));
+            if (isa<Function>(C)) Exports.push_back(getSimpleName(C));
           }
         } else if ((*UI)->getName() == "llvm.global.annotations") {
           // llvm.global.annotations can be ignored.
@@ -3554,7 +3045,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
           if (const ConstantExpr *CE = dyn_cast<ConstantExpr>(C)) {
             C = CE->getOperand(0); // ignore bitcasts
           }
-          GlobalInitializers.push_back(getJSName(C));
+          GlobalInitializers.push_back(getSimpleName(C));
         }
       }
     } else if (calculate) {
@@ -3630,7 +3121,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
       // this is the global static initializer
       if (calculate) {
         const Value *V = CE->getOperand(0);
-        GlobalInitializers.push_back(getJSName(V));
+        GlobalInitializers.push_back(getSimpleName(V));
         // is the func
       }
     } else if (name == "__fini_array_start") {
@@ -3681,7 +3172,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
   }
 }
 
-std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
+std::string BinaryenWriter::generateDebugRecordForVar(Metadata *MD) {
   // void shows up as nullptr for Metadata
   if (!MD) {
     cyberDWARFData.IndexedMetadata[0] = 0;
@@ -3818,7 +3309,7 @@ std::string JSWriter::generateDebugRecordForVar(Metadata *MD) {
   return VarIDForJSON;
 }
 
-void JSWriter::buildCyberDWARFData() {
+void BinaryenWriter::buildCyberDWARFData() {
   for (auto &F : TheModule->functions()) {
     auto MD = F.getMetadata("dbg");
     if (MD) {
@@ -3857,7 +3348,7 @@ void JSWriter::buildCyberDWARFData() {
 
 // nativization
 
-void JSWriter::calculateNativizedVars(const Function *F) {
+void BinaryenWriter::calculateNativizedVars(const Function *F) {
   NativizedVars.clear();
 
   for (Function::const_iterator I = F->begin(), BE = F->end(); I != BE; ++I) {
@@ -3889,13 +3380,13 @@ void JSWriter::calculateNativizedVars(const Function *F) {
 
 // special analyses
 
-bool JSWriter::canReloop(const Function *F) {
+bool BinaryenWriter::canReloop(const Function *F) {
   return true;
 }
 
 // main entry
 
-void JSWriter::printCommaSeparated(const HeapData data) {
+void BinaryenWriter::printCommaSeparated(const HeapData data) {
   for (HeapData::const_iterator I = data.begin();
        I != data.end(); ++I) {
     if (I != data.begin()) {
@@ -3905,17 +3396,17 @@ void JSWriter::printCommaSeparated(const HeapData data) {
   }
 }
 
-void JSWriter::printProgram(const std::string& fname,
+void BinaryenWriter::printProgram(const std::string& fname,
                              const std::string& mName) {
   printModule(fname,mName);
 }
 
-void JSWriter::printModule(const std::string& fname,
+void BinaryenWriter::printModule(const std::string& fname,
                             const std::string& mName) {
   printModuleBody();
 }
 
-bool JSWriter::runOnModule(Module &M) {
+bool BinaryenWriter::runOnModule(Module &M) {
   TheModule = &M;
   DL = &M.getDataLayout();
 
@@ -3934,7 +3425,7 @@ bool JSWriter::runOnModule(Module &M) {
   return false;
 }
 
-char JSWriter::ID = 0;
+char BinaryenWriter::ID = 0;
 
 class CheckTriple : public ModulePass {
 public:
@@ -3958,7 +3449,7 @@ Pass *createCheckTriplePass() {
 //                       External Interface declaration
 //===----------------------------------------------------------------------===//
 
-bool JSTargetMachine::addPassesToEmitFile(
+bool BinaryenTargetMachine::addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify, AnalysisID StartBefore,
       AnalysisID StartAfter, AnalysisID StopAfter,
@@ -4090,7 +3581,7 @@ bool JSTargetMachine::addPassesToEmitFile(
   PM.add(createEmscriptenRemoveLLVMAssumePass());
   PM.add(createEmscriptenExpandBigSwitchesPass());
 
-  PM.add(new JSWriter(Out, OptLevel));
+  PM.add(new BinaryenWriter(Out, OptLevel));
 
   return false;
 }
