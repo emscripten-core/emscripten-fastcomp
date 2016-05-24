@@ -1,4 +1,4 @@
-//===- BinaryenBackendMCTargetDesc.h - JS Backend Target Descriptions -*- C++ -*-===//
+//===- BinaryenBackendMCTargetDesc.h - Binaryen Backend Target Descriptions -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// This file provides asm.js specific target descriptions.
+// This file provides Binaryen specific target descriptions.
 //
 //===----------------------------------------------------------------------===//
 
