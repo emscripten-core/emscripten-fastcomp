@@ -2,8 +2,8 @@ add_llvm_target(BinaryenBackendCodeGen
   AllocaManager.cpp
   ExpandBigSwitches.cpp
   BinaryenBackend.cpp
-  JSTargetMachine.cpp
-  JSTargetTransformInfo.cpp
+  BinaryenTargetMachine.cpp
+  BinaryenTargetTransformInfo.cpp
   RemoveLLVMAssume.cpp
   SimplifyAllocas.cpp
   )
