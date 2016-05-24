@@ -1,7 +1,7 @@
-add_llvm_target(JSBackendCodeGen
+add_llvm_target(BinaryenBackendCodeGen
   AllocaManager.cpp
   ExpandBigSwitches.cpp
-  JSBackend.cpp
+  BinaryenBackend.cpp
   JSTargetMachine.cpp
   JSTargetTransformInfo.cpp
   Relooper.cpp
@@ -9,9 +9,8 @@ add_llvm_target(JSBackendCodeGen
   SimplifyAllocas.cpp
   )
 
-add_dependencies(LLVMJSBackendCodeGen intrinsics_gen)
+add_dependencies(LLVMBinaryenBackendCodeGen intrinsics_gen)
 
 add_subdirectory(Binaryen)
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
-add_subdirectory(NaCl)

@@ -1,4 +1,4 @@
-;===- ./lib/Target/JSBackend/TargetInfo/LLVMBuild.txt ---------*- Conf -*--===;
+;===- ./lib/Target/BinaryenBackend/TargetInfo/LLVMBuild.txt ---------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -17,7 +17,7 @@
 
 [component_0]
 type = Library
-name = JSBackendInfo
-parent = JSBackend
+name = BinaryenBackendInfo
+parent = BinaryenBackend
 required_libraries = MC Support Target
-add_to_library_groups = JSBackend
+add_to_library_groups = BinaryenBackend

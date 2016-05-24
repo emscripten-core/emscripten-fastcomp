@@ -1,4 +1,4 @@
-add_llvm_library(BinaryenCodeGen
+add_llvm_library(BinaryenLibrary
   support/colors.cpp
   support/bits.cpp
   support/file.cpp

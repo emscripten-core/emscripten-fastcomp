@@ -23,6 +23,7 @@ subdirectories =
  ARM
  AArch64
  AVR
+ BinaryenBackend
  BPF
  CppBackend
  JSBackend

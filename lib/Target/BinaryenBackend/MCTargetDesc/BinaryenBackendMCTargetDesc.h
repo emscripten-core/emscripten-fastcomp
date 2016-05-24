@@ -1,4 +1,4 @@
-//===- JSBackendMCTargetDesc.h - JS Backend Target Descriptions -*- C++ -*-===//
+//===- BinaryenBackendMCTargetDesc.h - JS Backend Target Descriptions -*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,14 +11,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef JSBACKENDMCTARGETDESC_H
-#define JSBACKENDMCTARGETDESC_H
+#ifndef BinaryenBackendMCTARGETDESC_H
+#define BinaryenBackendMCTARGETDESC_H
 
 #include "llvm/Support/TargetRegistry.h"
 
 namespace llvm {
 
-extern Target TheJSBackendTarget;
+extern Target TheBinaryenBackendTarget;
 
 } // End llvm namespace
 

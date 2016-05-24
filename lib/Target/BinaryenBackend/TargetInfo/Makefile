@@ -1,4 +1,4 @@
-##===- lib/Target/JSBackend/TargetInfo/Makefile -----------*- Makefile -*-===##
+##===- lib/Target/BinaryenBackend/TargetInfo/Makefile -----------*- Makefile -*-===##
 #
 #                     The LLVM Compiler Infrastructure
 #
@@ -7,7 +7,7 @@
 #
 ##===---------------------------------------------------------------------===##
 LEVEL = ../../../..
-LIBRARYNAME = LLVMJSBackendInfo
+LIBRARYNAME = LLVMBinaryenBackendInfo
 
 # Hack: we need to include 'main' target directory to grab private headers
 CPPFLAGS = -I$(PROJ_OBJ_DIR)/.. -I$(PROJ_SRC_DIR)/..

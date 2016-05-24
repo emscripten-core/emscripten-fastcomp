@@ -1,4 +1,4 @@
-//===-- JSBackendTargetInfo.cpp - JSBackend Target Implementation -------===//
+//===-- BinaryenBackendTargetInfo.cpp - BinaryenBackend Target Implementation -------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,13 +8,13 @@
 //===--------------------------------------------------------------------===//
 
 #include "JSTargetMachine.h"
-#include "MCTargetDesc/JSBackendMCTargetDesc.h"
+#include "MCTargetDesc/BinaryenBackendMCTargetDesc.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
-Target llvm::TheJSBackendTarget;
+Target llvm::TheBinaryenBackendTarget;
 
-extern "C" void LLVMInitializeJSBackendTargetInfo() { 
-  RegisterTarget<Triple::asmjs, /*HasJIT=*/false> X(TheJSBackendTarget, "js", "JavaScript (asm.js, emscripten) backend");
+extern "C" void LLVMInitializeBinaryenBackendTargetInfo() { 
+  RegisterTarget<Triple::asmjs, /*HasJIT=*/false> X(TheBinaryenBackendTarget, "js", "JavaScript (asm.js, emscripten) backend");
 }

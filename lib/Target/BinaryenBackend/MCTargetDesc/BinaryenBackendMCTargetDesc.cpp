@@ -1,4 +1,4 @@
-//===-- JSBackendMCTargetDesc.cpp - JS Backend Target Descriptions --------===//
+//===-- BinaryenBackendMCTargetDesc.cpp - JS Backend Target Descriptions --------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -11,13 +11,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "JSBackendMCTargetDesc.h"
+#include "BinaryenBackendMCTargetDesc.h"
 #include "llvm/MC/MCCodeGenInfo.h"
 #include "llvm/Support/TargetRegistry.h"
 using namespace llvm;
 
 
-static MCCodeGenInfo *createJSBackendMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
+static MCCodeGenInfo *createBinaryenBackendMCCodeGenInfo(const Triple &TT, Reloc::Model RM,
                                                    CodeModel::Model CM,
                                                    CodeGenOpt::Level OL) {
   MCCodeGenInfo *X = new MCCodeGenInfo();
@@ -26,7 +26,7 @@ static MCCodeGenInfo *createJSBackendMCCodeGenInfo(const Triple &TT, Reloc::Mode
 }
 
 // Force static initialization.
-extern "C" void LLVMInitializeJSBackendTargetMC() {
+extern "C" void LLVMInitializeBinaryenBackendTargetMC() {
   // Register the MC codegen info.
-  RegisterMCCodeGenInfoFn C(TheJSBackendTarget, createJSBackendMCCodeGenInfo);
+  RegisterMCCodeGenInfoFn C(TheBinaryenBackendTarget, createBinaryenBackendMCCodeGenInfo);
 }

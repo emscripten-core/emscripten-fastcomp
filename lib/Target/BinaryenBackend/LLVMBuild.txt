@@ -1,4 +1,4 @@
-;===- ./lib/Target/JSBackend/LLVMBuild.txt --------------------*- Conf -*--===;
+;===- ./lib/Target/BinaryenBackend/LLVMBuild.txt --------------------*- Conf -*--===;
 ;
 ;                     The LLVM Compiler Infrastructure
 ;
@@ -16,16 +16,16 @@
 ;===------------------------------------------------------------------------===;
 
 [common]
-subdirectories = MCTargetDesc NaCl TargetInfo
+subdirectories = Binaryen MCTargetDesc TargetInfo
 
 [component_0]
 type = TargetGroup
-name = JSBackend
+name = BinaryenBackend
 parent = Target
 
 [component_1]
 type = Library
-name = JSBackendCodeGen
-parent = JSBackend
-required_libraries = Analysis CodeGen Core JSBackendInfo JSBackendDesc PNaClTransforms Support Target
-add_to_library_groups = JSBackend
+name = BinaryenBackendCodeGen
+parent = BinaryenBackend
+required_libraries = Analysis CodeGen Core BinaryenBackendInfo BinaryenBackendDesc PNaClTransforms Support Target
+add_to_library_groups = BinaryenBackend

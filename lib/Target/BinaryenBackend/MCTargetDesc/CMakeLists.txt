@@ -1,5 +1,5 @@
-add_llvm_library(LLVMJSBackendDesc
-  JSBackendMCTargetDesc.cpp
+add_llvm_library(LLVMBinaryenBackendDesc
+  BinaryenBackendMCTargetDesc.cpp
   )
 
 # Hack: we need to include 'main' target directory to grab private headers
