@@ -347,13 +347,8 @@ namespace {
         } else {
           return 'd';
         }
-      } else if (VectorType *VT = dyn_cast<VectorType>(T)) {
-        checkVectorType(VT);
-        if (VT->getElementType()->isIntegerTy()) {
-          return 'I';
-        } else {
-          return 'F';
-        }
+      } else if (isa<VectorType>(T)) {
+        llvm_unreachable("vector type");
       } else {
         return 'i';
       }
@@ -397,7 +392,7 @@ namespace {
       // invoke the callHandler for this, if there is one. the function may only be indexed but never called directly, and we may need to do things in the handler
       CallHandlerMap::const_iterator CH = CallHandlers.find(Name);
       if (CH != CallHandlers.end()) {
-        (this->*(CH->second))(NULL, Name, -1);
+        (this->*(CH->second))(nullptr, Name, -1);
       }
 
       return Index;
@@ -624,8 +619,6 @@ namespace {
     static std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
 
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
-    template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
-    std::string getConstantVector(const VectorType *C);
     std::string getValueAsStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsCastStr(const Value*, AsmCast sign=ASM_SIGNED);
     std::string getValueAsParenStr(const Value*);
@@ -928,8 +921,8 @@ std::string BinaryenWriter::getDoubleToInt(const StringRef &s) {
 }
 
 std::string BinaryenWriter::getIMul(const Value *V1, const Value *V2) {
-  const ConstantInt *CI = NULL;
-  const Value *Other = NULL;
+  const ConstantInt *CI = nullptr;
+  const Value *Other = nullptr;
   if ((CI = dyn_cast<ConstantInt>(V1))) {
     Other = V2;
   } else if ((CI = dyn_cast<ConstantInt>(V2))) {
@@ -1349,7 +1342,7 @@ std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
     return CI->getValue().toString(10, sign != ASM_UNSIGNED);
   } else if (isa<UndefValue>(CV)) {
     std::string S;
-    if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+    if (isa<VectorType>(CV->getType())) {
       llvm_unreachable("vector type");
     } else {
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
@@ -1359,16 +1352,16 @@ std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
     }
     return S;
   } else if (isa<ConstantAggregateZero>(CV)) {
-    if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
+    if (isa<VectorType>(CV->getType())) {
       llvm_unreachable("vector type");
     } else {
       // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
       return "0";
     }
-  } else if (const ConstantDataVector *DV = dyn_cast<ConstantDataVector>(CV)) {
-    return getConstantVector(DV);
-  } else if (const ConstantVector *V = dyn_cast<ConstantVector>(CV)) {
-    return getConstantVector(V);
+  } else if (isa<ConstantDataVector>(CV)) {
+    llvm_unreachable("vector type");
+  } else if (isa<ConstantVector>(CV)) {
+    llvm_unreachable("vector type");
   } else if (const ConstantArray *CA = dyn_cast<const ConstantArray>(CV)) {
     // handle things like [i8* bitcast (<{ i32, i32, i32 }>* @_ZTISt9bad_alloc to i8*)] which clang can emit for landingpads
     assert(CA->getNumOperands() == 1);
@@ -1443,7 +1436,7 @@ static const Value *getElement(const Value *V, unsigned i) {
         }
         return getElement(II->getOperand(0), i);
     }
-    return NULL;
+    return nullptr;
 }
 
 static uint64_t LSBMask(unsigned numBits) {
@@ -1489,7 +1482,7 @@ void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code)
       Code << "STACKTOP = sp;";
     }
     Code << "return";
-    if (RV != NULL) {
+    if (RV != nullptr) {
       Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC | ASM_MUST_CAST);
     }
     break;
@@ -1955,7 +1948,7 @@ static const Value *considerConditionVar(const Instruction *I) {
     return IB->getAddress();
   }
   const SwitchInst *SI = dyn_cast<SwitchInst>(I);
-  if (!SI) return NULL;
+  if (!SI) return nullptr;
   // otherwise, we trust LLVM switches. if they were too big or sparse, the switch expansion pass should have fixed that
   return SI->getCondition();
 }
@@ -1974,9 +1967,7 @@ void BinaryenWriter::addBlock(const BasicBlock *BB, RelooperRef R, LLVMToReloope
   CurrInstruction = nullptr;
   CodeStream.flush();
   const Value* Condition = considerConditionVar(BB->getTerminator());
-  Block *Curr = new Block(Code.c_str(), Condition ? getValueAsCastStr(Condition).c_str() : NULL);
-  LLVMToRelooper[BB] = Curr;
-  R.AddBlock(Curr);
+  LLVMToRelooper[BB] = RelooperAddBlock(R, Code.c_str());
 }
 
 void BinaryenWriter::printFunctionBody(const Function *F) {
@@ -1991,7 +1982,7 @@ void BinaryenWriter::printFunctionBody(const Function *F) {
     R.SetMinSize(true);
   }
   R.SetAsmJSMode(1);
-  Block *Entry = NULL;
+  Block *Entry = nullptr;
   LLVMToRelooperMap LLVMToRelooper;
 
   // Create relooper blocks with their contents. TODO: We could optimize
@@ -2023,12 +2014,12 @@ void BinaryenWriter::printFunctionBody(const Function *F) {
           BasicBlock *S1 = br->getSuccessor(1);
           std::string P0 = getPhiCode(&*BI, S0);
           std::string P1 = getPhiCode(&*BI, S1);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], getValueAsStr(TI->getOperand(0)).c_str(), P0.size() > 0 ? P0.c_str() : NULL);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], NULL,                                     P1.size() > 0 ? P1.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S0], getValueAsStr(TI->getOperand(0)).c_str(), P0.size() > 0 ? P0.c_str() : nullptr);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S1], nullptr,                                     P1.size() > 0 ? P1.c_str() : nullptr);
         } else if (br->getNumOperands() == 1) {
           BasicBlock *S = br->getSuccessor(0);
           std::string P = getPhiCode(&*BI, S);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], NULL, P.size() > 0 ? P.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], nullptr, P.size() > 0 ? P.c_str() : nullptr);
         } else {
           error("Branch with 2 operands?");
         }
@@ -2050,7 +2041,7 @@ void BinaryenWriter::printFunctionBody(const Function *F) {
           } else {
             Target = "case " + utostr(getBlockAddress(F, S)) + ": ";
           }
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : NULL, P.size() > 0 ? P.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*S], Target.size() > 0 ? Target.c_str() : nullptr, P.size() > 0 ? P.c_str() : nullptr);
         }
         break;
       }
@@ -2059,7 +2050,7 @@ void BinaryenWriter::printFunctionBody(const Function *F) {
         bool UseSwitch = !!considerConditionVar(SI);
         BasicBlock *DD = SI->getDefaultDest();
         std::string P = getPhiCode(&*BI, DD);
-        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], NULL, P.size() > 0 ? P.c_str() : NULL);
+        LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*DD], nullptr, P.size() > 0 ? P.c_str() : nullptr);
         typedef std::map<const BasicBlock*, std::string> BlockCondMap;
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
@@ -2079,7 +2070,7 @@ void BinaryenWriter::printFunctionBody(const Function *F) {
           if (!alreadyProcessed.insert(BB).second) continue;
           if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);
-          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], BlocksToConditions[BB].c_str(), P.size() > 0 ? P.c_str() : NULL);
+          LLVMToRelooper[&*BI]->AddBranchTo(LLVMToRelooper[&*BB], BlocksToConditions[BB].c_str(), P.size() > 0 ? P.c_str() : nullptr);
         }
         break;
       }
