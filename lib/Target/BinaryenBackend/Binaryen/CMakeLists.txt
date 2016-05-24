@@ -1,0 +1,34 @@
+add_llvm_library(BinaryenCodeGen
+  support/colors.cpp
+  support/bits.cpp
+  support/file.cpp
+  support/safe_integer.cpp
+  support/threads.cpp
+  support/command-line.cpp
+  support/archive.cpp
+  passes/RemoveUnusedBrs.cpp
+  passes/RemoveImports.cpp
+  passes/ReorderLocals.cpp
+  passes/ReorderFunctions.cpp
+  passes/MergeBlocks.cpp
+  passes/OptimizeInstructions.cpp
+  passes/DeadCodeElimination.cpp
+  passes/LowerInt64.cpp
+  passes/Metrics.cpp
+  passes/Vacuum.cpp
+  passes/DropReturnValues.cpp
+  passes/pass.cpp
+  passes/PostEmscripten.cpp
+  passes/RemoveUnusedNames.cpp
+  passes/NameManager.cpp
+  passes/LowerIfElse.cpp
+  passes/Print.cpp
+  passes/SimplifyLocals.cpp
+  passes/CoalesceLocals.cpp
+  asmjs/asm_v_wasm.cpp
+  asmjs/shared-constants.cpp
+  wasm.cpp
+  cfg/Relooper.cpp
+  binaryen-c.cpp
+  )
+

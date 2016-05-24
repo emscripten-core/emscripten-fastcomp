@@ -11,6 +11,7 @@ add_llvm_target(JSBackendCodeGen
 
 add_dependencies(LLVMJSBackendCodeGen intrinsics_gen)
 
+add_subdirectory(Binaryen)
 add_subdirectory(TargetInfo)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(NaCl)
