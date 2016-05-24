@@ -52,6 +52,8 @@ using namespace llvm;
 
 #include <OptPasses.h>
 
+#include "Binaryen/binaryen-c.h"
+
 // TODO: remove?
 #ifdef NDEBUG
 #undef assert
@@ -190,7 +192,7 @@ namespace {
   typedef std::map<unsigned, IntSet> IntIntSetMap;
   typedef std::map<const BasicBlock*, unsigned> BlockIndexMap;
   typedef std::map<const Function*, BlockIndexMap> BlockAddressMap;
-  typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
+  typedef std::map<const BasicBlock*, RelooperBlockRef> LLVMToRelooperMap;
   struct AsmConstInfo {
     int Id;
     std::set<std::string> Sigs;
@@ -235,18 +237,6 @@ namespace {
     } cyberDWARFData;
 
     std::string CantValidate;
-    bool UsesSIMDUint8x16;
-    bool UsesSIMDInt8x16;
-    bool UsesSIMDUint16x8;
-    bool UsesSIMDInt16x8;
-    bool UsesSIMDUint32x4;
-    bool UsesSIMDInt32x4;
-    bool UsesSIMDFloat32x4;
-    bool UsesSIMDFloat64x2;
-    bool UsesSIMDBool8x16;
-    bool UsesSIMDBool16x8;
-    bool UsesSIMDBool32x4;
-    bool UsesSIMDBool64x2;
     int InvokeState; // cycles between 0, 1 after preInvoke, 2 after call, 0 again after postInvoke. hackish, no argument there.
     CodeGenOpt::Level OptLevel;
     const DataLayout *DL;
@@ -262,10 +252,7 @@ namespace {
     static char ID;
     BinaryenWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
-        UsesSIMDUint8x16(false), UsesSIMDInt8x16(false), UsesSIMDUint16x8(false),
-        UsesSIMDInt16x8(false), UsesSIMDUint32x4(false), UsesSIMDInt32x4(false),
-        UsesSIMDFloat32x4(false), UsesSIMDFloat64x2(false), UsesSIMDBool8x16(false),
-        UsesSIMDBool16x8(false), UsesSIMDBool32x4(false), UsesSIMDBool64x2(false), InvokeState(0),
+        InvokeState(0),
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
         CurrInstruction(nullptr) {}
 
@@ -555,42 +542,6 @@ namespace {
       return false;
     }
 
-    void checkVectorType(Type *T) {
-      VectorType *VT = cast<VectorType>(T);
-      // LLVM represents the results of vector comparison as vectors of i1. We
-      // represent them as vectors of integers the size of the vector elements
-      // of the compare that produced them.
-      assert(VT->getElementType()->getPrimitiveSizeInBits() == 8 ||
-             VT->getElementType()->getPrimitiveSizeInBits() == 16 ||
-             VT->getElementType()->getPrimitiveSizeInBits() == 32 ||
-             VT->getElementType()->getPrimitiveSizeInBits() == 64 ||
-             VT->getElementType()->getPrimitiveSizeInBits() == 128 ||
-             VT->getElementType()->getPrimitiveSizeInBits() == 1);
-      assert(VT->getBitWidth() <= 128);
-      assert(VT->getNumElements() <= 16);
-      if (VT->getElementType()->isIntegerTy())
-      {
-        if (VT->getNumElements() <= 16 && VT->getElementType()->getPrimitiveSizeInBits() == 8) UsesSIMDInt8x16 = true;
-        else if (VT->getNumElements() <= 8 && VT->getElementType()->getPrimitiveSizeInBits() == 16) UsesSIMDInt16x8 = true;
-        else if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDInt32x4 = true;
-        else if (VT->getElementType()->getPrimitiveSizeInBits() == 1) {
-          if (VT->getNumElements() == 16) UsesSIMDBool8x16 = true;
-          else if (VT->getNumElements() == 8) UsesSIMDBool16x8 = true;
-          else if (VT->getNumElements() == 4) UsesSIMDBool32x4 = true;
-          else if (VT->getNumElements() == 2) UsesSIMDBool64x2 = true;
-          else report_fatal_error("Unsupported boolean vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
-        } else if (VT->getElementType()->getPrimitiveSizeInBits() != 1 && VT->getElementType()->getPrimitiveSizeInBits() != 128) {
-          report_fatal_error("Unsupported integer vector type with numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
-        }
-      }
-      else
-      {
-        if (VT->getNumElements() <= 4 && VT->getElementType()->getPrimitiveSizeInBits() == 32) UsesSIMDFloat32x4 = true;
-        else if (VT->getNumElements() <= 2 && VT->getElementType()->getPrimitiveSizeInBits() == 64) UsesSIMDFloat64x2 = true;
-        else report_fatal_error("Unsupported floating point vector type numElems: " + Twine(VT->getNumElements()) + ", primitiveSize: " + Twine(VT->getElementType()->getPrimitiveSizeInBits()) + "!");
-      }
-    }
-
     std::string ensureCast(std::string S, Type *T, AsmCast sign) {
       if (sign & ASM_MUST_CAST) return getCast(S, T);
       return S;
@@ -700,17 +651,8 @@ namespace {
     std::string getStackBump(unsigned Size);
     std::string getStackBump(const std::string &Size);
 
-    void addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper);
+    void addBlock(const BasicBlock *BB, RelooperRef R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
-    void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
-    void generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code);
-    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend);
-    void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
-    void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
-    void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
-    void generateShiftExpression(const BinaryOperator *I, raw_string_ostream& Code);
-    void generateUnrolledExpression(const User *I, raw_string_ostream& Code);
-    bool generateSIMDExpression(const User *I, raw_string_ostream& Code);
     void generateExpression(const User *I, raw_string_ostream& Code);
 
     // debug information
@@ -945,43 +887,12 @@ std::string BinaryenWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
-const char *SIMDType(VectorType *t) {
-  int primSize = t->getElementType()->getPrimitiveSizeInBits();
-  assert(primSize <= 128);
-
-  if (t->getElementType()->isIntegerTy()) {
-    if (t->getElementType()->getPrimitiveSizeInBits() == 1) {
-      if (t->getNumElements() == 2) return "Bool64x2";
-      if (t->getNumElements() <= 4) return "Bool32x4";
-      if (t->getNumElements() <= 8) return "Bool16x8";
-      if (t->getNumElements() <= 16) return "Bool8x16";
-      // fall-through to error
-    } else {
-      if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Int64x2";
-      if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Int32x4";
-      if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Int16x8";
-      if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Int8x16";
-      // fall-through to error
-    }
-  } else { // float type
-    if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Float64x2";
-    if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Float32x4";
-    if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Float16x8";
-    if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Float8x16";
-    // fall-through to error
-  }
-  errs() << *t << "\n";
-  report_fatal_error("Unsupported type!");
-}
-
 std::string BinaryenWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
     default: {
       errs() << *t << "\n";
       assert(false && "Unsupported type");
     }
-    case Type::VectorTyID:
-      return std::string("SIMD_") + SIMDType(cast<VectorType>(t)) + "_check(" + s.str() + ")";
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
         if (sign & ASM_FFI_IN) {
@@ -1439,8 +1350,7 @@ std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
   } else if (isa<UndefValue>(CV)) {
     std::string S;
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
-      checkVectorType(VT);
-      S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
+      llvm_unreachable("vector type");
     } else {
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
@@ -1450,8 +1360,7 @@ std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
     return S;
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
-      checkVectorType(VT);
-      return std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
+      llvm_unreachable("vector type");
     } else {
       // something like [0 x i8*] zeroinitializer, which clang can emit for landingpads
       return "0";
@@ -1526,224 +1435,6 @@ std::string BinaryenWriter::getValueAsCastParenStr(const Value* V, AsmCast sign)
   }
 }
 
-void BinaryenWriter::generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code) {
-  // LLVM has no vector type constructor operator; it uses chains of
-  // insertelement instructions instead. It also has no splat operator; it
-  // uses an insertelement followed by a shuffle instead. If this insertelement
-  // is part of either such sequence, skip it for now; we'll process it when we
-  // reach the end.
-  if (III->hasOneUse()) {
-      const User *U = *III->user_begin();
-      if (isa<InsertElementInst>(U))
-          return;
-      if (isa<ShuffleVectorInst>(U) &&
-          isa<ConstantAggregateZero>(cast<ShuffleVectorInst>(U)->getMask()) &&
-          !isa<InsertElementInst>(III->getOperand(0)) &&
-          isa<ConstantInt>(III->getOperand(2)) &&
-          cast<ConstantInt>(III->getOperand(2))->isZero())
-      {
-          return;
-      }
-  }
-
-  // This insertelement is at the base of a chain of single-user insertelement
-  // instructions. Collect all the inserted elements so that we can categorize
-  // the chain as either a splat, a constructor, or an actual series of inserts.
-  VectorType *VT = III->getType();
-  checkVectorType(VT);
-  unsigned NumElems = VT->getNumElements();
-  unsigned NumInserted = 0;
-  SmallVector<const Value *, 8> Operands(NumElems, NULL);
-  const Value *Splat = III->getOperand(1);
-  const Value *Base = III;
-  do {
-    const InsertElementInst *BaseIII = cast<InsertElementInst>(Base);
-    const ConstantInt *IndexInt = cast<ConstantInt>(BaseIII->getOperand(2));
-    unsigned Index = IndexInt->getZExtValue();
-    if (Operands[Index] == NULL)
-      ++NumInserted;
-    Value *Op = BaseIII->getOperand(1);
-    if (Operands[Index] == NULL) {
-      Operands[Index] = Op;
-      if (Op != Splat)
-        Splat = NULL;
-    }
-    Base = BaseIII->getOperand(0);
-  } while (Base->hasOneUse() && isa<InsertElementInst>(Base));
-
-  // Emit code for the chain.
-  Code << getAssignIfNeeded(III);
-  if (NumInserted == NumElems) {
-    if (Splat) {
-      // Emit splat code.
-      if (VT->getElementType()->isIntegerTy()) {
-        Code << std::string("SIMD_") + SIMDType(VT) + "_splat(" << getValueAsStr(Splat) << ")";
-      } else {
-        std::string operand = getValueAsStr(Splat);
-        if (!PreciseF32) {
-          // SIMD_Float32x4_splat requires an actual float32 even if we're
-          // otherwise not being precise about it.
-          operand = "Math_fround(" + operand + ")";
-        }
-        Code << std::string("SIMD_") + SIMDType(VT) + "_splat(" << operand << ")";
-      }
-    } else {
-      // Emit constructor code.
-      Code << std::string("SIMD_") + SIMDType(VT) + '(';
-      for (unsigned Index = 0; Index < NumElems; ++Index) {
-        if (Index != 0)
-          Code << ", ";
-        std::string operand = getValueAsStr(Operands[Index]);
-        if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
-          // SIMD_Float32x4_splat requires an actual float32 even if we're
-          // otherwise not being precise about it.
-          operand = "Math_fround(" + operand + ")";
-        }
-        Code << operand;
-      }
-      Code << ")";
-    }
-  } else {
-    // Emit a series of inserts.
-    std::string Result = getValueAsStr(Base);
-    for (unsigned Index = 0; Index < NumElems; ++Index) {
-      if (!Operands[Index])
-        continue;
-      std::string operand = getValueAsStr(Operands[Index]);
-      if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
-        operand = "Math_fround(" + operand + ")";
-      }
-      Result = std::string("SIMD_") + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
-    }
-    Code << Result;
-  }
-}
-
-void BinaryenWriter::generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code) {
-  VectorType *VT = cast<VectorType>(EEI->getVectorOperand()->getType());
-  checkVectorType(VT);
-  const ConstantInt *IndexInt = dyn_cast<const ConstantInt>(EEI->getIndexOperand());
-  if (IndexInt) {
-    unsigned Index = IndexInt->getZExtValue();
-    Code << getAssignIfNeeded(EEI);
-    std::string OperandCode;
-    raw_string_ostream CodeStream(OperandCode);
-    CodeStream << std::string("SIMD_") << SIMDType(VT) << "_extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << std::to_string(Index) << ')';
-    Code << getCast(CodeStream.str(), EEI->getType());
-    return;
-  }
-
-  error("SIMD extract element with non-constant index not implemented yet");
-}
-
-void BinaryenWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code) {
-  bool Invert = false;
-  const char *Name;
-  switch (cast<ICmpInst>(I)->getPredicate()) {
-    case ICmpInst::ICMP_EQ:  Name = "equal"; break;
-    case ICmpInst::ICMP_NE:  Name = "equal"; Invert = true; break;
-    case ICmpInst::ICMP_SLE: Name = "greaterThan"; Invert = true; break;
-    case ICmpInst::ICMP_SGE: Name = "lessThan"; Invert = true; break;
-    case ICmpInst::ICMP_ULE: Name = "unsignedLessThanOrEqual"; break;
-    case ICmpInst::ICMP_UGE: Name = "unsignedGreaterThanOrEqual"; break;
-    case ICmpInst::ICMP_ULT: Name = "unsignedLessThan"; break;
-    case ICmpInst::ICMP_SLT: Name = "lessThan"; break;
-    case ICmpInst::ICMP_UGT: Name = "unsignedGreaterThan"; break;
-    case ICmpInst::ICMP_SGT: Name = "greaterThan"; break;
-    default: I->dump(); error("invalid vector icmp"); break;
-  }
-
-  checkVectorType(I->getOperand(0)->getType());
-  checkVectorType(I->getOperand(1)->getType());
-
-  Code << getAssignIfNeeded(I);
-
-  if (Invert)
-    Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
-
-  Code << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << '_' << Name << '('
-       << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(1)) << ')';
-
-  if (Invert)
-    Code << ')';
-}
-
-void BinaryenWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code) {
-  const char *Name;
-  bool Invert = false;
-  VectorType *VT = cast<VectorType>(I->getType());
-  checkVectorType(VT);
-  switch (cast<FCmpInst>(I)->getPredicate()) {
-    case ICmpInst::FCMP_FALSE:
-      Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" << ensureFloat("0", true) << ')';
-      return;
-    case ICmpInst::FCMP_TRUE:
-      Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_splat(" << ensureFloat("-1", true) << ')';
-      return;
-    case ICmpInst::FCMP_ONE:
-      checkVectorType(I->getOperand(0)->getType());
-      checkVectorType(I->getOperand(1)->getType());
-      Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getType())) + "_and(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_and("
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_equal(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
-      return;
-    case ICmpInst::FCMP_UEQ:
-      checkVectorType(I->getOperand(0)->getType());
-      checkVectorType(I->getOperand(1)->getType());
-      Code << getAssignIfNeeded(I)
-           << castIntVecToBoolVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getType())) + "_or(SIMD_" + SIMDType(cast<VectorType>(I->getType())) + "_or("
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(0)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(1)->getType())) + "_notEqual(" + getValueAsStr(I->getOperand(1)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ','
-            + castBoolVecToIntVec(VT->getNumElements(), std::string("SIMD_") + SIMDType(cast<VectorType>(I->getOperand(0)->getType())) + "_equal(" + getValueAsStr(I->getOperand(0)) + ',' + getValueAsStr(I->getOperand(1)) + ')', true) + ')');
-      return;
-    case FCmpInst::FCMP_ORD:
-      checkVectorType(I->getOperand(0)->getType());
-      checkVectorType(I->getOperand(1)->getType());
-      Code << getAssignIfNeeded(I)
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_and("
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_equal(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(0)) << "),"
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(1)->getType())) << "_equal(" << getValueAsStr(I->getOperand(1)) << ',' << getValueAsStr(I->getOperand(1)) << "))";
-      return;
-
-    case FCmpInst::FCMP_UNO:
-      checkVectorType(I->getOperand(0)->getType());
-      checkVectorType(I->getOperand(1)->getType());
-      Code << getAssignIfNeeded(I)
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_or("
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(I->getOperand(0)) << "),"
-           << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(1)->getType())) << "_notEqual(" << getValueAsStr(I->getOperand(1)) << ',' << getValueAsStr(I->getOperand(1)) << "))";
-      return;
-
-    case ICmpInst::FCMP_OEQ:  Name = "equal"; break;
-    case ICmpInst::FCMP_OGT:  Name = "greaterThan"; break;
-    case ICmpInst::FCMP_OGE:  Name = "greaterThanOrEqual"; break;
-    case ICmpInst::FCMP_OLT:  Name = "lessThan"; break;
-    case ICmpInst::FCMP_OLE:  Name = "lessThanOrEqual"; break;
-    case ICmpInst::FCMP_UGT:  Name = "lessThanOrEqual"; Invert = true; break;
-    case ICmpInst::FCMP_UGE:  Name = "lessThan"; Invert = true; break;
-    case ICmpInst::FCMP_ULT:  Name = "greaterThanOrEqual"; Invert = true; break;
-    case ICmpInst::FCMP_ULE:  Name = "greaterThan"; Invert = true; break;
-    case ICmpInst::FCMP_UNE:  Name = "notEqual"; break;
-    default: I->dump(); error("invalid vector fcmp"); break;
-  }
-
-  checkVectorType(I->getOperand(0)->getType());
-  checkVectorType(I->getOperand(1)->getType());
-
-  Code << getAssignIfNeeded(I);
-
-  if (Invert)
-    Code << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << "_not(";
-
-  Code << "SIMD_" << SIMDType(cast<VectorType>(I->getOperand(0)->getType())) << "_" << Name << "("
-       << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(I->getOperand(1)) << ")";
-
-  if (Invert)
-    Code << ")";
-}
-
 static const Value *getElement(const Value *V, unsigned i) {
     if (const InsertElementInst *II = dyn_cast<InsertElementInst>(V)) {
         if (ConstantInt *CI = dyn_cast<ConstantInt>(II->getOperand(2))) {
@@ -1785,7 +1476,7 @@ void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code)
     report_fatal_error("legalization problem");
   }
 
-  if (!generateSIMDExpression(I, Code)) switch (Operator::getOpcode(I)) {
+  switch (Operator::getOpcode(I)) {
   default: {
     I->dump();
     error("Invalid instruction in BinaryenWriter::generateExpression");
@@ -2269,7 +1960,7 @@ static const Value *considerConditionVar(const Instruction *I) {
   return SI->getCondition();
 }
 
-void BinaryenWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LLVMToRelooper) {
+void BinaryenWriter::addBlock(const BasicBlock *BB, RelooperRef R, LLVMToRelooperMap& LLVMToRelooper) {
   std::string Code;
   raw_string_ostream CodeStream(Code);
   for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
@@ -2869,20 +2560,6 @@ void BinaryenWriter::printModuleBody() {
   Out << "},";
 
   Out << "\"cantValidate\": \"" << CantValidate << "\",";
-
-  Out << "\"simd\": " << (UsesSIMDUint8x16 || UsesSIMDInt8x16 || UsesSIMDUint16x8 || UsesSIMDInt16x8 || UsesSIMDUint32x4 || UsesSIMDInt32x4 || UsesSIMDFloat32x4 || UsesSIMDFloat64x2 ? "1" : "0") << ",";
-  Out << "\"simdUint8x16\": " << (UsesSIMDUint8x16 ? "1" : "0") << ",";
-  Out << "\"simdInt8x16\": " << (UsesSIMDInt8x16 ? "1" : "0") << ",";
-  Out << "\"simdUint16x8\": " << (UsesSIMDUint16x8 ? "1" : "0") << ",";
-  Out << "\"simdInt16x8\": " << (UsesSIMDInt16x8 ? "1" : "0") << ",";
-  Out << "\"simdUint32x4\": " << (UsesSIMDUint32x4 ? "1" : "0") << ",";
-  Out << "\"simdInt32x4\": " << (UsesSIMDInt32x4 ? "1" : "0") << ",";
-  Out << "\"simdFloat32x4\": " << (UsesSIMDFloat32x4 ? "1" : "0") << ",";
-  Out << "\"simdFloat64x2\": " << (UsesSIMDFloat64x2 ? "1" : "0") << ",";
-  Out << "\"simdBool8x16\": " << (UsesSIMDBool8x16 ? "1" : "0") << ",";
-  Out << "\"simdBool16x8\": " << (UsesSIMDBool16x8 ? "1" : "0") << ",";
-  Out << "\"simdBool32x4\": " << (UsesSIMDBool32x4 ? "1" : "0") << ",";
-  Out << "\"simdBool64x2\": " << (UsesSIMDBool64x2 ? "1" : "0") << ",";
 
   Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
 
