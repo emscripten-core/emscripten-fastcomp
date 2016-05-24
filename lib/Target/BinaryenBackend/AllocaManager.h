@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef JSBACKEND_ALLOCAMANAGER_H
-#define JSBACKEND_ALLOCAMANAGER_H
+#ifndef BINARYENBACKEND_ALLOCAMANAGER_H
+#define BINARYENBACKEND_ALLOCAMANAGER_H
 
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/DenseMap.h"

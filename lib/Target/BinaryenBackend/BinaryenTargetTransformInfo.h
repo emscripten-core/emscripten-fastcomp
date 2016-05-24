@@ -1,4 +1,4 @@
-//===-- JSTargetTransformInfo.h - JS specific TTI -------*- C++ -*-===//
+//===-- BinaryenTargetTransformInfo.h - Binaryen specific TTI -------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,24 +8,24 @@
 //===----------------------------------------------------------------------===//
 /// \file
 /// This file a TargetTransformInfo::Concept conforming object specific to the
-/// JS target machine. It uses the target's detailed information to
+/// Binaryen target machine. It uses the target's detailed information to
 /// provide more precise answers to certain TTI queries, while letting the
 /// target independent and default TTI implementations handle the rest.
 ///
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_TARGET_JS_JSTARGETTRANSFORMINFO_H
-#define LLVM_LIB_TARGET_JS_JSTARGETTRANSFORMINFO_H
+#ifndef LLVM_LIB_TARGET_BINARYEN_BINARYENTARGETTRANSFORMINFO_H
+#define LLVM_LIB_TARGET_BINARYEN_BINARYENTARGETTRANSFORMINFO_H
 
-#include "JSTargetMachine.h"
+#include "BinaryenTargetMachine.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
 #include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
 
-class JSTTIImpl : public BasicTTIImplBase<JSTTIImpl> {
-  typedef BasicTTIImplBase<JSTTIImpl> BaseT;
+class BinaryenTTIImpl : public BasicTTIImplBase<BinaryenTTIImpl> {
+  typedef BasicTTIImplBase<BinaryenTTIImpl> BaseT;
   typedef TargetTransformInfo TTI;
   friend BaseT;
 
@@ -36,14 +36,14 @@ class JSTTIImpl : public BasicTTIImplBase<JSTTIImpl> {
   const TargetLoweringBase *getTLI() const { return TLI; }
 
 public:
-  explicit JSTTIImpl(const JSTargetMachine *TM, const Function &F)
+  explicit BinaryenTTIImpl(const BinaryenTargetMachine *TM, const Function &F)
       : BaseT(TM, F.getParent()->getDataLayout()), ST(TM->getSubtargetImpl(F)),
         TLI(ST->getTargetLowering()) {}
 
   // Provide value semantics. MSVC requires that we spell all of these out.
-  JSTTIImpl(const JSTTIImpl &Arg)
+  BinaryenTTIImpl(const BinaryenTTIImpl &Arg)
       : BaseT(static_cast<const BaseT &>(Arg)), ST(Arg.ST), TLI(Arg.TLI) {}
-  JSTTIImpl(JSTTIImpl &&Arg)
+  BinaryenTTIImpl(BinaryenTTIImpl &&Arg)
       : BaseT(std::move(static_cast<BaseT &>(Arg))), ST(std::move(Arg.ST)),
         TLI(std::move(Arg.TLI)) {}
 /*

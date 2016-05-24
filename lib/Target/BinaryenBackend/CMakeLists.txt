@@ -4,7 +4,6 @@ add_llvm_target(BinaryenBackendCodeGen
   BinaryenBackend.cpp
   JSTargetMachine.cpp
   JSTargetTransformInfo.cpp
-  Relooper.cpp
   RemoveLLVMAssume.cpp
   SimplifyAllocas.cpp
   )

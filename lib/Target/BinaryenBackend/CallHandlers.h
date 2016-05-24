@@ -7,7 +7,7 @@
 // which are reported as declared but not implemented symbols, so that
 // JS linking brings them in.
 
-typedef std::string (JSWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
+typedef std::string (BinaryenWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap CallHandlers;
 
@@ -1447,7 +1447,7 @@ DEF_CALL_HANDLER(emscripten_atomic_fence, {
 void setupCallHandlers() {
   assert(CallHandlers.empty());
   #define SETUP_CALL_HANDLER(Ident) \
-    CallHandlers["_" #Ident] = &JSWriter::CH_##Ident;
+    CallHandlers["_" #Ident] = &BinaryenWriter::CH_##Ident;
 
   SETUP_CALL_HANDLER(__default__);
   SETUP_CALL_HANDLER(emscripten_preinvoke);

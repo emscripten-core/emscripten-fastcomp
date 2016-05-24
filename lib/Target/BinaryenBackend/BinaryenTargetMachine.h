@@ -1,4 +1,4 @@
-//===-- JSTargetMachine.h - TargetMachine for the JS Backend ----*- C++ -*-===//
+//===-- BinaryenTargetMachine.h - TargetMachine for the Binaryen Backend ----*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,15 +7,15 @@
 //
 //===---------------------------------------------------------------------===//
 //
-// This file declares the TargetMachine that is used by the JS/asm.js/
+// This file declares the TargetMachine that is used by the Binaryen/wasm/
 // emscripten backend.
 //
 //===---------------------------------------------------------------------===//
 
-#ifndef JSTARGETMACHINE_H
-#define JSTARGETMACHINE_H
+#ifndef BINARYENTARGETMACHINE_H
+#define BINARYENTARGETMACHINE_H
 
-#include "JS.h"
+#include "Binaryen.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include "llvm/Target/TargetLowering.h"
@@ -24,27 +24,27 @@ namespace llvm {
 
 class formatted_raw_ostream;
 
-class JSTargetLowering : public TargetLowering {
+class BinaryenTargetLowering : public TargetLowering {
 public:
-  explicit JSTargetLowering(const TargetMachine& TM) : TargetLowering(TM) {}
+  explicit BinaryenTargetLowering(const TargetMachine& TM) : TargetLowering(TM) {}
 };
 
-class JSSubtarget : public TargetSubtargetInfo {
-  JSTargetLowering TL;
+class BinaryenSubtarget : public TargetSubtargetInfo {
+  BinaryenTargetLowering TL;
 
 public:
-  JSSubtarget(const TargetMachine& TM, const Triple &TT);
+  BinaryenSubtarget(const TargetMachine& TM, const Triple &TT);
 
   const TargetLowering *getTargetLowering() const override {
     return &TL;
   }
 };
 
-class JSTargetMachine : public TargetMachine {
-  const JSSubtarget ST;
+class BinaryenTargetMachine : public TargetMachine {
+  const BinaryenSubtarget ST;
 
 public:
-  JSTargetMachine(const Target &T, const Triple &TT,
+  BinaryenTargetMachine(const Target &T, const Triple &TT,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
                   Reloc::Model RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
@@ -57,11 +57,11 @@ public:
 
   TargetIRAnalysis getTargetIRAnalysis() override;
 
-  const TargetSubtargetInfo *getJSSubtargetImpl() const {
+  const TargetSubtargetInfo *getBinaryenSubtargetImpl() const {
     return &ST;
   }
 
-  const JSSubtarget *getSubtargetImpl(const Function &F) const override {
+  const BinaryenSubtarget *getSubtargetImpl(const Function &F) const override {
     return &ST;
   }
 };
