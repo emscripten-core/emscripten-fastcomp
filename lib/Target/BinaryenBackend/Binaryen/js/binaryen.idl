@@ -1,0 +1,69 @@
+
+interface Literal {
+  void Literal(double x);
+  double getf64();
+};
+
+interface Name {
+  void Name(DOMString x);
+
+  [Const] DOMString c_str();
+};
+
+interface Module {
+  void Module();
+};
+
+[Prefix="ModuleInstance::", NoDelete]
+interface ExternalInterface {
+};
+
+interface ShellExternalInterface {
+  void ShellExternalInterface();
+};
+
+ShellExternalInterface implements ExternalInterface;
+
+interface ModuleInstance {
+  void ModuleInstance([Ref] Module m, ExternalInterface i);
+
+  [Value] Literal callExport([Ref] Name name, [Ref] LiteralList arguments);
+};
+
+[Prefix="ModuleInstance::"]
+interface LiteralList {
+  void LiteralList();
+
+  void push_back([Ref] Literal l);
+};
+
+// S-Expressions
+
+interface Element {
+  boolean isList();
+  boolean isStr();
+  void dump();
+
+  // list methods
+  [Operator="[]"] Element getChild(long i);
+  long size();
+
+  // string methods
+  [Const] DOMString c_str();
+};
+
+interface SExpressionParser {
+  void SExpressionParser(DOMString input);
+  attribute Element root;
+};
+
+interface SExpressionWasmBuilder {
+  void SExpressionWasmBuilder([Ref] Module wasm, [Ref] Element input);
+};
+
+// Wasm printing
+
+interface WasmPrinter {
+  static void printModule(Module m);
+};
+
