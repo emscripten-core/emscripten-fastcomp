@@ -8,13 +8,13 @@
 //
 // \file
 // This file implements a TargetTransformInfo analysis pass specific to the
-// JS target machine. It uses the target's detailed information to provide
+// Binaryen target machine. It uses the target's detailed information to provide
 // more precise answers to certain TTI queries, while letting the target
 // independent and default TTI implementations handle the rest.
 //
 //===----------------------------------------------------------------------===//
 
-#include "JSTargetTransformInfo.h"
+#include "BinaryenTargetTransformInfo.h"
 #include "llvm/Analysis/LoopInfo.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Analysis/ValueTracking.h"
@@ -26,22 +26,22 @@
 #include "llvm/Target/TargetLowering.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "JStti"
+#define DEBUG_TYPE "Binaryentti"
 
-void JSTTIImpl::getUnrollingPreferences(Loop *L,
+void BinaryenTTIImpl::getUnrollingPreferences(Loop *L,
                                             TTI::UnrollingPreferences &UP) {
   // We generally don't want a lot of unrolling.
   UP.Partial = false;
   UP.Runtime = false;
 }
 
-unsigned JSTTIImpl::getNumberOfRegisters(bool Vector) {
+unsigned BinaryenTTIImpl::getNumberOfRegisters(bool Vector) {
   if (Vector) return 16; // like NEON, x86_64, etc.
 
   return 8; // like x86, thumb, etc.
 }
 
-unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) {
+unsigned BinaryenTTIImpl::getRegisterBitWidth(bool Vector) {
   if (Vector) {
     return 128;
   }
@@ -63,12 +63,12 @@ static bool isOkType(Type *Ty) {
   return true;
 }
 
-unsigned JSTTIImpl::getArithmeticInstrCost(
+unsigned BinaryenTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
     TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
     TTI::OperandValueProperties Opd2PropInfo) {
 
-  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
+  unsigned Cost = BasicTTIImplBase<BinaryenTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
 
   if (!isOkType(Ty))
     return Nope;
@@ -87,7 +87,7 @@ unsigned JSTTIImpl::getArithmeticInstrCost(
   return Cost;
 }
 
-unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
+unsigned BinaryenTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
   if (!isOkType(Val))
     return Nope;
 
@@ -101,7 +101,7 @@ unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Inde
 }
 
 
-unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+unsigned BinaryenTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                                     unsigned AddressSpace) {
   if (!isOkType(Src))
     return Nope;
@@ -109,7 +109,7 @@ unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignme
   return BasicTTIImplBase::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
 }
 
-unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) {
+unsigned BinaryenTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) {
   if (!isOkType(Src) || !isOkType(Dst))
     return Nope;
 

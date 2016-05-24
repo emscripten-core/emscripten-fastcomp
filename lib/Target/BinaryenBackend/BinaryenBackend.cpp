@@ -1,4 +1,4 @@
-//===-- JSBackend.cpp - Library for converting LLVM code to JS       -----===//
+//===-- BinaryenBackend.cpp - Library for converting LLVM code to Binaryen       -----===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,14 +8,14 @@
 //===----------------------------------------------------------------------===//
 //
 // This file implements compiling of LLVM IR, which is assumed to have been
-// simplified using the PNaCl passes, i64 legalization, and other necessary
-// transformations, into JavaScript in asm.js format, suitable for passing
+// simplified using the PNaCl passes, and other necessary
+// transformations, into WebAssembly using Binaryen, suitable for passing
 // to emscripten for final processing.
 //
 //===----------------------------------------------------------------------===//
 
-#include "JSTargetMachine.h"
-#include "MCTargetDesc/JSBackendMCTargetDesc.h"
+#include "BinaryenTargetMachine.h"
+#include "MCTargetDesc/BinaryenBackendMCTargetDesc.h"
 #include "AllocaManager.h"
 #include "llvm/Analysis/ValueTracking.h"
 #include "llvm/ADT/SmallPtrSet.h"
@@ -154,9 +154,9 @@ WebAssembly("emscripten-wasm",
             cl::init(false));
 
 
-extern "C" void LLVMInitializeJSBackendTarget() {
+extern "C" void LLVMInitializeBinaryenBackendTarget() {
   // Register the target.
-  RegisterTargetMachine<JSTargetMachine> X(TheJSBackendTarget);
+  RegisterTargetMachine<BinaryenTargetMachine> X(TheBinaryenBackendTarget);
 }
 
 namespace {
@@ -196,9 +196,9 @@ namespace {
     std::set<std::string> Sigs;
   };
 
-  /// JSWriter - This class is the main chunk of code that converts an LLVM
+  /// BinaryenWriter - This class is the main chunk of code that converts an LLVM
   /// module to JavaScript.
-  class JSWriter : public ModulePass {
+  class BinaryenWriter : public ModulePass {
     raw_pwrite_stream &Out;
     Module *TheModule;
     unsigned UniqueNum;
