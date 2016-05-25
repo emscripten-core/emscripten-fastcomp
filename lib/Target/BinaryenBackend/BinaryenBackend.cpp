@@ -203,6 +203,7 @@ namespace {
   class BinaryenWriter : public ModulePass {
     raw_pwrite_stream &Out;
     Module *TheModule;
+    BinaryenModuleRef Wasm;
     unsigned UniqueNum;
     unsigned NextFunctionIndex; // used with NoAliasingFunctionPointers
     ValueMap ValueNames;
@@ -646,7 +647,7 @@ namespace {
 
     void addBlock(const BasicBlock *BB, RelooperRef R, LLVMToRelooperMap& LLVMToRelooper);
     void printFunctionBody(const Function *F);
-    void generateExpression(const User *I, raw_string_ostream& Code);
+    BinaryenExpressionRef generateExpression(const User *I);
 
     // debug information
     std::string generateDebugRecordForVar(Metadata *MD);
@@ -1375,7 +1376,7 @@ std::string BinaryenWriter::getConstant(const Constant* CV, AsmCast sign) {
     std::string Code;
     raw_string_ostream CodeStream(Code);
     CodeStream << '(';
-    generateExpression(CE, CodeStream);
+    generateExpression(CE, CodeStream); // FIXME
     CodeStream << ')';
     return CodeStream.str();
   } else {
@@ -1456,7 +1457,7 @@ static std::string AddOffset(const std::string &base, int32_t Offset) {
 }
 
 // Generate code for and operator, either an Instruction or a ConstantExpr.
-void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code) {
+BinaryenExpressionRef BinaryenWriter::generateExpression(const User *I) {
   // To avoid emiting code and variables for the no-op pointer bitcasts
   // and all-zero-index geps that LLVM needs to satisfy its type system, we
   // call stripPointerCasts() on all values before translating them. This
@@ -1469,6 +1470,8 @@ void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code)
     report_fatal_error("legalization problem");
   }
 
+  BinaryenExpressionRef Ret = nullptr;
+
   switch (Operator::getOpcode(I)) {
   default: {
     I->dump();
@@ -1478,12 +1481,13 @@ void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code)
   case Instruction::Ret: {
     const ReturnInst* ret =  cast<ReturnInst>(I);
     const Value *RV = ret->getReturnValue();
+    auto Ret = BinaryenReturn(Wasm, RV != nullptr ? getValueAsWasm(RV) : nullptr);
     if (StackBumped) {
-      Code << "STACKTOP = sp;";
-    }
-    Code << "return";
-    if (RV != nullptr) {
-      Code << " " << getValueAsCastParenStr(RV, ASM_NONSPECIFIC | ASM_MUST_CAST);
+      BinaryenExpressionRef children[] = {
+        SetSTACKTOP(getLocal("sp")),
+        Ret
+      };
+      Ret = BinaryenBlock(Wasm, nullptr, children, 2);
     }
     break;
   }
@@ -1934,12 +1938,16 @@ void BinaryenWriter::generateExpression(const User *I, raw_string_ostream& Code)
     break;
   }
 
+  assert(Ret);
+
   if (const Instruction *Inst = dyn_cast<Instruction>(I)) {
     Code << ';';
     // append debug info
     emitDebugInfo(Code, Inst);
     Code << '\n';
   }
+
+  return Ret;
 }
 
 // Checks whether to use a condition variable. We do so for switches and for indirectbrs
@@ -1954,20 +1962,18 @@ static const Value *considerConditionVar(const Instruction *I) {
 }
 
 void BinaryenWriter::addBlock(const BasicBlock *BB, RelooperRef R, LLVMToRelooperMap& LLVMToRelooper) {
-  std::string Code;
-  raw_string_ostream CodeStream(Code);
+  std::vector<BinaryenExpressionRef> Code;
   for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
        II != E; ++II) {
     auto I = &*II;
     if (I->stripPointerCasts() == I) {
       CurrInstruction = I;
-      generateExpression(I, CodeStream);
+      Code.push_back(generateExpression(I));
     }
   }
   CurrInstruction = nullptr;
-  CodeStream.flush();
-  const Value* Condition = considerConditionVar(BB->getTerminator());
-  LLVMToRelooper[BB] = RelooperAddBlock(R, Code.c_str());
+  // TODO: switches const Value* Condition = considerConditionVar(BB->getTerminator());
+  LLVMToRelooper[BB] = RelooperAddBlock(R, Code);
 }
 
 void BinaryenWriter::printFunctionBody(const Function *F) {
@@ -3082,6 +3088,8 @@ bool BinaryenWriter::runOnModule(Module &M) {
   assert(Relocatable ? GlobalBase == 0 : true);
   assert(Relocatable ? EmulatedFunctionPointers : true);
 
+  Wasm = BinaryenModuleCreate();
+
   // Build debug data first, so that inline metadata can reuse the indicies
   if (EnableCyberDWARF)
     buildCyberDWARFData();
@@ -3089,6 +3097,10 @@ bool BinaryenWriter::runOnModule(Module &M) {
   setupCallHandlers();
 
   printProgram("", "");
+
+  abort(); // TODO: write out binary
+
+  BinaryenModuleDispose(Wasm);
 
   return false;
 }
