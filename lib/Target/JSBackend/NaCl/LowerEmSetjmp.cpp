@@ -38,11 +38,6 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-#ifdef NDEBUG
-#undef assert
-#define assert(x) { if (!(x)) report_fatal_error(#x); }
-#endif
-
 using namespace llvm;
 
 // Utilities for mem/reg: based on Reg2Mem and MemToReg

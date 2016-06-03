@@ -20,11 +20,6 @@
 #include "llvm/IR/Function.h"
 #include "llvm/IR/Constants.h"
 
-#ifdef NDEBUG
-#undef assert
-#define assert(x) { if (!(x)) report_fatal_error(#x); }
-#endif
-
 namespace llvm {
 
 /*

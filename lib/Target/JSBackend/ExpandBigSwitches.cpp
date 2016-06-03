@@ -22,11 +22,6 @@
 #include <vector>
 #include <algorithm>
 
-#ifdef NDEBUG
-#undef assert
-#define assert(x) { if (!(x)) report_fatal_error(#x); }
-#endif
-
 namespace llvm {
 
 /*

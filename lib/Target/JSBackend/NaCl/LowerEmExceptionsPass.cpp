@@ -47,11 +47,6 @@
 #include <vector>
 #include <set>
 
-#ifdef NDEBUG
-#undef assert
-#define assert(x) { if (!(x)) report_fatal_error(#x); }
-#endif
-
 using namespace llvm;
 
 static cl::list<std::string>

@@ -53,11 +53,6 @@ using namespace llvm;
 #include <OptPasses.h>
 #include <Relooper.h>
 
-#ifdef NDEBUG
-#undef assert
-#define assert(x) { if (!(x)) report_fatal_error(#x); }
-#endif
-
 raw_ostream &prettyWarning() {
   errs().changeColor(raw_ostream::YELLOW);
   errs() << "warning:";
