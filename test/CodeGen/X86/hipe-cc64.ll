@@ -1,4 +1,4 @@
-; RUN: llc < %s -tailcallopt -code-model=medium -stack-alignment=8 -mtriple=x86_64-linux-gnu -mcpu=opteron | FileCheck %s
+; RUN: llc < %s -stack-symbol-ordering=0 -tailcallopt -code-model=medium -stack-alignment=8 -mtriple=x86_64-linux-gnu -mcpu=opteron | FileCheck %s
 
 ; Check the HiPE calling convention works (x86-64)
 
@@ -83,5 +83,9 @@ define cc 11 void @baz() nounwind {
   ret void
 }
 
+!hipe.literals = !{ !0, !1, !2 }
+!0 = !{ !"P_NSP_LIMIT", i32 160 }
+!1 = !{ !"X86_LEAF_WORDS", i32 24 }
+!2 = !{ !"AMD64_LEAF_WORDS", i32 24 }
 @clos = external constant i64
 declare cc 11 void @bar(i64, i64, i64, i64, i64, i64)

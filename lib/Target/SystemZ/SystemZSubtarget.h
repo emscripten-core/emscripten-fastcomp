@@ -69,7 +69,7 @@ public:
   const SystemZTargetLowering *getTargetLowering() const override {
     return &TLInfo;
   }
-  const TargetSelectionDAGInfo *getSelectionDAGInfo() const override {
+  const SelectionDAGTargetInfo *getSelectionDAGInfo() const override {
     return &TSInfo;
   }
 
@@ -116,8 +116,7 @@ public:
 
   // Return true if GV can be accessed using LARL for reloc model RM
   // and code model CM.
-  bool isPC32DBLSymbol(const GlobalValue *GV, Reloc::Model RM,
-                       CodeModel::Model CM) const;
+  bool isPC32DBLSymbol(const GlobalValue *GV, CodeModel::Model CM) const;
 
   bool isTargetELF() const { return TargetTriple.isOSBinFormatELF(); }
 };

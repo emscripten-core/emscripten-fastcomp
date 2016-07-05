@@ -29,6 +29,7 @@
 
 #include "AMDGPU.h"
 #include "AMDGPUSubtarget.h"
+#include "R600Defines.h"
 #include "R600InstrInfo.h"
 #include "llvm/CodeGen/DFAPacketizer.h"
 #include "llvm/CodeGen/MachineDominators.h"
@@ -314,8 +315,13 @@ void R600VectorRegMerger::trackRSI(const RegSeqInfo &RSI) {
 }
 
 bool R600VectorRegMerger::runOnMachineFunction(MachineFunction &Fn) {
-  TII = static_cast<const R600InstrInfo *>(Fn.getSubtarget().getInstrInfo());
-  MRI = &(Fn.getRegInfo());
+  if (skipFunction(*Fn.getFunction()))
+    return false;
+
+  const R600Subtarget &ST = Fn.getSubtarget<R600Subtarget>();
+  TII = ST.getInstrInfo();
+  MRI = &Fn.getRegInfo();
+
   for (MachineFunction::iterator MBB = Fn.begin(), MBBe = Fn.end();
        MBB != MBBe; ++MBB) {
     MachineBasicBlock *MB = &*MBB;

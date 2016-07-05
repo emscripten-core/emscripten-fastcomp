@@ -16,7 +16,6 @@
 
 #include "llvm/Transforms/IPO.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Analysis/CallGraph.h"
@@ -29,6 +28,7 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/Transforms/Utils/Local.h"
 #include <algorithm>
 using namespace llvm;
 
@@ -63,19 +63,22 @@ Pass *llvm::createPruneEHPass() { return new PruneEH(); }
 
 
 bool PruneEH::runOnSCC(CallGraphSCC &SCC) {
+  if (skipSCC(SCC))
+    return false;
+
   SmallPtrSet<CallGraphNode *, 8> SCCNodes;
   CallGraph &CG = getAnalysis<CallGraphWrapperPass>().getCallGraph();
   bool MadeChange = false;
 
   // Fill SCCNodes with the elements of the SCC.  Used for quickly
   // looking up whether a given CallGraphNode is in this SCC.
-  for (CallGraphSCC::iterator I = SCC.begin(), E = SCC.end(); I != E; ++I)
-    SCCNodes.insert(*I);
+  for (CallGraphNode *I : SCC)
+    SCCNodes.insert(I);
 
   // First pass, scan all of the functions in the SCC, simplifying them
   // according to what we know.
-  for (CallGraphSCC::iterator I = SCC.begin(), E = SCC.end(); I != E; ++I)
-    if (Function *F = (*I)->getFunction())
+  for (CallGraphNode *I : SCC)
+    if (Function *F = I->getFunction())
       MadeChange |= SimplifyFunction(F);
 
   // Next, check to see if any callees might throw or if there are any external
@@ -92,7 +95,10 @@ bool PruneEH::runOnSCC(CallGraphSCC &SCC) {
     if (!F) {
       SCCMightUnwind = true;
       SCCMightReturn = true;
-    } else if (F->isDeclaration() || F->mayBeOverridden()) {
+    } else if (F->isDeclaration() || F->isInterposable()) {
+      // Note: isInterposable (as opposed to hasExactDefinition) is fine above,
+      // since we're not inferring new attributes here, but only using existing,
+      // assumed to be correct, function attributes.
       SCCMightUnwind |= !F->doesNotThrow();
       SCCMightReturn |= !F->doesNotReturn();
     } else {
@@ -152,8 +158,8 @@ bool PruneEH::runOnSCC(CallGraphSCC &SCC) {
 
   // If the SCC doesn't unwind or doesn't throw, note this fact.
   if (!SCCMightUnwind || !SCCMightReturn)
-    for (CallGraphSCC::iterator I = SCC.begin(), E = SCC.end(); I != E; ++I) {
-      Function *F = (*I)->getFunction();
+    for (CallGraphNode *I : SCC) {
+      Function *F = I->getFunction();
 
       if (!SCCMightUnwind && !F->hasFnAttribute(Attribute::NoUnwind)) {
         F->addFnAttr(Attribute::NoUnwind);
@@ -166,11 +172,11 @@ bool PruneEH::runOnSCC(CallGraphSCC &SCC) {
       }
     }
 
-  for (CallGraphSCC::iterator I = SCC.begin(), E = SCC.end(); I != E; ++I) {
+  for (CallGraphNode *I : SCC) {
     // Convert any invoke instructions to non-throwing functions in this node
     // into call instructions with a branch.  This makes the exception blocks
     // dead.
-    if (Function *F = (*I)->getFunction())
+    if (Function *F = I->getFunction())
       MadeChange |= SimplifyFunction(F);
   }
 
@@ -186,32 +192,8 @@ bool PruneEH::SimplifyFunction(Function *F) {
   for (Function::iterator BB = F->begin(), E = F->end(); BB != E; ++BB) {
     if (InvokeInst *II = dyn_cast<InvokeInst>(BB->getTerminator()))
       if (II->doesNotThrow() && canSimplifyInvokeNoUnwind(F)) {
-        SmallVector<Value*, 8> Args(II->arg_begin(), II->arg_end());
-        SmallVector<OperandBundleDef, 1> OpBundles;
-        II->getOperandBundlesAsDefs(OpBundles);
-
-        // Insert a call instruction before the invoke.
-        CallInst *Call = CallInst::Create(II->getCalledValue(), Args, OpBundles,
-                                          "", II);
-        Call->takeName(II);
-        Call->setCallingConv(II->getCallingConv());
-        Call->setAttributes(II->getAttributes());
-        Call->setDebugLoc(II->getDebugLoc());
-
-        // Anything that used the value produced by the invoke instruction
-        // now uses the value produced by the call instruction.  Note that we
-        // do this even for void functions and calls with no uses so that the
-        // callgraph edge is updated.
-        II->replaceAllUsesWith(Call);
         BasicBlock *UnwindBlock = II->getUnwindDest();
-        UnwindBlock->removePredecessor(II->getParent());
-
-        // Insert a branch to the normal destination right before the
-        // invoke.
-        BranchInst::Create(II->getNormalDest(), II);
-
-        // Finally, delete the invoke instruction!
-        BB->getInstList().pop_back();
+        removeUnwindEdge(&*BB);
 
         // If the unwind block is now dead, nuke it.
         if (pred_empty(UnwindBlock))
@@ -251,23 +233,39 @@ void PruneEH::DeleteBasicBlock(BasicBlock *BB) {
   assert(pred_empty(BB) && "BB is not dead!");
   CallGraph &CG = getAnalysis<CallGraphWrapperPass>().getCallGraph();
 
+  Instruction *TokenInst = nullptr;
+
   CallGraphNode *CGN = CG[BB->getParent()];
   for (BasicBlock::iterator I = BB->end(), E = BB->begin(); I != E; ) {
     --I;
-    if (CallInst *CI = dyn_cast<CallInst>(I)) {
-      if (!isa<IntrinsicInst>(I))
-        CGN->removeCallEdgeFor(CI);
-    } else if (InvokeInst *II = dyn_cast<InvokeInst>(I))
-      CGN->removeCallEdgeFor(II);
+
+    if (I->getType()->isTokenTy()) {
+      TokenInst = &*I;
+      break;
+    }
+
+    if (auto CS = CallSite (&*I)) {
+      const Function *Callee = CS.getCalledFunction();
+      if (!Callee || !Intrinsic::isLeaf(Callee->getIntrinsicID()))
+        CGN->removeCallEdgeFor(CS);
+      else if (!Callee->isIntrinsic())
+        CGN->removeCallEdgeFor(CS);
+    }
+
     if (!I->use_empty())
       I->replaceAllUsesWith(UndefValue::get(I->getType()));
   }
 
-  // Get the list of successors of this block.
-  std::vector<BasicBlock*> Succs(succ_begin(BB), succ_end(BB));
+  if (TokenInst) {
+    if (!isa<TerminatorInst>(TokenInst))
+      changeToUnreachable(TokenInst->getNextNode(), /*UseLLVMTrap=*/false);
+  } else {
+    // Get the list of successors of this block.
+    std::vector<BasicBlock *> Succs(succ_begin(BB), succ_end(BB));
 
-  for (unsigned i = 0, e = Succs.size(); i != e; ++i)
-    Succs[i]->removePredecessor(BB);
+    for (unsigned i = 0, e = Succs.size(); i != e; ++i)
+      Succs[i]->removePredecessor(BB);
 
-  BB->eraseFromParent();
+    BB->eraseFromParent();
+  }
 }

@@ -13,8 +13,8 @@
 //===----------------------------------------------------------------------===//
 
 
-#ifndef LLVM_LIB_TARGET_R600_SIINSTRINFO_H
-#define LLVM_LIB_TARGET_R600_SIINSTRINFO_H
+#ifndef LLVM_LIB_TARGET_AMDGPU_SIINSTRINFO_H
+#define LLVM_LIB_TARGET_AMDGPU_SIINSTRINFO_H
 
 #include "AMDGPUInstrInfo.h"
 #include "SIDefines.h"
@@ -22,9 +22,24 @@
 
 namespace llvm {
 
-class SIInstrInfo : public AMDGPUInstrInfo {
+class SIInstrInfo final : public AMDGPUInstrInfo {
 private:
   const SIRegisterInfo RI;
+  const SISubtarget &ST;
+
+  // The the inverse predicate should have the negative value.
+  enum BranchPredicate {
+    INVALID_BR = 0,
+    SCC_TRUE = 1,
+    SCC_FALSE = -1,
+    VCCNZ = 2,
+    VCCZ = -2,
+    EXECNZ = -3,
+    EXECZ = 3
+  };
+
+  static unsigned getBranchOpcode(BranchPredicate Cond);
+  static BranchPredicate getBranchPredicate(unsigned Opcode);
 
   unsigned buildExtractSubReg(MachineBasicBlock::iterator MI,
                               MachineRegisterInfo &MRI,
@@ -59,6 +74,9 @@ private:
     unsigned Reg, MachineRegisterInfo &MRI,
     SmallVectorImpl<MachineInstr *> &Worklist) const;
 
+  void addSCCDefUsersToVALUWorklist(
+    MachineInstr *SCCDefInst, SmallVectorImpl<MachineInstr *> &Worklist) const;
+
   const TargetRegisterClass *
   getDestEquivalentVGPRClass(const MachineInstr &Inst) const;
 
@@ -74,9 +92,9 @@ protected:
                                        unsigned OpIdx1) const override;
 
 public:
-  explicit SIInstrInfo(const AMDGPUSubtarget &st);
+  explicit SIInstrInfo(const SISubtarget &);
 
-  const SIRegisterInfo &getRegisterInfo() const override {
+  const SIRegisterInfo &getRegisterInfo() const {
     return RI;
   }
 
@@ -88,16 +106,15 @@ public:
                                int64_t &Offset2) const override;
 
   bool getMemOpBaseRegImmOfs(MachineInstr *LdSt, unsigned &BaseReg,
-                             unsigned &Offset,
+                             int64_t &Offset,
                              const TargetRegisterInfo *TRI) const final;
 
-  bool shouldClusterLoads(MachineInstr *FirstLdSt,
-                          MachineInstr *SecondLdSt,
-                          unsigned NumLoads) const final;
+  bool shouldClusterMemOps(MachineInstr *FirstLdSt,
+                           MachineInstr *SecondLdSt,
+                           unsigned NumLoads) const final;
 
-  void copyPhysReg(MachineBasicBlock &MBB,
-                   MachineBasicBlock::iterator MI, DebugLoc DL,
-                   unsigned DestReg, unsigned SrcReg,
+  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator MI,
+                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
                    bool KillSrc) const override;
 
   unsigned calculateLDSSpillAddress(MachineBasicBlock &MBB,
@@ -133,14 +150,23 @@ public:
                              unsigned &SrcOpIdx1,
                              unsigned &SrcOpIdx2) const override;
 
+  bool AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+                     MachineBasicBlock *&FBB,
+                     SmallVectorImpl<MachineOperand> &Cond,
+                     bool AllowModify) const override;
+
+  unsigned RemoveBranch(MachineBasicBlock &MBB) const override;
+
+  unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+                        MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
+                        const DebugLoc &DL) const override;
+
+  bool ReverseBranchCondition(
+    SmallVectorImpl<MachineOperand> &Cond) const override;
+
   bool areMemAccessesTriviallyDisjoint(
     MachineInstr *MIa, MachineInstr *MIb,
     AliasAnalysis *AA = nullptr) const override;
-
-  MachineInstr *buildMovInstr(MachineBasicBlock *MBB,
-                              MachineBasicBlock::iterator I,
-                              unsigned DstReg, unsigned SrcReg) const override;
-  bool isMov(unsigned Opcode) const override;
 
   bool FoldImmediate(MachineInstr *UseMI, MachineInstr *DefMI,
                      unsigned Reg, MachineRegisterInfo *MRI) const final;
@@ -150,6 +176,10 @@ public:
   MachineInstr *convertToThreeAddress(MachineFunction::iterator &MBB,
                                       MachineBasicBlock::iterator &MI,
                                       LiveVariables *LV) const override;
+
+  bool isSchedulingBoundary(const MachineInstr *MI,
+                            const MachineBasicBlock *MBB,
+                            const MachineFunction &MF) const override;
 
   static bool isSALU(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & SIInstrFlags::SALU;
@@ -165,6 +195,14 @@ public:
 
   bool isVALU(uint16_t Opcode) const {
     return get(Opcode).TSFlags & SIInstrFlags::VALU;
+  }
+
+  static bool isVMEM(const MachineInstr &MI) {
+    return isMUBUF(MI) || isMTBUF(MI) || isMIMG(MI);
+  }
+
+  bool isVMEM(uint16_t Opcode) const {
+    return isMUBUF(Opcode) || isMTBUF(Opcode) || isMIMG(Opcode);
   }
 
   static bool isSOP1(const MachineInstr &MI) {
@@ -303,6 +341,22 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::VGPRSpill;
   }
 
+  static bool isDPP(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::DPP;
+  }
+
+  bool isDPP(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::DPP;
+  }
+
+  bool isVGPRCopy(const MachineInstr &MI) const {
+    assert(MI.isCopy());
+    unsigned Dest = MI.getOperand(0).getReg();
+    const MachineFunction &MF = *MI.getParent()->getParent();
+    const MachineRegisterInfo &MRI = MF.getRegInfo();
+    return !RI.isSGPRReg(MRI, Dest);
+  }
+
   bool isInlineConstant(const APInt &Imm) const;
   bool isInlineConstant(const MachineOperand &MO, unsigned OpSize) const;
   bool isLiteralConstant(const MachineOperand &MO, unsigned OpSize) const;
@@ -401,47 +455,35 @@ public:
   /// \brief Fix operands in \p MI to satisfy constant bus requirements.
   void legalizeOperandsVOP3(MachineRegisterInfo &MRI, MachineInstr *MI) const;
 
+  /// Copy a value from a VGPR (\p SrcReg) to SGPR.  This function can only
+  /// be used when it is know that the value in SrcReg is same across all
+  /// threads in the wave.
+  /// \returns The SGPR register that \p SrcReg was copied to.
+  unsigned readlaneVGPRToSGPR(unsigned SrcReg, MachineInstr *UseMI,
+                          MachineRegisterInfo &MRI) const;
+
+  void legalizeOperandsSMRD(MachineRegisterInfo &MRI, MachineInstr *MI) const;
+
   /// \brief Legalize all operands in this instruction.  This function may
   /// create new instruction and insert them before \p MI.
   void legalizeOperands(MachineInstr *MI) const;
-
-  /// \brief Split an SMRD instruction into two smaller loads of half the
-  //  size storing the results in \p Lo and \p Hi.
-  void splitSMRD(MachineInstr *MI, const TargetRegisterClass *HalfRC,
-                 unsigned HalfImmOp, unsigned HalfSGPROp,
-                 MachineInstr *&Lo, MachineInstr *&Hi) const;
-
-  void moveSMRDToVALU(MachineInstr *MI, MachineRegisterInfo &MRI,
-                      SmallVectorImpl<MachineInstr *> &Worklist) const;
 
   /// \brief Replace this instruction's opcode with the equivalent VALU
   /// opcode.  This function will also move the users of \p MI to the
   /// VALU if necessary.
   void moveToVALU(MachineInstr &MI) const;
 
-  unsigned calculateIndirectAddress(unsigned RegIndex,
-                                    unsigned Channel) const override;
-
   const TargetRegisterClass *getIndirectAddrRegClass() const override;
 
-  MachineInstrBuilder buildIndirectWrite(MachineBasicBlock *MBB,
-                                         MachineBasicBlock::iterator I,
-                                         unsigned ValueReg,
-                                         unsigned Address,
-                                         unsigned OffsetReg) const override;
+  void insertWaitStates(MachineBasicBlock &MBB,MachineBasicBlock::iterator MI,
+                        int Count) const;
 
-  MachineInstrBuilder buildIndirectRead(MachineBasicBlock *MBB,
-                                        MachineBasicBlock::iterator I,
-                                        unsigned ValueReg,
-                                        unsigned Address,
-                                        unsigned OffsetReg) const override;
-  void reserveIndirectRegisters(BitVector &Reserved,
-                                const MachineFunction &MF) const;
+  void insertNoop(MachineBasicBlock &MBB,
+                  MachineBasicBlock::iterator MI) const override;
 
-  void LoadM0(MachineInstr *MoveRel, MachineBasicBlock::iterator I,
-              unsigned SavReg, unsigned IndexReg) const;
-
-  void insertWaitStates(MachineBasicBlock::iterator MI, int Count) const;
+  /// \brief Return the number of wait states that result from executing this
+  /// instruction.
+  unsigned getNumWaitStates(const MachineInstr &MI) const;
 
   /// \brief Returns the operand named \p Op.  If \p MI does not have an
   /// operand named \c Op, this function returns nullptr.
@@ -465,6 +507,24 @@ public:
 
   bool isLowLatencyInstruction(const MachineInstr *MI) const;
   bool isHighLatencyInstruction(const MachineInstr *MI) const;
+
+  /// \brief Return the descriptor of the target-specific machine instruction
+  /// that corresponds to the specified pseudo or native opcode.
+  const MCInstrDesc &getMCOpcodeFromPseudo(unsigned Opcode) const {
+    return get(pseudoToMCOpcode(Opcode));
+  }
+
+  unsigned getInstSizeInBytes(const MachineInstr &MI) const;
+
+  ArrayRef<std::pair<int, const char *>>
+  getSerializableTargetIndices() const override;
+
+  ScheduleHazardRecognizer *
+  CreateTargetPostRAHazardRecognizer(const InstrItineraryData *II,
+                                 const ScheduleDAG *DAG) const override;
+
+  ScheduleHazardRecognizer *
+  CreateTargetPostRAHazardRecognizer(const MachineFunction &MF) const override;
 };
 
 namespace AMDGPU {
@@ -490,8 +550,9 @@ namespace AMDGPU {
   int getAtomicNoRetOp(uint16_t Opcode);
 
   const uint64_t RSRC_DATA_FORMAT = 0xf00000000000LL;
-  const uint64_t RSRC_TID_ENABLE = 1LL << 55;
-
+  const uint64_t RSRC_ELEMENT_SIZE_SHIFT = (32 + 19);
+  const uint64_t RSRC_INDEX_STRIDE_SHIFT = (32 + 21);
+  const uint64_t RSRC_TID_ENABLE = UINT64_C(1) << (32 + 23);
 } // End namespace AMDGPU
 
 namespace SI {

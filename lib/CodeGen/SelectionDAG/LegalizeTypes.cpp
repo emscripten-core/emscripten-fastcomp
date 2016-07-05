@@ -204,7 +204,7 @@ bool DAGTypeLegalizer::run() {
 
   // Now that we have a set of nodes to process, handle them all.
   while (!Worklist.empty()) {
-#ifndef XDEBUG
+#ifndef EXPENSIVE_CHECKS
     if (EnableExpensiveChecks)
 #endif
       PerformExpensiveChecks();
@@ -394,7 +394,7 @@ NodeDone:
     }
   }
 
-#ifndef XDEBUG
+#ifndef EXPENSIVE_CHECKS
   if (EnableExpensiveChecks)
 #endif
     PerformExpensiveChecks();
@@ -1106,7 +1106,7 @@ DAGTypeLegalizer::ExpandChainLibCall(RTLIB::Libcall LC,
 
   TargetLowering::CallLoweringInfo CLI(DAG);
   CLI.setDebugLoc(SDLoc(Node)).setChain(InChain)
-    .setCallee(TLI.getLibcallCallingConv(LC), RetTy, Callee, std::move(Args), 0)
+    .setCallee(TLI.getLibcallCallingConv(LC), RetTy, Callee, std::move(Args))
     .setSExtResult(isSigned).setZExtResult(!isSigned);
 
   std::pair<SDValue, SDValue> CallInfo = TLI.LowerCallTo(CLI);

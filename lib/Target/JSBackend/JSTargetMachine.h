@@ -46,7 +46,7 @@ class JSTargetMachine : public TargetMachine {
 public:
   JSTargetMachine(const Target &T, const Triple &TT,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
-                  Reloc::Model RM, CodeModel::Model CM,
+                  Optional<Reloc::Model>& RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
   bool addPassesToEmitFile(

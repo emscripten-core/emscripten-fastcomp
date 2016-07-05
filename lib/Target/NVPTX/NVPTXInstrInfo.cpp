@@ -30,9 +30,10 @@ void NVPTXInstrInfo::anchor() {}
 
 NVPTXInstrInfo::NVPTXInstrInfo() : NVPTXGenInstrInfo(), RegInfo() {}
 
-void NVPTXInstrInfo::copyPhysReg(
-    MachineBasicBlock &MBB, MachineBasicBlock::iterator I, DebugLoc DL,
-    unsigned DestReg, unsigned SrcReg, bool KillSrc) const {
+void NVPTXInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
+                                 MachineBasicBlock::iterator I,
+                                 const DebugLoc &DL, unsigned DestReg,
+                                 unsigned SrcReg, bool KillSrc) const {
   const MachineRegisterInfo &MRI = MBB.getParent()->getRegInfo();
   const TargetRegisterClass *DestRC = MRI.getRegClass(DestReg);
   const TargetRegisterClass *SrcRC = MRI.getRegClass(SrcReg);
@@ -150,14 +151,14 @@ bool NVPTXInstrInfo::AnalyzeBranch(
     SmallVectorImpl<MachineOperand> &Cond, bool AllowModify) const {
   // If the block has no terminators, it just falls into the block after it.
   MachineBasicBlock::iterator I = MBB.end();
-  if (I == MBB.begin() || !isUnpredicatedTerminator(--I))
+  if (I == MBB.begin() || !isUnpredicatedTerminator(*--I))
     return false;
 
   // Get the last instruction in the block.
   MachineInstr *LastInst = I;
 
   // If there is only one terminator instruction, process it.
-  if (I == MBB.begin() || !isUnpredicatedTerminator(--I)) {
+  if (I == MBB.begin() || !isUnpredicatedTerminator(*--I)) {
     if (LastInst->getOpcode() == NVPTX::GOTO) {
       TBB = LastInst->getOperand(0).getMBB();
       return false;
@@ -175,7 +176,7 @@ bool NVPTXInstrInfo::AnalyzeBranch(
   MachineInstr *SecondLastInst = I;
 
   // If there are three terminators, we don't know what sort of block this is.
-  if (SecondLastInst && I != MBB.begin() && isUnpredicatedTerminator(--I))
+  if (SecondLastInst && I != MBB.begin() && isUnpredicatedTerminator(*--I))
     return true;
 
   // If the block ends with NVPTX::GOTO and NVPTX:CBranch, handle it.
@@ -226,9 +227,11 @@ unsigned NVPTXInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
   return 2;
 }
 
-unsigned NVPTXInstrInfo::InsertBranch(
-    MachineBasicBlock &MBB, MachineBasicBlock *TBB, MachineBasicBlock *FBB,
-    ArrayRef<MachineOperand> Cond, DebugLoc DL) const {
+unsigned NVPTXInstrInfo::InsertBranch(MachineBasicBlock &MBB,
+                                      MachineBasicBlock *TBB,
+                                      MachineBasicBlock *FBB,
+                                      ArrayRef<MachineOperand> Cond,
+                                      const DebugLoc &DL) const {
   // Shouldn't be a fall through.
   assert(TBB && "InsertBranch must not be told to insert a fallthrough");
   assert((Cond.size() == 1 || Cond.size() == 0) &&

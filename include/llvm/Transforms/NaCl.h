@@ -77,8 +77,8 @@ ModulePass *createLowerEmSetjmpPass();
 ModulePass *createNoExitRuntimePass();
 // Emscripten passes end.
 
-void PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM);
-void PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM);
+//void PNaClABISimplifyAddPreOptPasses(Triple *T, PassManagerBase &PM);
+//void PNaClABISimplifyAddPostOptPasses(Triple *T, PassManagerBase &PM);
 
 Instruction *PhiSafeInsertPt(Use *U);
 void PhiSafeReplaceUses(Use *U, Value *NewVal);

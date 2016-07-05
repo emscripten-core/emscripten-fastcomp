@@ -463,7 +463,8 @@ bool AArch64BranchRelaxation::relaxBranchInstructions() {
   bool Changed = false;
   // Relaxing branches involves creating new basic blocks, so re-eval
   // end() for termination.
-  for (auto &MBB : *MF) {
+  for (MachineFunction::iterator I = MF->begin(); I != MF->end(); ++I) {
+    MachineBasicBlock &MBB = *I;
     MachineInstr *MI = MBB.getFirstTerminator();
     if (isConditionalBranch(MI->getOpcode()) &&
         !isBlockInRange(MI, getDestBlock(MI),
@@ -513,8 +514,7 @@ bool AArch64BranchRelaxation::runOnMachineFunction(MachineFunction &mf) {
   return MadeChange;
 }
 
-/// createAArch64BranchRelaxation - returns an instance of the constpool
-/// island pass.
+/// Returns an instance of the AArch64 Branch Relaxation pass.
 FunctionPass *llvm::createAArch64BranchRelaxation() {
   return new AArch64BranchRelaxation();
 }

@@ -296,7 +296,7 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
   // These blocks may be using some values defined at or before AsyncCallBlock
   BasicBlockSet Ramifications = FindReachableBlocksFrom(AfterCallBlock); 
 
-  SmallPtrSet<Value*, 256> ContextVariables;
+  SmallPtrSet<Value*, 32> ContextVariables;
   Values Pending;
 
   // Examine the instructions, find all variables that we need to store in the context
@@ -327,7 +327,7 @@ void LowerEmAsyncify::FindContextVariables(AsyncCallEntry & Entry) {
 
   Entry.ContextVariables.clear();
   Entry.ContextVariables.reserve(ContextVariables.size());
-  for (SmallPtrSet<Value*, 256>::iterator I = ContextVariables.begin(), E = ContextVariables.end(); I != E; ++I) {
+  for (SmallPtrSet<Value*, 32>::iterator I = ContextVariables.begin(), E = ContextVariables.end(); I != E; ++I) {
     Entry.ContextVariables.push_back(*I);
   }
 }

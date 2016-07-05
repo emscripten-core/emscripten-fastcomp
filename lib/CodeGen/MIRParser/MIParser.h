@@ -15,10 +15,11 @@
 #define LLVM_LIB_CODEGEN_MIRPARSER_MIPARSER_H
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/SmallSet.h"
 
 namespace llvm {
 
+class StringRef;
 class BasicBlock;
 class MachineBasicBlock;
 class MachineInstr;
@@ -35,6 +36,8 @@ struct PerFunctionMIParsingState {
   DenseMap<unsigned, int> StackObjectSlots;
   DenseMap<unsigned, unsigned> ConstantPoolSlots;
   DenseMap<unsigned, unsigned> JumpTableSlots;
+  /// Hold the generic virtual registers.
+  SmallSet<unsigned, 8> GenericVRegs;
 };
 
 /// Parse the machine basic block definitions, and skip the machine

@@ -176,7 +176,7 @@ user-defined operator, we need to parse it:
 
       switch (CurTok) {
       default:
-        return ErrorP("Expected function name in prototype");
+        return LogErrorP("Expected function name in prototype");
       case tok_identifier:
         FnName = IdentifierStr;
         Kind = 0;
@@ -185,7 +185,7 @@ user-defined operator, we need to parse it:
       case tok_binary:
         getNextToken();
         if (!isascii(CurTok))
-          return ErrorP("Expected binary operator");
+          return LogErrorP("Expected binary operator");
         FnName = "binary";
         FnName += (char)CurTok;
         Kind = 2;
@@ -194,7 +194,7 @@ user-defined operator, we need to parse it:
         // Read the precedence if present.
         if (CurTok == tok_number) {
           if (NumVal < 1 || NumVal > 100)
-            return ErrorP("Invalid precedecnce: must be 1..100");
+            return LogErrorP("Invalid precedecnce: must be 1..100");
           BinaryPrecedence = (unsigned)NumVal;
           getNextToken();
         }
@@ -202,20 +202,20 @@ user-defined operator, we need to parse it:
       }
 
       if (CurTok != '(')
-        return ErrorP("Expected '(' in prototype");
+        return LogErrorP("Expected '(' in prototype");
 
       std::vector<std::string> ArgNames;
       while (getNextToken() == tok_identifier)
         ArgNames.push_back(IdentifierStr);
       if (CurTok != ')')
-        return ErrorP("Expected ')' in prototype");
+        return LogErrorP("Expected ')' in prototype");
 
       // success.
       getNextToken();  // eat ')'.
 
       // Verify right number of names for operator.
       if (Kind && ArgNames.size() != Kind)
-        return ErrorP("Invalid number of operands for operator");
+        return LogErrorP("Invalid number of operands for operator");
 
       return llvm::make_unique<PrototypeAST>(FnName, std::move(ArgNames), Kind != 0,
                                              BinaryPrecedence);
@@ -251,7 +251,7 @@ default case for our existing binary operator node:
       case '<':
         L = Builder.CreateFCmpULT(L, R, "cmptmp");
         // Convert bool 0/1 to double 0.0 or 1.0
-        return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()),
+        return Builder.CreateUIToFP(L, Type::getDoubleTy(LLVMContext),
                                     "booltmp");
       default:
         break;
@@ -288,7 +288,7 @@ The final piece of code we are missing, is a bit of top-level magic:
         BinopPrecedence[Proto->getOperatorName()] = Proto->getBinaryPrecedence();
 
       // Create a new basic block to start insertion into.
-      BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", TheFunction);
+      BasicBlock *BB = BasicBlock::Create(LLVMContext, "entry", TheFunction);
       Builder.SetInsertPoint(BB);
 
       if (Value *RetVal = Body->codegen()) {
@@ -403,7 +403,7 @@ operator code above with:
 
       switch (CurTok) {
       default:
-        return ErrorP("Expected function name in prototype");
+        return LogErrorP("Expected function name in prototype");
       case tok_identifier:
         FnName = IdentifierStr;
         Kind = 0;
@@ -412,7 +412,7 @@ operator code above with:
       case tok_unary:
         getNextToken();
         if (!isascii(CurTok))
-          return ErrorP("Expected unary operator");
+          return LogErrorP("Expected unary operator");
         FnName = "unary";
         FnName += (char)CurTok;
         Kind = 1;
@@ -435,7 +435,7 @@ unary operators. It looks like this:
 
       Function *F = TheModule->getFunction(std::string("unary")+Opcode);
       if (!F)
-        return ErrorV("Unknown unary operator");
+        return LogErrorV("Unknown unary operator");
 
       return Builder.CreateCall(F, OperandV, "unop");
     }
@@ -546,17 +546,17 @@ converge:
 
     # Determine whether the specific location diverges.
     # Solve for z = z^2 + c in the complex plane.
-    def mandleconverger(real imag iters creal cimag)
+    def mandelconverger(real imag iters creal cimag)
       if iters > 255 | (real*real + imag*imag > 4) then
         iters
       else
-        mandleconverger(real*real - imag*imag + creal,
+        mandelconverger(real*real - imag*imag + creal,
                         2*real*imag + cimag,
                         iters+1, creal, cimag);
 
     # Return the number of iterations required for the iteration to escape
-    def mandleconverge(real imag)
-      mandleconverger(real, imag, 0, real, imag);
+    def mandelconverge(real imag)
+      mandelconverger(real, imag, 0, real, imag);
 
 This "``z = z2 + c``" function is a beautiful little creature that is
 the basis for computation of the `Mandelbrot
@@ -570,12 +570,12 @@ but we can whip together something using the density plotter above:
 
 ::
 
-    # Compute and plot the mandlebrot set with the specified 2 dimensional range
+    # Compute and plot the mandelbrot set with the specified 2 dimensional range
     # info.
     def mandelhelp(xmin xmax xstep   ymin ymax ystep)
       for y = ymin, y < ymax, ystep in (
         (for x = xmin, x < xmax, xstep in
-           printdensity(mandleconverge(x,y)))
+           printdensity(mandelconverge(x,y)))
         : putchard(10)
       )
 
@@ -585,7 +585,7 @@ but we can whip together something using the density plotter above:
       mandelhelp(realstart, realstart+realmag*78, realmag,
                  imagstart, imagstart+imagmag*40, imagmag);
 
-Given this, we can try plotting out the mandlebrot set! Lets try it out:
+Given this, we can try plotting out the mandelbrot set! Lets try it out:
 
 ::
 

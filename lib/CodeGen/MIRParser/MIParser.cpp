@@ -17,21 +17,22 @@
 #include "llvm/AsmParser/Parser.h"
 #include "llvm/AsmParser/SlotMapping.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
-#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineMemOperand.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
-#include "llvm/IR/Instructions.h"
+#include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/ModuleSlotTracker.h"
 #include "llvm/IR/ValueSymbolTable.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Support/SourceMgr.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
+#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
+#include "llvm/Target/TargetSubtargetInfo.h"
 
 using namespace llvm;
 
@@ -87,7 +88,9 @@ public:
            StringRef Source, const PerFunctionMIParsingState &PFS,
            const SlotMapping &IRSlots);
 
-  void lex();
+  /// \p SkipChar gives the number of characters to skip before looking
+  /// for the next token.
+  void lex(unsigned SkipChar = 0);
 
   /// Report an error at the current location with the given message.
   ///
@@ -119,12 +122,17 @@ public:
   bool parseRegisterFlag(unsigned &Flags);
   bool parseSubRegisterIndex(unsigned &SubReg);
   bool parseRegisterTiedDefIndex(unsigned &TiedDefIdx);
+  bool parseSize(unsigned &Size);
   bool parseRegisterOperand(MachineOperand &Dest,
                             Optional<unsigned> &TiedDefIdx, bool IsDef = false);
   bool parseImmediateOperand(MachineOperand &Dest);
   bool parseIRConstant(StringRef::iterator Loc, StringRef Source,
                        const Constant *&C);
   bool parseIRConstant(StringRef::iterator Loc, const Constant *&C);
+  bool parseIRType(StringRef::iterator Loc, StringRef Source, unsigned &Read,
+                   Type *&Ty);
+  // \p MustBeSized defines whether or not \p Ty must be sized.
+  bool parseIRType(StringRef::iterator Loc, Type *&Ty, bool MustBeSized = true);
   bool parseTypedImmediateOperand(MachineOperand &Dest);
   bool parseFPImmediateOperand(MachineOperand &Dest);
   bool parseMBBReference(MachineBasicBlock *&MBB);
@@ -136,6 +144,7 @@ public:
   bool parseGlobalValue(GlobalValue *&GV);
   bool parseGlobalAddressOperand(MachineOperand &Dest);
   bool parseConstantPoolIndexOperand(MachineOperand &Dest);
+  bool parseSubRegisterIndexOperand(MachineOperand &Dest);
   bool parseJumpTableIndexOperand(MachineOperand &Dest);
   bool parseExternalSymbolOperand(MachineOperand &Dest);
   bool parseMDNode(MDNode *&Node);
@@ -250,9 +259,9 @@ MIParser::MIParser(SourceMgr &SM, MachineFunction &MF, SMDiagnostic &Error,
     : SM(SM), MF(MF), Error(Error), Source(Source), CurrentSource(Source),
       PFS(PFS), IRSlots(IRSlots) {}
 
-void MIParser::lex() {
+void MIParser::lex(unsigned SkipChar) {
   CurrentSource = lexMIToken(
-      CurrentSource, Token,
+      CurrentSource.data() + SkipChar, Token,
       [this](StringRef::iterator Loc, const Twine &Msg) { error(Loc, Msg); });
 }
 
@@ -587,6 +596,14 @@ bool MIParser::parse(MachineInstr *&MI) {
   if (Token.isError() || parseInstruction(OpCode, Flags))
     return true;
 
+  Type *Ty = nullptr;
+  if (isPreISelGenericOpcode(OpCode)) {
+    // For generic opcode, a type is mandatory.
+    auto Loc = Token.location();
+    if (parseIRType(Loc, Ty))
+      return true;
+  }
+
   // Parse the remaining machine operands.
   while (!Token.isNewlineOrEOF() && Token.isNot(MIToken::kw_debug_location) &&
          Token.isNot(MIToken::coloncolon) && Token.isNot(MIToken::lbrace)) {
@@ -642,6 +659,8 @@ bool MIParser::parse(MachineInstr *&MI) {
   // TODO: Check for extraneous machine operands.
   MI = MF.CreateMachineInstr(MCID, DebugLocation, /*NoImplicit=*/true);
   MI->setFlags(Flags);
+  if (Ty)
+    MI->setType(Ty);
   for (const auto &Operand : Operands)
     MI->addOperand(MF, Operand.Operand);
   if (assignRegisterTies(*MI, Operands))
@@ -876,6 +895,17 @@ bool MIParser::parseRegisterTiedDefIndex(unsigned &TiedDefIdx) {
   return false;
 }
 
+bool MIParser::parseSize(unsigned &Size) {
+  if (Token.isNot(MIToken::IntegerLiteral))
+    return error("expected an integer literal for the size");
+  if (getUnsigned(Size))
+    return true;
+  lex();
+  if (expectAndConsume(MIToken::rparen))
+    return true;
+  return false;
+}
+
 bool MIParser::assignRegisterTies(MachineInstr &MI,
                                   ArrayRef<ParsedMachineOperand> Operands) {
   SmallVector<std::pair<unsigned, unsigned>, 4> TiedRegisterPairs;
@@ -932,11 +962,28 @@ bool MIParser::parseRegisterOperand(MachineOperand &Dest,
     if (parseSubRegisterIndex(SubReg))
       return true;
   }
-  if ((Flags & RegState::Define) == 0 && consumeIfPresent(MIToken::lparen)) {
-    unsigned Idx;
-    if (parseRegisterTiedDefIndex(Idx))
+  if ((Flags & RegState::Define) == 0) {
+    if (consumeIfPresent(MIToken::lparen)) {
+      unsigned Idx;
+      if (parseRegisterTiedDefIndex(Idx))
+        return true;
+      TiedDefIdx = Idx;
+    }
+  } else if (consumeIfPresent(MIToken::lparen)) {
+    // Virtual registers may have a size with GlobalISel.
+    if (!TargetRegisterInfo::isVirtualRegister(Reg))
+      return error("unexpected size on physical register");
+    unsigned Size;
+    if (parseSize(Size))
       return true;
-    TiedDefIdx = Idx;
+
+    MachineRegisterInfo &MRI = MF.getRegInfo();
+    MRI.setSize(Reg, Size);
+  } else if (PFS.GenericVRegs.count(Reg)) {
+    // Generic virtual registers must have a size.
+    // If we end up here this means the size hasn't been specified and
+    // this is bad!
+    return error("generic virtual registers must have a size");
   }
   Dest = MachineOperand::CreateReg(
       Reg, Flags & RegState::Define, Flags & RegState::Implicit,
@@ -971,6 +1018,38 @@ bool MIParser::parseIRConstant(StringRef::iterator Loc, const Constant *&C) {
   if (parseIRConstant(Loc, StringRef(Loc, Token.range().end() - Loc), C))
     return true;
   lex();
+  return false;
+}
+
+bool MIParser::parseIRType(StringRef::iterator Loc, StringRef StringValue,
+                           unsigned &Read, Type *&Ty) {
+  auto Source = StringValue.str(); // The source has to be null terminated.
+  SMDiagnostic Err;
+  Ty = parseTypeAtBeginning(Source.c_str(), Read, Err,
+                            *MF.getFunction()->getParent(), &IRSlots);
+  if (!Ty)
+    return error(Loc + Err.getColumnNo(), Err.getMessage());
+  return false;
+}
+
+bool MIParser::parseIRType(StringRef::iterator Loc, Type *&Ty,
+                           bool MustBeSized) {
+  // At this point we enter in the IR world, i.e., to get the correct type,
+  // we need to hand off the whole string, not just the current token.
+  // E.g., <4 x i64> would give '<' as a token and there is not much
+  // the IR parser can do with that.
+  unsigned Read = 0;
+  if (parseIRType(Loc, StringRef(Loc), Read, Ty))
+    return true;
+  // The type must be sized, otherwise there is not much the backend
+  // can do with it.
+  if (MustBeSized && !Ty->isSized())
+    return error("expected a sized type");
+  // The next token is Read characters from the Loc.
+  // However, the current location is not Loc, but Loc + the length of Token.
+  // Therefore, subtract the length of Token (range().end() - Loc) to the
+  // number of characters to skip before the next token.
+  lex(Read - (Token.range().end() - Loc));
   return false;
 }
 
@@ -1158,6 +1237,17 @@ bool MIParser::parseExternalSymbolOperand(MachineOperand &Dest) {
   Dest = MachineOperand::CreateES(Symbol);
   if (parseOperandsOffset(Dest))
     return true;
+  return false;
+}
+
+bool MIParser::parseSubRegisterIndexOperand(MachineOperand &Dest) {
+  assert(Token.is(MIToken::SubRegisterIndex));
+  StringRef Name = Token.stringValue();
+  unsigned SubRegIndex = getSubRegIndex(Token.stringValue());
+  if (SubRegIndex == 0)
+    return error(Twine("unknown subregister index '") + Name + "'");
+  lex();
+  Dest = MachineOperand::CreateImm(SubRegIndex);
   return false;
 }
 
@@ -1406,6 +1496,8 @@ bool MIParser::parseMachineOperand(MachineOperand &Dest,
     return parseJumpTableIndexOperand(Dest);
   case MIToken::ExternalSymbol:
     return parseExternalSymbolOperand(Dest);
+  case MIToken::SubRegisterIndex:
+    return parseSubRegisterIndexOperand(Dest);
   case MIToken::exclaim:
     return parseMetadataOperand(Dest);
   case MIToken::kw_cfi_same_value:
@@ -1605,6 +1697,14 @@ bool MIParser::parseMemoryPseudoSourceValue(const PseudoSourceValue *&PSV) {
     // The token was already consumed, so use return here instead of break.
     return false;
   }
+  case MIToken::StackObject: {
+    int FI;
+    if (parseStackFrameIndex(FI))
+      return true;
+    PSV = MF.getPSVManager().getFixedStack(FI);
+    // The token was already consumed, so use return here instead of break.
+    return false;
+  }
   case MIToken::kw_call_entry: {
     lex();
     switch (Token.kind()) {
@@ -1636,7 +1736,8 @@ bool MIParser::parseMemoryPseudoSourceValue(const PseudoSourceValue *&PSV) {
 bool MIParser::parseMachinePointerInfo(MachinePointerInfo &Dest) {
   if (Token.is(MIToken::kw_constant_pool) || Token.is(MIToken::kw_stack) ||
       Token.is(MIToken::kw_got) || Token.is(MIToken::kw_jump_table) ||
-      Token.is(MIToken::FixedStackObject) || Token.is(MIToken::kw_call_entry)) {
+      Token.is(MIToken::FixedStackObject) || Token.is(MIToken::StackObject) ||
+      Token.is(MIToken::kw_call_entry)) {
     const PseudoSourceValue *PSV = nullptr;
     if (parseMemoryPseudoSourceValue(PSV))
       return true;
@@ -1688,14 +1789,16 @@ bool MIParser::parseMachineMemoryOperand(MachineMemOperand *&Dest) {
     return true;
   lex();
 
-  const char *Word = Flags & MachineMemOperand::MOLoad ? "from" : "into";
-  if (Token.isNot(MIToken::Identifier) || Token.stringValue() != Word)
-    return error(Twine("expected '") + Word + "'");
-  lex();
-
   MachinePointerInfo Ptr = MachinePointerInfo();
-  if (parseMachinePointerInfo(Ptr))
-    return true;
+  if (Token.is(MIToken::Identifier)) {
+    const char *Word = Flags & MachineMemOperand::MOLoad ? "from" : "into";
+    if (Token.stringValue() != Word)
+      return error(Twine("expected '") + Word + "'");
+    lex();
+
+    if (parseMachinePointerInfo(Ptr))
+      return true;
+  }
   unsigned BaseAlignment = Size;
   AAMDNodes AAInfo;
   MDNode *Range = nullptr;

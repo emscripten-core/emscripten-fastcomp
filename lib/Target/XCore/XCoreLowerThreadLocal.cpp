@@ -76,7 +76,7 @@ createLoweredInitializer(ArrayType *NewType, Constant *OriginalInitializer) {
 
 static Instruction *
 createReplacementInstr(ConstantExpr *CE, Instruction *Instr) {
-  IRBuilder<true,NoFolder> Builder(Instr);
+  IRBuilder<NoFolder> Builder(Instr);
   unsigned OpCode = CE->getOpcode();
   switch (OpCode) {
     case Instruction::GetElementPtr: {
@@ -189,7 +189,7 @@ bool XCoreLowerThreadLocal::lowerGlobal(GlobalVariable *GV) {
     return false;
 
   // Create replacement global.
-  ArrayType *NewType = createLoweredType(GV->getType()->getElementType());
+  ArrayType *NewType = createLoweredType(GV->getValueType());
   Constant *NewInitializer = nullptr;
   if (GV->hasInitializer())
     NewInitializer = createLoweredInitializer(NewType,

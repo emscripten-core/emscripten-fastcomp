@@ -36,18 +36,20 @@
 #define LLVM_LTO_LTOCODEGENERATOR_H
 
 #include "llvm-c/lto.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
+#include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 #include <string>
 #include <vector>
 
 namespace llvm {
+template <typename T> class ArrayRef;
   class LLVMContext;
   class DiagnosticInfo;
-  class GlobalValue;
   class Linker;
   class Mangler;
   class MemoryBuffer;
@@ -66,17 +68,21 @@ struct LTOCodeGenerator {
   ~LTOCodeGenerator();
 
   /// Merge given module.  Return true on success.
+  ///
+  /// Resets \a HasVerifiedInput.
   bool addModule(struct LTOModule *);
 
   /// Set the destination module.
+  ///
+  /// Resets \a HasVerifiedInput.
   void setModule(std::unique_ptr<LTOModule> M);
 
-  void setTargetOptions(TargetOptions Options);
+  void setTargetOptions(const TargetOptions &Options);
   void setDebugInfo(lto_debug_model);
-  void setCodePICModel(Reloc::Model Model) { RelocModel = Model; }
-  
+  void setCodePICModel(Optional<Reloc::Model> Model) { RelocModel = Model; }
+
   /// Set the file type to be emitted (assembly or object code).
-  /// The default is TargetMachine::CGFT_ObjectFile. 
+  /// The default is TargetMachine::CGFT_ObjectFile.
   void setFileType(TargetMachine::CodeGenFileType FT) { FileType = FT; }
 
   void setCpu(const char *MCpu) { this->MCpu = MCpu; }
@@ -85,6 +91,22 @@ struct LTOCodeGenerator {
 
   void setShouldInternalize(bool Value) { ShouldInternalize = Value; }
   void setShouldEmbedUselists(bool Value) { ShouldEmbedUselists = Value; }
+
+  /// Restore linkage of globals
+  ///
+  /// When set, the linkage of globals will be restored prior to code
+  /// generation. That is, a global symbol that had external linkage prior to
+  /// LTO will be emitted with external linkage again; and a local will remain
+  /// local. Note that this option only affects the end result - globals may
+  /// still be internalized in the process of LTO and may be modified and/or
+  /// deleted where legal.
+  ///
+  /// The default behavior will internalize globals (unless on the preserve
+  /// list) and, if parallel code generation is enabled, will externalize
+  /// all locals.
+  void setShouldRestoreGlobalsLinkage(bool Value) {
+    ShouldRestoreGlobalsLinkage = Value;
+  }
 
   void addMustPreserveSymbol(StringRef Sym) { MustPreserveSymbols[Sym] = 1; }
 
@@ -105,6 +127,8 @@ struct LTOCodeGenerator {
 
   /// Write the merged module to the file specified by the given path.  Return
   /// true on success.
+  ///
+  /// Calls \a verifyMergedModuleOnce().
   bool writeMergedModules(const char *Path);
 
   /// Compile the merged module into a *single* output file; the path to output
@@ -129,6 +153,8 @@ struct LTOCodeGenerator {
                                         bool DisableVectorization);
 
   /// Optimizes the merged module.  Returns true on success.
+  ///
+  /// Calls \a verifyMergedModuleOnce().
   bool optimize(bool DisableVerify, bool DisableInline, bool DisableGVNLoadPRE,
                 bool DisableVectorization);
 
@@ -142,6 +168,8 @@ struct LTOCodeGenerator {
   /// than one element, code generation is done in parallel with out.size()
   /// threads.  Output files will be written to members of out. Returns true on
   /// success.
+  ///
+  /// Calls \a verifyMergedModuleOnce().
   bool compileOptimized(ArrayRef<raw_pwrite_stream *> Out);
 
   void setDiagnosticHandler(lto_diagnostic_handler_t, void *);
@@ -153,21 +181,28 @@ struct LTOCodeGenerator {
 private:
   void initializeLTOPasses();
 
+  /// Verify the merged module on first call.
+  ///
+  /// Sets \a HasVerifiedInput on first call and doesn't run again on the same
+  /// input.
+  void verifyMergedModuleOnce();
+
   bool compileOptimizedToFile(const char **Name);
+  void restoreLinkageForExternals();
   void applyScopeRestrictions();
-  void applyRestriction(GlobalValue &GV, ArrayRef<StringRef> Libcalls,
-                        std::vector<const char *> &MustPreserveList,
-                        SmallPtrSetImpl<GlobalValue *> &AsmUsed,
-                        Mangler &Mangler);
+  void preserveDiscardableGVs(
+      Module &TheModule,
+      llvm::function_ref<bool(const GlobalValue &)> mustPreserveGV);
+
   bool determineTarget();
+  std::unique_ptr<TargetMachine> createTargetMachine();
 
   static void DiagnosticHandler(const DiagnosticInfo &DI, void *Context);
 
   void DiagnosticHandler2(const DiagnosticInfo &DI);
 
   void emitError(const std::string &ErrMsg);
-
-  typedef StringMap<uint8_t> StringSet;
+  void emitWarning(const std::string &ErrMsg);
 
   LLVMContext &Context;
   std::unique_ptr<Module> MergedModule;
@@ -175,9 +210,11 @@ private:
   std::unique_ptr<TargetMachine> TargetMach;
   bool EmitDwarfDebugInfo = false;
   bool ScopeRestrictionsDone = false;
-  Reloc::Model RelocModel = Reloc::Default;
-  StringSet MustPreserveSymbols;
-  StringSet AsmUndefinedRefs;
+  bool HasVerifiedInput = false;
+  Optional<Reloc::Model> RelocModel;
+  StringSet<> MustPreserveSymbols;
+  StringSet<> AsmUndefinedRefs;
+  StringMap<GlobalValue::LinkageTypes> ExternalSymbols;
   std::vector<std::string> CodegenOptions;
   std::string FeatureStr;
   std::string MCpu;
@@ -185,11 +222,14 @@ private:
   std::string NativeObjectPath;
   TargetOptions Options;
   CodeGenOpt::Level CGOptLevel = CodeGenOpt::Default;
+  const Target *MArch = nullptr;
+  std::string TripleStr;
   unsigned OptLevel = 2;
   lto_diagnostic_handler_t DiagHandler = nullptr;
   void *DiagContext = nullptr;
   bool ShouldInternalize = true;
   bool ShouldEmbedUselists = false;
+  bool ShouldRestoreGlobalsLinkage = false;
   TargetMachine::CodeGenFileType FileType = TargetMachine::CGFT_ObjectFile;
 };
 }

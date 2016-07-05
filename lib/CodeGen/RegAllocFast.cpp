@@ -12,7 +12,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/CodeGen/Passes.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/IndexedMap.h"
 #include "llvm/ADT/STLExtras.h"
@@ -25,13 +24,12 @@
 #include "llvm/CodeGen/MachineInstr.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/RegAllocRegistry.h"
 #include "llvm/CodeGen/RegisterClassInfo.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/Support/CommandLine.h"
+#include "llvm/IR/DebugInfo.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetSubtargetInfo.h"
 #include <algorithm>
@@ -52,6 +50,7 @@ namespace {
     static char ID;
     RAFast() : MachineFunctionPass(ID), StackSlotForVirtReg(-1),
                isBulkSpilling(false) {}
+
   private:
     MachineFunction *MF;
     MachineRegisterInfo *MRI;
@@ -157,6 +156,11 @@ namespace {
     void getAnalysisUsage(AnalysisUsage &AU) const override {
       AU.setPreservesCFG();
       MachineFunctionPass::getAnalysisUsage(AU);
+    }
+
+    MachineFunctionProperties getSetProperties() const override {
+      return MachineFunctionProperties().set(
+          MachineFunctionProperties::Property::AllVRegsAllocated);
     }
 
   private:
@@ -345,6 +349,11 @@ void RAFast::usePhysReg(MachineOperand &MO) {
   unsigned PhysReg = MO.getReg();
   assert(TargetRegisterInfo::isPhysicalRegister(PhysReg) &&
          "Bad usePhysReg operand");
+
+  // Ignore undef uses.
+  if (MO.isUndef())
+    return;
+
   markRegUsedInInstr(PhysReg);
   switch (PhysRegState[PhysReg]) {
   case regDisabled:
@@ -1002,11 +1011,13 @@ void RAFast::AllocateBasicBlock() {
 
     unsigned DefOpEnd = MI->getNumOperands();
     if (MI->isCall()) {
-      // Spill all virtregs before a call. This serves two purposes: 1. If an
+      // Spill all virtregs before a call. This serves one purpose: If an
       // exception is thrown, the landing pad is going to expect to find
-      // registers in their spill slots, and 2. we don't have to wade through
-      // all the <imp-def> operands on the call instruction.
-      DefOpEnd = VirtOpEnd;
+      // registers in their spill slots.
+      // Note: although this is appealing to just consider all definitions
+      // as call-clobbered, this is not correct because some of those
+      // definitions may be used later on and we do not want to reuse
+      // those for virtual registers in between.
       DEBUG(dbgs() << "  Spilling remaining registers before call.\n");
       spillAll(MI);
 

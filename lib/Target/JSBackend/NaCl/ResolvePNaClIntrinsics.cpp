@@ -366,7 +366,7 @@ private:
       CallInst *Asm = CallInst::Create(
           InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect), "", Call);
       Asm->setDebugLoc(Call->getDebugLoc());
-      I = new FenceInst(M->getContext(), SequentiallyConsistent, SS, Asm);
+      I = new FenceInst(M->getContext(), AtomicOrdering::SequentiallyConsistent, SS, Asm);
       Asm = CallInst::Create(
           InlineAsm::get(FTy, AsmString, Constraints, HasSideEffect), "", I);
       Asm->setDebugLoc(Call->getDebugLoc());
@@ -400,13 +400,13 @@ private:
     switch (MO) {
     // Only valid values should pass validation.
     default: llvm_unreachable("unknown memory order");
-    case NaCl::MemoryOrderRelaxed: return Monotonic;
+    case NaCl::MemoryOrderRelaxed: return AtomicOrdering::Monotonic;
     // TODO Consume is unspecified by LLVM's internal IR.
-    case NaCl::MemoryOrderConsume: return SequentiallyConsistent;
-    case NaCl::MemoryOrderAcquire: return Acquire;
-    case NaCl::MemoryOrderRelease: return Release;
-    case NaCl::MemoryOrderAcquireRelease: return AcquireRelease;
-    case NaCl::MemoryOrderSequentiallyConsistent: return SequentiallyConsistent;
+    case NaCl::MemoryOrderConsume: return AtomicOrdering::SequentiallyConsistent;
+    case NaCl::MemoryOrderAcquire: return AtomicOrdering::Acquire;
+    case NaCl::MemoryOrderRelease: return AtomicOrdering::Release;
+    case NaCl::MemoryOrderAcquireRelease: return AtomicOrdering::AcquireRelease;
+    case NaCl::MemoryOrderSequentiallyConsistent: return AtomicOrdering::SequentiallyConsistent;
     }
   }
 

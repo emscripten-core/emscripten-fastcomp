@@ -15,10 +15,6 @@
 // Thumb specific DAG Nodes.
 //
 
-def ARMtcall : SDNode<"ARMISD::tCALL", SDT_ARMcall,
-                      [SDNPHasChain, SDNPOptInGlue, SDNPOutGlue,
-                       SDNPVariadic]>;
-
 def imm_sr_XFORM: SDNodeXForm<imm, [{
   unsigned Imm = N->getZExtValue();
   return CurDAG->getTargetConstant((Imm == 32 ? 0 : Imm), SDLoc(N), MVT::i32);
@@ -68,6 +64,14 @@ def thumb_immshifted_val : SDNodeXForm<imm, [{
 def thumb_immshifted_shamt : SDNodeXForm<imm, [{
   unsigned V = ARM_AM::getThumbImmValShift((unsigned)N->getZExtValue());
   return CurDAG->getTargetConstant(V, SDLoc(N), MVT::i32);
+}]>;
+
+def imm256_510 : ImmLeaf<i32, [{
+  return Imm >= 256 && Imm < 511;
+}]>;
+
+def thumb_imm256_510_addend : SDNodeXForm<imm, [{
+  return CurDAG->getTargetConstant(N->getZExtValue() - 255, SDLoc(N), MVT::i32);
 }]>;
 
 // Scaled 4 immediate.
@@ -278,16 +282,17 @@ def tHINT : T1pI<(outs), (ins imm0_15:$imm), NoItinerary, "hint", "\t$imm",
   let Inst{7-4} = imm;
 }
 
-class tHintAlias<string Asm, dag Result> : tInstAlias<Asm, Result> {
+// Note: When EmitPriority == 1, the alias will be used for printing
+class tHintAlias<string Asm, dag Result, bit EmitPriority = 0> : tInstAlias<Asm, Result, EmitPriority> {
   let Predicates = [IsThumb, HasV6M];
 }
 
-def : tHintAlias<"nop$p", (tHINT 0, pred:$p)>; // A8.6.110
-def : tHintAlias<"yield$p", (tHINT 1, pred:$p)>; // A8.6.410
-def : tHintAlias<"wfe$p", (tHINT 2, pred:$p)>; // A8.6.408
-def : tHintAlias<"wfi$p", (tHINT 3, pred:$p)>; // A8.6.409
-def : tHintAlias<"sev$p", (tHINT 4, pred:$p)>; // A8.6.157
-def : tInstAlias<"sevl$p", (tHINT 5, pred:$p)> {
+def : tHintAlias<"nop$p", (tHINT 0, pred:$p), 1>; // A8.6.110
+def : tHintAlias<"yield$p", (tHINT 1, pred:$p), 1>; // A8.6.410
+def : tHintAlias<"wfe$p", (tHINT 2, pred:$p), 1>; // A8.6.408
+def : tHintAlias<"wfi$p", (tHINT 3, pred:$p), 1>; // A8.6.409
+def : tHintAlias<"sev$p", (tHINT 4, pred:$p), 1>; // A8.6.157
+def : tInstAlias<"sevl$p", (tHINT 5, pred:$p), 1> {
   let Predicates = [IsThumb2, HasV8];
 }
 
@@ -302,7 +307,7 @@ def tBKPT : T1I<(outs), (ins imm0_255:$val), NoItinerary, "bkpt\t$val",
   let Inst{7-0} = val;
 }
 // default immediate for breakpoint mnemonic
-def : InstAlias<"bkpt", (tBKPT 0)>, Requires<[IsThumb]>;
+def : InstAlias<"bkpt", (tBKPT 0), 0>, Requires<[IsThumb]>;
 
 def tHLT : T1I<(outs), (ins imm0_63:$val), NoItinerary, "hlt\t$val",
                 []>, T1Encoding<0b101110>, Requires<[IsThumb, HasV8]> {
@@ -439,6 +444,14 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
     let Inst{2-0} = 0b000;
     let Unpredictable{2-0} = 0b111;
   }
+  def tBXNS : TI<(outs), (ins GPR:$Rm, pred:$p), IIC_Br, "bxns${p}\t$Rm", []>,
+              Requires<[IsThumb, Has8MSecExt]>,
+              T1Special<{1,1,0,?}>, Sched<[WriteBr]> {
+    bits<4> Rm;
+    let Inst{6-3} = Rm;
+    let Inst{2-0} = 0b100;
+    let Unpredictable{1-0} = 0b11;
+  }
 }
 
 let isReturn = 1, isTerminator = 1, isBarrier = 1 in {
@@ -460,7 +473,7 @@ let isCall = 1,
   def tBL  : TIx2<0b11110, 0b11, 1,
                   (outs), (ins pred:$p, t_bltarget:$func), IIC_Br,
                   "bl${p}\t$func",
-                  [(ARMtcall tglobaladdr:$func)]>,
+                  [(ARMcall tglobaladdr:$func)]>,
              Requires<[IsThumb]>, Sched<[WriteBrL]> {
     bits<24> func;
     let Inst{26} = func{23};
@@ -473,8 +486,7 @@ let isCall = 1,
   // ARMv5T and above, also used for Thumb2
   def tBLXi : TIx2<0b11110, 0b11, 0,
                  (outs), (ins pred:$p, t_blxtarget:$func), IIC_Br,
-                   "blx${p}\t$func",
-                   [(ARMcall tglobaladdr:$func)]>,
+                   "blx${p}\t$func", []>,
               Requires<[IsThumb, HasV5T, IsNotMClass]>, Sched<[WriteBrL]> {
     bits<24> func;
     let Inst{26} = func{23};
@@ -488,12 +500,23 @@ let isCall = 1,
   // Also used for Thumb2
   def tBLXr : TI<(outs), (ins pred:$p, GPR:$func), IIC_Br,
                   "blx${p}\t$func",
-                  [(ARMtcall GPR:$func)]>,
+                  [(ARMcall GPR:$func)]>,
               Requires<[IsThumb, HasV5T]>,
               T1Special<{1,1,1,?}>, Sched<[WriteBrL]> { // A6.2.3 & A8.6.24;
     bits<4> func;
     let Inst{6-3} = func;
     let Inst{2-0} = 0b000;
+  }
+
+  // ARMv8-M Security Extensions
+  def tBLXNSr : TI<(outs), (ins pred:$p, GPRnopc:$func), IIC_Br,
+                   "blxns${p}\t$func", []>,
+                Requires<[IsThumb, Has8MSecExt]>,
+                T1Special<{1,1,1,?}>, Sched<[WriteBrL]> {
+    bits<4> func;
+    let Inst{6-3} = func;
+    let Inst{2-0} = 0b100;
+    let Unpredictable{1-0} = 0b11;
   }
 
   // ARMv4T
@@ -663,19 +686,19 @@ multiclass thumb_st_rr_ri_enc<bits<3> reg_opc, bits<4> imm_opc,
 defm tLDR  : thumb_ld_rr_ri_enc<0b100, 0b0110, t_addrmode_rr,
                                 t_addrmode_is4, AddrModeT1_4,
                                 IIC_iLoad_r, IIC_iLoad_i, "ldr",
-                                UnOpFrag<(load node:$Src)>>;
+                                load>;
 
 // A8.6.64 & A8.6.61
 defm tLDRB : thumb_ld_rr_ri_enc<0b110, 0b0111, t_addrmode_rr,
                                 t_addrmode_is1, AddrModeT1_1,
                                 IIC_iLoad_bh_r, IIC_iLoad_bh_i, "ldrb",
-                                UnOpFrag<(zextloadi8 node:$Src)>>;
+                                zextloadi8>;
 
 // A8.6.76 & A8.6.73
 defm tLDRH : thumb_ld_rr_ri_enc<0b101, 0b1000, t_addrmode_rr,
                                 t_addrmode_is2, AddrModeT1_2,
                                 IIC_iLoad_bh_r, IIC_iLoad_bh_i, "ldrh",
-                                UnOpFrag<(zextloadi16 node:$Src)>>;
+                                zextloadi16>;
 
 let AddedComplexity = 10 in
 def tLDRSB :                    // A8.6.80
@@ -706,19 +729,19 @@ def tSTRspi : T1pIs<(outs), (ins tGPR:$Rt, t_addrmode_sp:$addr), IIC_iStore_i,
 defm tSTR  : thumb_st_rr_ri_enc<0b000, 0b0110, t_addrmode_rr,
                                 t_addrmode_is4, AddrModeT1_4,
                                 IIC_iStore_r, IIC_iStore_i, "str",
-                                BinOpFrag<(store node:$LHS, node:$RHS)>>;
+                                store>;
 
 // A8.6.197 & A8.6.195
 defm tSTRB : thumb_st_rr_ri_enc<0b010, 0b0111, t_addrmode_rr,
                                 t_addrmode_is1, AddrModeT1_1,
                                 IIC_iStore_bh_r, IIC_iStore_bh_i, "strb",
-                                BinOpFrag<(truncstorei8 node:$LHS, node:$RHS)>>;
+                                truncstorei8>;
 
 // A8.6.207 & A8.6.205
 defm tSTRH : thumb_st_rr_ri_enc<0b001, 0b1000, t_addrmode_rr,
                                t_addrmode_is2, AddrModeT1_2,
                                IIC_iStore_bh_r, IIC_iStore_bh_i, "strh",
-                               BinOpFrag<(truncstorei16 node:$LHS, node:$RHS)>>;
+                               truncstorei16>;
 
 
 //===----------------------------------------------------------------------===//
@@ -770,7 +793,7 @@ def tSTMIA_UPD : Thumb1I<(outs GPR:$wb),
 } // hasSideEffects
 
 def : InstAlias<"ldm${p} $Rn!, $regs",
-                (tLDMIA tGPR:$Rn, pred:$p, reglist:$regs)>,
+                (tLDMIA tGPR:$Rn, pred:$p, reglist:$regs), 0>,
         Requires<[IsThumb, IsThumb1Only]>;
 
 let mayLoad = 1, Uses = [SP], Defs = [SP], hasExtraDefRegAllocReq = 1 in
@@ -1310,7 +1333,14 @@ def tInt_eh_sjlj_longjmp : XI<(outs), (ins GPR:$src, GPR:$scratch),
                               AddrModeNone, 0, IndexModeNone,
                               Pseudo, NoItinerary, "", "",
                               [(ARMeh_sjlj_longjmp GPR:$src, GPR:$scratch)]>,
-                             Requires<[IsThumb]>;
+                             Requires<[IsThumb,IsNotWindows]>;
+
+let isBarrier = 1, hasSideEffects = 1, isTerminator = 1, isCodeGenOnly = 1,
+    Defs = [ R11, LR, SP ] in
+def tInt_WIN_eh_sjlj_longjmp
+  : XI<(outs), (ins GPR:$src, GPR:$scratch), AddrModeNone, 0, IndexModeNone,
+       Pseudo, NoItinerary, "", "", [(ARMeh_sjlj_longjmp GPR:$src, GPR:$scratch)]>,
+    Requires<[IsThumb,IsWindows]>;
 
 //===----------------------------------------------------------------------===//
 // Non-Instruction Patterns
@@ -1380,15 +1410,8 @@ def : T1Pat<(ARMWrapperJT tjumptable:$dst),
             (tLEApcrelJT tjumptable:$dst)>;
 
 // Direct calls
-def : T1Pat<(ARMtcall texternalsym:$func), (tBL texternalsym:$func)>,
+def : T1Pat<(ARMcall texternalsym:$func), (tBL texternalsym:$func)>,
       Requires<[IsThumb]>;
-
-def : Tv5Pat<(ARMcall texternalsym:$func), (tBLXi texternalsym:$func)>,
-      Requires<[IsThumb, HasV5T, IsNotMClass]>;
-
-// Indirect calls to ARM routines
-def : Tv5Pat<(ARMcall GPR:$dst), (tBLXr GPR:$dst)>,
-      Requires<[IsThumb, HasV5T]>;
 
 // zextload i1 -> zextload i8
 def : T1Pat<(zextloadi1 t_addrmode_is1:$addr),
@@ -1474,6 +1497,10 @@ def : T1Pat<(i32 thumb_immshifted:$src),
 def : T1Pat<(i32 imm0_255_comp:$src),
             (tMVN (tMOVi8 (imm_comp_XFORM imm:$src)))>;
 
+def : T1Pat<(i32 imm256_510:$src),
+            (tADDi8 (tMOVi8 255),
+                    (thumb_imm256_510_addend imm:$src))>;
+
 // Pseudo instruction that combines ldr from constpool and add pc. This should
 // be expanded into two instructions late to allow if-conversion and
 // scheduling.
@@ -1502,7 +1529,7 @@ let isBranch = 1, isTerminator = 1, isBarrier = 1, isIndirectBranch = 1 in {
 
 // In Thumb1, "nop" is encoded as a "mov r8, r8". Technically, the bf00
 // encoding is available on ARMv6K, but we don't differentiate that finely.
-def : InstAlias<"nop", (tMOVr R8, R8, 14, 0)>,Requires<[IsThumb, IsThumb1Only]>;
+def : InstAlias<"nop", (tMOVr R8, R8, 14, 0), 0>, Requires<[IsThumb, IsThumb1Only]>;
 
 
 // For round-trip assembly/disassembly, we have to handle a CPS instruction
@@ -1524,3 +1551,8 @@ def : tInstAlias<"lsr${s}${p} $Rdm, $imm",
              (tLSRri tGPR:$Rdm, cc_out:$s, tGPR:$Rdm, imm_sr:$imm, pred:$p)>;
 def : tInstAlias<"asr${s}${p} $Rdm, $imm",
              (tASRri tGPR:$Rdm, cc_out:$s, tGPR:$Rdm, imm_sr:$imm, pred:$p)>;
+
+// Pseudo instruction ldr Rt, =immediate
+def tLDRConstPool
+  : tAsmPseudo<"ldr${p} $Rt, $immediate",
+               (ins tGPR:$Rt, const_pool_asm_imm:$immediate, pred:$p)>;

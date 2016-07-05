@@ -16,7 +16,6 @@
 #define LLVM_LIB_TARGET_POWERPC_PPC_H
 
 #include "MCTargetDesc/PPCMCTargetDesc.h"
-#include <string>
 
 // GCC #defines PPC on Linux but we use it as our namespace name
 #undef PPC
@@ -34,7 +33,6 @@ namespace llvm {
 #ifndef NDEBUG
   FunctionPass *createPPCCTRLoopsVerify();
 #endif
-  FunctionPass *createPPCLoopDataPrefetchPass();
   FunctionPass *createPPCLoopPreIncPrepPass(PPCTargetMachine &TM);
   FunctionPass *createPPCTOCRegDepsPass();
   FunctionPass *createPPCEarlyReturnPass();
@@ -43,6 +41,7 @@ namespace llvm {
   FunctionPass *createPPCVSXSwapRemovalPass();
   FunctionPass *createPPCMIPeepholePass();
   FunctionPass *createPPCBranchSelectionPass();
+  FunctionPass *createPPCQPXLoadSplatPass();
   FunctionPass *createPPCISelDag(PPCTargetMachine &TM);
   FunctionPass *createPPCTLSDynamicCallPass();
   FunctionPass *createPPCBoolRetToIntPass();

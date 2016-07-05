@@ -489,14 +489,9 @@ ReprocessLoop:
       DEBUG(dbgs() << "LoopSimplify: Deleting edge from dead predecessor "
                    << P->getName() << "\n");
 
-      // Inform each successor of each dead pred.
-      for (succ_iterator SI = succ_begin(P), SE = succ_end(P); SI != SE; ++SI)
-        (*SI)->removePredecessor(P);
       // Zap the dead pred's terminator and replace it with unreachable.
       TerminatorInst *TI = P->getTerminator();
-       TI->replaceAllUsesWith(UndefValue::get(TI->getType()));
-      P->getTerminator()->eraseFromParent();
-      new UnreachableInst(P->getContext(), P);
+      changeToUnreachable(TI, /*UseLLVMTrap=*/false);
       Changed = true;
     }
   }
@@ -506,14 +501,13 @@ ReprocessLoop:
   // trip count computations.
   SmallVector<BasicBlock*, 8> ExitingBlocks;
   L->getExitingBlocks(ExitingBlocks);
-  for (SmallVectorImpl<BasicBlock *>::iterator I = ExitingBlocks.begin(),
-       E = ExitingBlocks.end(); I != E; ++I)
-    if (BranchInst *BI = dyn_cast<BranchInst>((*I)->getTerminator()))
+  for (BasicBlock *ExitingBlock : ExitingBlocks)
+    if (BranchInst *BI = dyn_cast<BranchInst>(ExitingBlock->getTerminator()))
       if (BI->isConditional()) {
         if (UndefValue *Cond = dyn_cast<UndefValue>(BI->getCondition())) {
 
           DEBUG(dbgs() << "LoopSimplify: Resolving \"br i1 undef\" to exit in "
-                       << (*I)->getName() << "\n");
+                       << ExitingBlock->getName() << "\n");
 
           BI->setCondition(ConstantInt::get(Cond->getType(),
                                             !L->contains(BI->getSuccessor(0))));
@@ -545,9 +539,7 @@ ReprocessLoop:
 
   SmallSetVector<BasicBlock *, 8> ExitBlockSet(ExitBlocks.begin(),
                                                ExitBlocks.end());
-  for (SmallSetVector<BasicBlock *, 8>::iterator I = ExitBlockSet.begin(),
-         E = ExitBlockSet.end(); I != E; ++I) {
-    BasicBlock *ExitBlock = *I;
+  for (BasicBlock *ExitBlock : ExitBlockSet) {
     for (pred_iterator PI = pred_begin(ExitBlock), PE = pred_end(ExitBlock);
          PI != PE; ++PI)
       // Must be exactly this loop: no subloops, parent loops, or non-loop preds
@@ -691,8 +683,10 @@ ReprocessLoop:
       }
       DT->eraseNode(ExitingBlock);
 
-      BI->getSuccessor(0)->removePredecessor(ExitingBlock);
-      BI->getSuccessor(1)->removePredecessor(ExitingBlock);
+      BI->getSuccessor(0)->removePredecessor(
+          ExitingBlock, /* DontDeleteUselessPHIs */ PreserveLCSSA);
+      BI->getSuccessor(1)->removePredecessor(
+          ExitingBlock, /* DontDeleteUselessPHIs */ PreserveLCSSA);
       ExitingBlock->eraseFromParent();
     }
   }
@@ -731,11 +725,6 @@ namespace {
       initializeLoopSimplifyPass(*PassRegistry::getPassRegistry());
     }
 
-    DominatorTree *DT;
-    LoopInfo *LI;
-    ScalarEvolution *SE;
-    AssumptionCache *AC;
-
     bool runOnFunction(Function &F) override;
 
     void getAnalysisUsage(AnalysisUsage &AU) const override {
@@ -753,7 +742,8 @@ namespace {
       AU.addPreserved<GlobalsAAWrapperPass>();
       AU.addPreserved<ScalarEvolutionWrapperPass>();
       AU.addPreserved<SCEVAAWrapperPass>();
-      AU.addPreserved<DependenceAnalysis>();
+      AU.addPreservedID(LCSSAID);
+      AU.addPreserved<DependenceAnalysisWrapperPass>();
       AU.addPreservedID(BreakCriticalEdgesID);  // No critical edges added.
     }
 
@@ -768,9 +758,6 @@ INITIALIZE_PASS_BEGIN(LoopSimplify, "loop-simplify",
 INITIALIZE_PASS_DEPENDENCY(AssumptionCacheTracker)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
 INITIALIZE_PASS_DEPENDENCY(LoopInfoWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(BasicAAWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(GlobalsAAWrapperPass)
-INITIALIZE_PASS_DEPENDENCY(SCEVAAWrapperPass)
 INITIALIZE_PASS_END(LoopSimplify, "loop-simplify",
                 "Canonicalize natural loops", false, false)
 
@@ -783,17 +770,35 @@ Pass *llvm::createLoopSimplifyPass() { return new LoopSimplify(); }
 ///
 bool LoopSimplify::runOnFunction(Function &F) {
   bool Changed = false;
-  LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
-  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+  LoopInfo *LI = &getAnalysis<LoopInfoWrapperPass>().getLoopInfo();
+  DominatorTree *DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
   auto *SEWP = getAnalysisIfAvailable<ScalarEvolutionWrapperPass>();
-  SE = SEWP ? &SEWP->getSE() : nullptr;
-  AC = &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
+  ScalarEvolution *SE = SEWP ? &SEWP->getSE() : nullptr;
+  AssumptionCache *AC =
+      &getAnalysis<AssumptionCacheTracker>().getAssumptionCache(F);
+
   bool PreserveLCSSA = mustPreserveAnalysisID(LCSSAID);
+#ifndef NDEBUG
+  if (PreserveLCSSA) {
+    assert(DT && "DT not available.");
+    assert(LI && "LI not available.");
+    bool InLCSSA =
+        all_of(*LI, [&](Loop *L) { return L->isRecursivelyLCSSAForm(*DT); });
+    assert(InLCSSA && "Requested to preserve LCSSA, but it's already broken.");
+  }
+#endif
 
   // Simplify each loop nest in the function.
   for (LoopInfo::iterator I = LI->begin(), E = LI->end(); I != E; ++I)
     Changed |= simplifyLoop(*I, DT, LI, SE, AC, PreserveLCSSA);
 
+#ifndef NDEBUG
+  if (PreserveLCSSA) {
+    bool InLCSSA =
+        all_of(*LI, [&](Loop *L) { return L->isRecursivelyLCSSAForm(*DT); });
+    assert(InLCSSA && "LCSSA is broken after loop-simplify.");
+  }
+#endif
   return Changed;
 }
 

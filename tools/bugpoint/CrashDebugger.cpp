@@ -164,6 +164,7 @@ ReduceCrashingGlobalVariables::TestGlobalVariables(
     if (I.hasInitializer() && !GVSet.count(&I)) {
       DeleteGlobalInitializer(&I);
       I.setLinkage(GlobalValue::ExternalLinkage);
+      I.setComdat(nullptr);
     }
 
   // Try running the hacked up program...
@@ -264,8 +265,8 @@ bool ReduceCrashingFunctions::TestFuncs(std::vector<Function*> &Funcs) {
     std::vector<GlobalValue*> ToRemove;
     // First, remove aliases to functions we're about to purge.
     for (GlobalAlias &Alias : M->aliases()) {
-      Constant *Root = Alias.getAliasee()->stripPointerCasts();
-      Function *F = dyn_cast<Function>(Root);
+      GlobalObject *Root = Alias.getBaseObject();
+      Function *F = dyn_cast_or_null<Function>(Root);
       if (F) {
         if (Functions.count(F))
           // We're keeping this function.
@@ -459,7 +460,7 @@ bool ReduceCrashingInstructions::TestInsts(std::vector<const Instruction*>
   Module *M = CloneModule(BD.getProgram(), VMap).release();
 
   // Convert list to set for fast lookup...
-  SmallPtrSet<Instruction*, 64> Instructions;
+  SmallPtrSet<Instruction*, 32> Instructions;
   for (unsigned i = 0, e = Insts.size(); i != e; ++i) {
     assert(!isa<TerminatorInst>(Insts[i]));
     Instructions.insert(cast<Instruction>(VMap[Insts[i]]));
@@ -552,7 +553,9 @@ bool ReduceCrashingNamedMD::TestNamedMDs(std::vector<std::string> &NamedMDs) {
   std::vector<NamedMDNode *> ToDelete;
   ToDelete.reserve(M->named_metadata_size() - Names.size());
   for (auto &NamedMD : M->named_metadata())
-    if (!Names.count(NamedMD.getName()))
+    // Always keep a nonempty llvm.dbg.cu because the Verifier would complain.
+    if (!Names.count(NamedMD.getName()) &&
+        (!(NamedMD.getName() == "llvm.dbg.cu" && NamedMD.getNumOperands() > 0)))
       ToDelete.push_back(&NamedMD);
 
   for (auto *NamedMD : ToDelete)
@@ -600,7 +603,7 @@ public:
 bool ReduceCrashingNamedMDOps::TestNamedMDOps(
     std::vector<const MDNode *> &NamedMDOps) {
   // Convert list to set for fast lookup...
-  SmallPtrSet<const MDNode *, 64> OldMDNodeOps;
+  SmallPtrSet<const MDNode *, 32> OldMDNodeOps;
   for (unsigned i = 0, e = NamedMDOps.size(); i != e; ++i) {
     OldMDNodeOps.insert(NamedMDOps[i]);
   }
@@ -637,7 +640,7 @@ bool ReduceCrashingNamedMDOps::TestNamedMDOps(
     // module, and that they don't include any deleted blocks.
     NamedMDOps.clear();
     for (const MDNode *Node : OldMDNodeOps)
-      NamedMDOps.push_back(cast<MDNode>(VMap.MD()[Node].get()));
+      NamedMDOps.push_back(cast<MDNode>(*VMap.getMappedMD(Node)));
 
     BD.setNewProgram(M); // It crashed, keep the trimmed version...
     return true;
@@ -666,6 +669,7 @@ static bool DebugACrash(BugDriver &BD,
       if (I->hasInitializer()) {
         DeleteGlobalInitializer(&*I);
         I->setLinkage(GlobalValue::ExternalLinkage);
+        I->setComdat(nullptr);
         DeletedInit = true;
       }
 

@@ -267,11 +267,10 @@ TargetSchedModel::computeInstrLatency(const MachineInstr *MI,
 unsigned TargetSchedModel::
 computeOutputLatency(const MachineInstr *DefMI, unsigned DefOperIdx,
                      const MachineInstr *DepMI) const {
-  if (SchedModel.MicroOpBufferSize <= 1)
+  if (!SchedModel.isOutOfOrder())
     return 1;
 
-  // MicroOpBufferSize > 1 indicates an out-of-order processor that can dispatch
-  // WAW dependencies in the same cycle.
+  // Out-of-order processor can dispatch WAW dependencies in the same cycle.
 
   // Treat predication as a data dependency for out-of-order cpus. In-order
   // cpus do not need to treat predicated writes specially.
@@ -282,7 +281,7 @@ computeOutputLatency(const MachineInstr *DefMI, unsigned DefOperIdx,
   unsigned Reg = DefMI->getOperand(DefOperIdx).getReg();
   const MachineFunction &MF = *DefMI->getParent()->getParent();
   const TargetRegisterInfo *TRI = MF.getSubtarget().getRegisterInfo();
-  if (!DepMI->readsRegister(Reg, TRI) && TII->isPredicated(DepMI))
+  if (!DepMI->readsRegister(Reg, TRI) && TII->isPredicated(*DepMI))
     return computeInstrLatency(DefMI);
 
   // If we have a per operand scheduling model, check if this def is writing

@@ -25,7 +25,6 @@
 #include "PPCTargetMachine.h"
 #include "PPCTargetStreamer.h"
 #include "llvm/ADT/MapVector.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/CodeGen/AsmPrinter.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
@@ -50,7 +49,6 @@
 #include "llvm/MC/MCSectionMachO.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSymbolELF.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -81,6 +79,12 @@ public:
   }
 
     MCSymbol *lookUpOrCreateTOCEntry(MCSymbol *Sym);
+
+    virtual bool doInitialization(Module &M) override {
+      if (!TOC.empty())
+        TOC.clear();
+      return AsmPrinter::doInitialization(M);
+    }
 
     void EmitInstruction(const MachineInstr *MI) override;
 
@@ -195,29 +199,14 @@ void PPCAsmPrinter::printOperand(const MachineInstr *MI, unsigned OpNo,
     MCSymbol *SymToPrint;
 
     // External or weakly linked global variables need non-lazily-resolved stubs
-    if (TM.getRelocationModel() != Reloc::Static &&
-        !GV->isStrongDefinitionForLinker()) {
-      if (!GV->hasHiddenVisibility()) {
-        SymToPrint = getSymbolWithGlobalValueBase(GV, "$non_lazy_ptr");
-        MachineModuleInfoImpl::StubValueTy &StubSym =
-            MMI->getObjFileInfo<MachineModuleInfoMachO>().getGVStubEntry(
-                SymToPrint);
-        if (!StubSym.getPointer())
-          StubSym = MachineModuleInfoImpl::
-            StubValueTy(getSymbol(GV), !GV->hasInternalLinkage());
-      } else if (GV->isDeclaration() || GV->hasCommonLinkage() ||
-                 GV->hasAvailableExternallyLinkage()) {
-        SymToPrint = getSymbolWithGlobalValueBase(GV, "$non_lazy_ptr");
-
-        MachineModuleInfoImpl::StubValueTy &StubSym =
-            MMI->getObjFileInfo<MachineModuleInfoMachO>().getHiddenGVStubEntry(
-                SymToPrint);
-        if (!StubSym.getPointer())
-          StubSym = MachineModuleInfoImpl::
-            StubValueTy(getSymbol(GV), !GV->hasInternalLinkage());
-      } else {
-        SymToPrint = getSymbol(GV);
-      }
+    if (Subtarget->hasLazyResolverStub(GV)) {
+      SymToPrint = getSymbolWithGlobalValueBase(GV, "$non_lazy_ptr");
+      MachineModuleInfoImpl::StubValueTy &StubSym =
+          MMI->getObjFileInfo<MachineModuleInfoMachO>().getGVStubEntry(
+              SymToPrint);
+      if (!StubSym.getPointer())
+        StubSym = MachineModuleInfoImpl::StubValueTy(getSymbol(GV),
+                                                     !GV->hasInternalLinkage());
     } else {
       SymToPrint = getSymbol(GV);
     }
@@ -470,7 +459,7 @@ void PPCAsmPrinter::EmitTlsCall(const MachineInstr *MI,
          "GETtls[ld]ADDR[32] must read GPR3");
 
   if (!Subtarget->isPPC64() && !Subtarget->isDarwin() &&
-      TM.getRelocationModel() == Reloc::PIC_)
+      isPositionIndependent())
     Kind = MCSymbolRefExpr::VK_PLT;
   const MCSymbolRefExpr *TlsRef =
     MCSymbolRefExpr::create(TlsGetAddr, Kind, OutContext);
@@ -597,7 +586,7 @@ void PPCAsmPrinter::EmitInstruction(const MachineInstr *MI) {
     else if (MO.isBlockAddress())
       MOSymbol = GetBlockAddressSymbol(MO.getBlockAddress());
 
-    if (PL == PICLevel::Small) {
+    if (PL == PICLevel::SmallPIC) {
       const MCExpr *Exp =
         MCSymbolRefExpr::create(MOSymbol, MCSymbolRefExpr::VK_GOT,
                                 OutContext);
@@ -1038,10 +1027,10 @@ void PPCLinuxAsmPrinter::EmitStartOfAsmFile(Module &M) {
   }
 
   if (static_cast<const PPCTargetMachine &>(TM).isPPC64() ||
-      TM.getRelocationModel() != Reloc::PIC_)
+      !isPositionIndependent())
     return AsmPrinter::EmitStartOfAsmFile(M);
 
-  if (M.getPICLevel() == PICLevel::Small)
+  if (M.getPICLevel() == PICLevel::SmallPIC)
     return AsmPrinter::EmitStartOfAsmFile(M);
 
   OutStreamer->SwitchSection(OutContext.getELFSection(
@@ -1067,8 +1056,8 @@ void PPCLinuxAsmPrinter::EmitStartOfAsmFile(Module &M) {
 void PPCLinuxAsmPrinter::EmitFunctionEntryLabel() {
   // linux/ppc32 - Normal entry label.
   if (!Subtarget->isPPC64() &&
-      (TM.getRelocationModel() != Reloc::PIC_ ||
-       MF->getFunction()->getParent()->getPICLevel() == PICLevel::Small))
+      (!isPositionIndependent() ||
+       MF->getFunction()->getParent()->getPICLevel() == PICLevel::SmallPIC))
     return AsmPrinter::EmitFunctionEntryLabel();
 
   if (!Subtarget->isPPC64()) {
@@ -1302,8 +1291,10 @@ void PPCDarwinAsmPrinter::EmitStartOfAsmFile(Module &M) {
     "power6",
     "power6x",
     "power7",
+    // FIXME: why is power8 missing here?
     "ppc64",
-    "ppc64le"
+    "ppc64le",
+    "power9"
   };
 
   // Get the numerically largest directive.
@@ -1562,25 +1553,6 @@ bool PPCDarwinAsmPrinter::doFinalization(Module &M) {
         OutStreamer->EmitValue(MCSymbolRefExpr::create(MCSym.getPointer(),
                                                        OutContext),
                               isPPC64 ? 8 : 4/*size*/);
-    }
-
-    Stubs.clear();
-    OutStreamer->AddBlankLine();
-  }
-
-  Stubs = MMIMacho.GetHiddenGVStubList();
-  if (!Stubs.empty()) {
-    OutStreamer->SwitchSection(getObjFileLowering().getDataSection());
-    EmitAlignment(isPPC64 ? 3 : 2);
-
-    for (unsigned i = 0, e = Stubs.size(); i != e; ++i) {
-      // L_foo$stub:
-      OutStreamer->EmitLabel(Stubs[i].first);
-      //   .long _foo
-      OutStreamer->EmitValue(MCSymbolRefExpr::
-                             create(Stubs[i].second.getPointer(),
-                                    OutContext),
-                             isPPC64 ? 8 : 4/*size*/);
     }
 
     Stubs.clear();

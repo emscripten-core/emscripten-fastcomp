@@ -64,7 +64,7 @@ LiveVariables::VarInfo::findKill(const MachineBasicBlock *MBB) const {
   return nullptr;
 }
 
-void LiveVariables::VarInfo::dump() const {
+LLVM_DUMP_METHOD void LiveVariables::VarInfo::dump() const {
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
   dbgs() << "  Alive in blocks: ";
   for (SparseBitVector<>::iterator I = AliveBlocks.begin(),
@@ -527,9 +527,12 @@ void LiveVariables::runOnInstr(MachineInstr *MI,
         MO.setIsKill(false);
       if (MO.readsReg())
         UseRegs.push_back(MOReg);
-    } else /*MO.isDef()*/ {
-      if (!(TargetRegisterInfo::isPhysicalRegister(MOReg) &&
-            MRI->isReserved(MOReg)))
+    } else {
+      assert(MO.isDef());
+      // FIXME: We should not remove any dead flags. However the MIPS RDDSP
+      // instruction needs it at the moment: http://llvm.org/PR27116.
+      if (TargetRegisterInfo::isPhysicalRegister(MOReg) &&
+          !MRI->isReserved(MOReg))
         MO.setIsDead(false);
       DefRegs.push_back(MOReg);
     }

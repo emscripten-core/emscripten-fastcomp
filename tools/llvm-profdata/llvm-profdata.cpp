@@ -17,6 +17,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/ProfileData/InstrProfWriter.h"
+#include "llvm/ProfileData/ProfileCommon.h"
 #include "llvm/ProfileData/SampleProfReader.h"
 #include "llvm/ProfileData/SampleProfWriter.h"
 #include "llvm/Support/CommandLine.h"
@@ -30,110 +31,10 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
-#include <tuple>
 
 using namespace llvm;
 
 enum ProfileFormat { PF_None = 0, PF_Text, PF_Binary, PF_GCC };
-
-///// Profile summary computation ////
-// The 'show' command displays richer summary of the profile data. The profile
-// summary is one or more (Cutoff, MinBlockCount, NumBlocks) triplets. Given a
-// target execution count percentile, we compute the minimum number of blocks
-// needed to reach this target and the minimum execution count of these blocks.
-struct ProfileSummaryEntry {
-  uint32_t Cutoff;        //< The required percentile of total execution count.
-  uint64_t MinBlockCount; //< The minimum execution count for this percentile.
-  uint64_t NumBlocks;     //< Number of blocks >= the minumum execution count.
-};
-
-class ProfileSummary {
-  // We keep track of the number of times a count appears in the profile and
-  // keep the map sorted in the descending order of counts.
-  std::map<uint64_t, uint32_t, std::greater<uint64_t>> CountFrequencies;
-  std::vector<ProfileSummaryEntry> DetailedSummary;
-  std::vector<uint32_t> DetailedSummaryCutoffs;
-  // Sum of all counts.
-  uint64_t TotalCount;
-  uint64_t MaxBlockCount, MaxFunctionCount;
-  uint32_t NumBlocks, NumFunctions;
-  void addCount(uint64_t Count);
-  void computeDetailedSummary();
-
-public:
-  static const int Scale = 1000000;
-  ProfileSummary(std::vector<uint32_t> Cutoffs)
-      : DetailedSummaryCutoffs(Cutoffs), TotalCount(0), MaxBlockCount(0),
-        MaxFunctionCount(0), NumBlocks(0), NumFunctions(0) {}
-  void addRecord(const InstrProfRecord &);
-  std::vector<ProfileSummaryEntry> &getDetailedSummary();
-  uint32_t getNumBlocks() { return NumBlocks; }
-  uint64_t getTotalCount() { return TotalCount; }
-  uint32_t getNumFunctions() { return NumFunctions; }
-  uint64_t getMaxFunctionCount() { return MaxFunctionCount; }
-  uint64_t getMaxBlockCount() { return MaxBlockCount; }
-};
-
-// This is called when a count is seen in the profile.
-void ProfileSummary::addCount(uint64_t Count) {
-  TotalCount += Count;
-  if (Count > MaxBlockCount)
-    MaxBlockCount = Count;
-  NumBlocks++;
-  CountFrequencies[Count]++;
-}
-
-void ProfileSummary::addRecord(const InstrProfRecord &R) {
-  NumFunctions++;
-  if (R.Counts[0] > MaxFunctionCount)
-    MaxFunctionCount = R.Counts[0];
-
-  for (size_t I = 1, E = R.Counts.size(); I < E; ++I)
-    addCount(R.Counts[I]);
-}
-
-// The argument to this method is a vector of cutoff percentages and the return
-// value is a vector of (Cutoff, MinBlockCount, NumBlocks) triplets.
-void ProfileSummary::computeDetailedSummary() {
-  if (DetailedSummaryCutoffs.empty())
-    return;
-  auto Iter = CountFrequencies.begin();
-  auto End = CountFrequencies.end();
-  std::sort(DetailedSummaryCutoffs.begin(), DetailedSummaryCutoffs.end());
-
-  uint32_t BlocksSeen = 0;
-  uint64_t CurrSum = 0, Count;
-
-  for (uint32_t Cutoff : DetailedSummaryCutoffs) {
-    assert(Cutoff <= 999999);
-    APInt Temp(128, TotalCount);
-    APInt N(128, Cutoff);
-    APInt D(128, ProfileSummary::Scale);
-    Temp *= N;
-    Temp = Temp.sdiv(D);
-    uint64_t DesiredCount = Temp.getZExtValue();
-    dbgs() << "Cutoff = " << Cutoff << "\n";
-    dbgs() << "DesiredCount = " << DesiredCount << "\n";
-    assert(DesiredCount <= TotalCount);
-    while (CurrSum < DesiredCount && Iter != End) {
-      Count = Iter->first;
-      uint32_t Freq = Iter->second;
-      CurrSum += (Count * Freq);
-      BlocksSeen += Freq;
-      Iter++;
-    }
-    assert(CurrSum >= DesiredCount);
-    ProfileSummaryEntry PSE = {Cutoff, Count, BlocksSeen};
-    DetailedSummary.push_back(PSE);
-  }
-  return;
-}
-
-std::vector<ProfileSummaryEntry> &ProfileSummary::getDetailedSummary() {
-  if (!DetailedSummaryCutoffs.empty() && DetailedSummary.empty())
-    computeDetailedSummary();
-  return DetailedSummary;
-}
 
 static void exitWithError(const Twine &Message, StringRef Whence = "",
                           StringRef Hint = "") {
@@ -146,38 +47,50 @@ static void exitWithError(const Twine &Message, StringRef Whence = "",
   ::exit(1);
 }
 
-static void exitWithErrorCode(const std::error_code &Error,
-                              StringRef Whence = "") {
-  if (Error.category() == instrprof_category()) {
-    instrprof_error instrError = static_cast<instrprof_error>(Error.value());
-    if (instrError == instrprof_error::unrecognized_format) {
-      // Hint for common error of forgetting -sample for sample profiles.
-      exitWithError(Error.message(), Whence,
-                    "Perhaps you forgot to use the -sample option?");
-    }
+static void exitWithError(Error E, StringRef Whence = "") {
+  if (E.isA<InstrProfError>()) {
+    handleAllErrors(std::move(E), [&](const InstrProfError &IPE) {
+      instrprof_error instrError = IPE.get();
+      StringRef Hint = "";
+      if (instrError == instrprof_error::unrecognized_format) {
+        // Hint for common error of forgetting -sample for sample profiles.
+        Hint = "Perhaps you forgot to use the -sample option?";
+      }
+      exitWithError(IPE.message(), Whence, Hint);
+    });
   }
-  exitWithError(Error.message(), Whence);
+
+  exitWithError(toString(std::move(E)), Whence);
+}
+
+static void exitWithErrorCode(std::error_code EC, StringRef Whence = "") {
+  exitWithError(EC.message(), Whence);
 }
 
 namespace {
 enum ProfileKinds { instr, sample };
 }
 
-static void handleMergeWriterError(std::error_code &Error,
-                                   StringRef WhenceFile = "",
+static void handleMergeWriterError(Error E, StringRef WhenceFile = "",
                                    StringRef WhenceFunction = "",
                                    bool ShowHint = true) {
   if (!WhenceFile.empty())
     errs() << WhenceFile << ": ";
   if (!WhenceFunction.empty())
     errs() << WhenceFunction << ": ";
-  errs() << Error.message() << "\n";
+
+  auto IPE = instrprof_error::success;
+  E = handleErrors(std::move(E),
+                   [&IPE](std::unique_ptr<InstrProfError> E) -> Error {
+                     IPE = E->get();
+                     return Error(std::move(E));
+                   });
+  errs() << toString(std::move(E)) << "\n";
 
   if (ShowHint) {
     StringRef Hint = "";
-    if (Error.category() == instrprof_category()) {
-      instrprof_error instrError = static_cast<instrprof_error>(Error.value());
-      switch (instrError) {
+    if (IPE != instrprof_error::success) {
+      switch (IPE) {
       case instrprof_error::hash_mismatch:
       case instrprof_error::count_mismatch:
       case instrprof_error::value_site_count_mismatch:
@@ -206,7 +119,7 @@ typedef SmallVector<WeightedFile, 5> WeightedFileVector;
 
 static void mergeInstrProfile(const WeightedFileVector &Inputs,
                               StringRef OutputFilename,
-                              ProfileFormat OutputFormat) {
+                              ProfileFormat OutputFormat, bool OutputSparse) {
   if (OutputFilename.compare("-") == 0)
     exitWithError("Cannot write indexed profdata format to stdout.");
 
@@ -218,23 +131,29 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
   if (EC)
     exitWithErrorCode(EC, OutputFilename);
 
-  InstrProfWriter Writer;
-  SmallSet<std::error_code, 4> WriterErrorCodes;
+  InstrProfWriter Writer(OutputSparse);
+  SmallSet<instrprof_error, 4> WriterErrorCodes;
   for (const auto &Input : Inputs) {
     auto ReaderOrErr = InstrProfReader::create(Input.Filename);
-    if (std::error_code ec = ReaderOrErr.getError())
-      exitWithErrorCode(ec, Input.Filename);
+    if (Error E = ReaderOrErr.takeError())
+      exitWithError(std::move(E), Input.Filename);
 
     auto Reader = std::move(ReaderOrErr.get());
+    bool IsIRProfile = Reader->isIRLevelProfile();
+    if (Writer.setIsIRLevelProfile(IsIRProfile))
+      exitWithError("Merge IR generated profile with Clang generated profile.");
+
     for (auto &I : *Reader) {
-      if (std::error_code EC = Writer.addRecord(std::move(I), Input.Weight)) {
+      if (Error E = Writer.addRecord(std::move(I), Input.Weight)) {
         // Only show hint the first time an error occurs.
-        bool firstTime = WriterErrorCodes.insert(EC).second;
-        handleMergeWriterError(EC, Input.Filename, I.Name, firstTime);
+        instrprof_error IPE = InstrProfError::take(std::move(E));
+        bool firstTime = WriterErrorCodes.insert(IPE).second;
+        handleMergeWriterError(make_error<InstrProfError>(IPE), Input.Filename,
+                               I.Name, firstTime);
       }
     }
     if (Reader->hasError())
-      exitWithErrorCode(Reader->getError(), Input.Filename);
+      exitWithError(Reader->getError(), Input.Filename);
   }
   if (OutputFormat == PF_Text)
     Writer.writeText(Output);
@@ -258,9 +177,9 @@ static void mergeSampleProfile(const WeightedFileVector &Inputs,
   auto Writer = std::move(WriterOrErr.get());
   StringMap<FunctionSamples> ProfileMap;
   SmallVector<std::unique_ptr<sampleprof::SampleProfileReader>, 5> Readers;
+  LLVMContext Context;
   for (const auto &Input : Inputs) {
-    auto ReaderOrErr =
-        SampleProfileReader::create(Input.Filename, getGlobalContext());
+    auto ReaderOrErr = SampleProfileReader::create(Input.Filename, Context);
     if (std::error_code EC = ReaderOrErr.getError())
       exitWithErrorCode(EC, Input.Filename);
 
@@ -282,7 +201,7 @@ static void mergeSampleProfile(const WeightedFileVector &Inputs,
       sampleprof_error Result = ProfileMap[FName].merge(Samples, Input.Weight);
       if (Result != sampleprof_error::success) {
         std::error_code EC = make_error_code(Result);
-        handleMergeWriterError(EC, Input.Filename, FName);
+        handleMergeWriterError(errorCodeToError(EC), Input.Filename, FName);
       }
     }
   }
@@ -304,11 +223,53 @@ static WeightedFile parseWeightedFile(const StringRef &WeightedFilename) {
   return WeightedFile(FileName, Weight);
 }
 
+static std::unique_ptr<MemoryBuffer>
+getInputFilenamesFileBuf(const StringRef &InputFilenamesFile) {
+  if (InputFilenamesFile == "")
+    return {};
+
+  auto BufOrError = MemoryBuffer::getFileOrSTDIN(InputFilenamesFile);
+  if (!BufOrError)
+    exitWithErrorCode(BufOrError.getError(), InputFilenamesFile);
+
+  return std::move(*BufOrError);
+}
+
+static void parseInputFilenamesFile(MemoryBuffer *Buffer,
+                                    WeightedFileVector &WFV) {
+  if (!Buffer)
+    return;
+
+  SmallVector<StringRef, 8> Entries;
+  StringRef Data = Buffer->getBuffer();
+  Data.split(Entries, '\n', /*MaxSplit=*/-1, /*KeepEmpty=*/false);
+  for (const StringRef &FileWeightEntry : Entries) {
+    StringRef SanitizedEntry = FileWeightEntry.trim(" \t\v\f\r");
+    // Skip comments.
+    if (SanitizedEntry.startswith("#"))
+      continue;
+    // If there's no comma, it's an unweighted profile.
+    else if (SanitizedEntry.find(',') == StringRef::npos)
+      WFV.emplace_back(SanitizedEntry, 1);
+    else
+      WFV.emplace_back(parseWeightedFile(SanitizedEntry));
+  }
+}
+
 static int merge_main(int argc, const char *argv[]) {
   cl::list<std::string> InputFilenames(cl::Positional,
                                        cl::desc("<filename...>"));
   cl::list<std::string> WeightedInputFilenames("weighted-input",
                                                cl::desc("<weight>,<filename>"));
+  cl::opt<std::string> InputFilenamesFile(
+      "input-files", cl::init(""),
+      cl::desc("Path to file containing newline-separated "
+               "[<weight>,]<filename> entries"));
+  cl::alias InputFilenamesFileA("f", cl::desc("Alias for --input-files"),
+                                cl::aliasopt(InputFilenamesFile));
+  cl::opt<bool> DumpInputFileList(
+      "dump-input-file-list", cl::init(false), cl::Hidden,
+      cl::desc("Dump the list of input files and their weights, then exit"));
   cl::opt<std::string> OutputFilename("output", cl::value_desc("output"),
                                       cl::init("-"), cl::Required,
                                       cl::desc("Output file"));
@@ -318,7 +279,6 @@ static int merge_main(int argc, const char *argv[]) {
       cl::desc("Profile kind:"), cl::init(instr),
       cl::values(clEnumVal(instr, "Instrumentation profile (default)"),
                  clEnumVal(sample, "Sample profile"), clEnumValEnd));
-
   cl::opt<ProfileFormat> OutputFormat(
       cl::desc("Format of output profile"), cl::init(PF_Binary),
       cl::values(clEnumValN(PF_Binary, "binary", "Binary encoding (default)"),
@@ -326,44 +286,63 @@ static int merge_main(int argc, const char *argv[]) {
                  clEnumValN(PF_GCC, "gcc",
                             "GCC encoding (only meaningful for -sample)"),
                  clEnumValEnd));
+  cl::opt<bool> OutputSparse("sparse", cl::init(false),
+      cl::desc("Generate a sparse profile (only meaningful for -instr)"));
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM profile data merger\n");
 
-  if (InputFilenames.empty() && WeightedInputFilenames.empty())
+  WeightedFileVector WeightedInputs;
+  for (StringRef Filename : InputFilenames)
+    WeightedInputs.emplace_back(Filename, 1);
+  for (StringRef WeightedFilename : WeightedInputFilenames)
+    WeightedInputs.emplace_back(parseWeightedFile(WeightedFilename));
+
+  // Make sure that the file buffer stays alive for the duration of the
+  // weighted input vector's lifetime.
+  auto Buffer = getInputFilenamesFileBuf(InputFilenamesFile);
+  parseInputFilenamesFile(Buffer.get(), WeightedInputs);
+
+  if (WeightedInputs.empty())
     exitWithError("No input files specified. See " +
                   sys::path::filename(argv[0]) + " -help");
 
-  WeightedFileVector WeightedInputs;
-  for (StringRef Filename : InputFilenames)
-    WeightedInputs.push_back(WeightedFile(Filename, 1));
-  for (StringRef WeightedFilename : WeightedInputFilenames)
-    WeightedInputs.push_back(parseWeightedFile(WeightedFilename));
+  if (DumpInputFileList) {
+    for (auto &WF : WeightedInputs)
+      outs() << WF.Weight << "," << WF.Filename << "\n";
+    return 0;
+  }
 
   if (ProfileKind == instr)
-    mergeInstrProfile(WeightedInputs, OutputFilename, OutputFormat);
+    mergeInstrProfile(WeightedInputs, OutputFilename, OutputFormat,
+                      OutputSparse);
   else
     mergeSampleProfile(WeightedInputs, OutputFilename, OutputFormat);
 
   return 0;
 }
 
-static int showInstrProfile(std::string Filename, bool ShowCounts,
+static int showInstrProfile(const std::string &Filename, bool ShowCounts,
                             bool ShowIndirectCallTargets,
                             bool ShowDetailedSummary,
                             std::vector<uint32_t> DetailedSummaryCutoffs,
-                            bool ShowAllFunctions, std::string ShowFunction,
-                            bool TextFormat, raw_fd_ostream &OS) {
+                            bool ShowAllFunctions,
+                            const std::string &ShowFunction, bool TextFormat,
+                            raw_fd_ostream &OS) {
   auto ReaderOrErr = InstrProfReader::create(Filename);
-  std::vector<uint32_t> Cutoffs(DetailedSummaryCutoffs);
-  if (ShowDetailedSummary && DetailedSummaryCutoffs.empty()) {
+  std::vector<uint32_t> Cutoffs = std::move(DetailedSummaryCutoffs);
+  if (ShowDetailedSummary && Cutoffs.empty()) {
     Cutoffs = {800000, 900000, 950000, 990000, 999000, 999900, 999990};
   }
-  ProfileSummary PS(Cutoffs);
-  if (std::error_code EC = ReaderOrErr.getError())
-    exitWithErrorCode(EC, Filename);
+  InstrProfSummaryBuilder Builder(std::move(Cutoffs));
+  if (Error E = ReaderOrErr.takeError())
+    exitWithError(std::move(E), Filename);
 
   auto Reader = std::move(ReaderOrErr.get());
+  bool IsIRInstr = Reader->isIRLevelProfile();
   size_t ShownFunctions = 0;
+  uint64_t TotalNumValueSites = 0;
+  uint64_t TotalNumValueSitesWithValueProfile = 0;
+  uint64_t TotalNumValues = 0;
   for (const auto &Func : *Reader) {
     bool Show =
         ShowAllFunctions || (!ShowFunction.empty() &&
@@ -378,7 +357,7 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
     }
 
     assert(Func.Counts.size() > 0 && "function missing entry counter");
-    PS.addRecord(Func);
+    Builder.addRecord(Func);
 
     if (Show) {
 
@@ -389,8 +368,9 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
 
       OS << "  " << Func.Name << ":\n"
          << "    Hash: " << format("0x%016" PRIx64, Func.Hash) << "\n"
-         << "    Counters: " << Func.Counts.size() << "\n"
-         << "    Function count: " << Func.Counts[0] << "\n";
+         << "    Counters: " << Func.Counts.size() << "\n";
+      if (!IsIRInstr)
+        OS << "    Function count: " << Func.Counts[0] << "\n";
 
       if (ShowIndirectCallTargets)
         OS << "    Indirect Call Site Count: "
@@ -398,8 +378,9 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
 
       if (ShowCounts) {
         OS << "    Block counts: [";
-        for (size_t I = 1, E = Func.Counts.size(); I < E; ++I) {
-          OS << (I == 1 ? "" : ", ") << Func.Counts[I];
+        size_t Start = (IsIRInstr ? 0 : 1);
+        for (size_t I = Start, E = Func.Counts.size(); I < E; ++I) {
+          OS << (I == Start ? "" : ", ") << Func.Counts[I];
         }
         OS << "]\n";
       }
@@ -408,10 +389,14 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
         InstrProfSymtab &Symtab = Reader->getSymtab();
         uint32_t NS = Func.getNumValueSites(IPVK_IndirectCallTarget);
         OS << "    Indirect Target Results: \n";
+        TotalNumValueSites += NS;
         for (size_t I = 0; I < NS; ++I) {
           uint32_t NV = Func.getNumValueDataForSite(IPVK_IndirectCallTarget, I);
           std::unique_ptr<InstrProfValueData[]> VD =
               Func.getValueForSite(IPVK_IndirectCallTarget, I);
+          TotalNumValues += NV;
+          if (NV)
+            TotalNumValueSitesWithValueProfile++;
           for (uint32_t V = 0; V < NV; V++) {
             OS << "\t[ " << I << ", ";
             OS << Symtab.getFuncName(VD[V].Value) << ", " << VD[V].Count
@@ -421,25 +406,31 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
       }
     }
   }
-
   if (Reader->hasError())
-    exitWithErrorCode(Reader->getError(), Filename);
+    exitWithError(Reader->getError(), Filename);
 
   if (ShowCounts && TextFormat)
     return 0;
-
+  std::unique_ptr<ProfileSummary> PS(Builder.getSummary());
   if (ShowAllFunctions || !ShowFunction.empty())
     OS << "Functions shown: " << ShownFunctions << "\n";
-  OS << "Total functions: " << PS.getNumFunctions() << "\n";
-  OS << "Maximum function count: " << PS.getMaxFunctionCount() << "\n";
-  OS << "Maximum internal block count: " << PS.getMaxBlockCount() << "\n";
+  OS << "Total functions: " << PS->getNumFunctions() << "\n";
+  OS << "Maximum function count: " << PS->getMaxFunctionCount() << "\n";
+  OS << "Maximum internal block count: " << PS->getMaxInternalCount() << "\n";
+  if (ShownFunctions && ShowIndirectCallTargets) {
+    OS << "Total Number of Indirect Call Sites : " << TotalNumValueSites
+       << "\n";
+    OS << "Total Number of Sites With Values : "
+       << TotalNumValueSitesWithValueProfile << "\n";
+    OS << "Total Number of Profiled Values : " << TotalNumValues << "\n";
+  }
 
   if (ShowDetailedSummary) {
     OS << "Detailed summary:\n";
-    OS << "Total number of blocks: " << PS.getNumBlocks() << "\n";
-    OS << "Total count: " << PS.getTotalCount() << "\n";
-    for (auto Entry : PS.getDetailedSummary()) {
-      OS << Entry.NumBlocks << " blocks with count >= " << Entry.MinBlockCount
+    OS << "Total number of blocks: " << PS->getNumCounts() << "\n";
+    OS << "Total count: " << PS->getTotalCount() << "\n";
+    for (auto Entry : PS->getDetailedSummary()) {
+      OS << Entry.NumCounts << " blocks with count >= " << Entry.MinCount
          << " account for "
          << format("%0.6g", (float)Entry.Cutoff / ProfileSummary::Scale * 100)
          << " percentage of the total counts.\n";
@@ -448,11 +439,13 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
   return 0;
 }
 
-static int showSampleProfile(std::string Filename, bool ShowCounts,
-                             bool ShowAllFunctions, std::string ShowFunction,
+static int showSampleProfile(const std::string &Filename, bool ShowCounts,
+                             bool ShowAllFunctions,
+                             const std::string &ShowFunction,
                              raw_fd_ostream &OS) {
   using namespace sampleprof;
-  auto ReaderOrErr = SampleProfileReader::create(Filename, getGlobalContext());
+  LLVMContext Context;
+  auto ReaderOrErr = SampleProfileReader::create(Filename, Context);
   if (std::error_code EC = ReaderOrErr.getError())
     exitWithErrorCode(EC, Filename);
 
@@ -527,7 +520,7 @@ static int show_main(int argc, const char *argv[]) {
 
 int main(int argc, const char *argv[]) {
   // Print a stack trace if we signal out.
-  sys::PrintStackTraceOnErrorSignal();
+  sys::PrintStackTraceOnErrorSignal(argv[0]);
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y; // Call llvm_shutdown() on exit.
 

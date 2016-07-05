@@ -367,22 +367,28 @@ def MFC1 : MMRel, MFC1_FT<"mfc1", GPR32Opnd, FGR32Opnd, II_MFC1,
                           bitconvert>, MFC1_FM<0>;
 def MTC1 : MMRel, MTC1_FT<"mtc1", FGR32Opnd, GPR32Opnd, II_MTC1,
                           bitconvert>, MFC1_FM<4>;
-def MFHC1_D32 : MMRel, MFC1_FT<"mfhc1", GPR32Opnd, AFGR64Opnd, II_MFHC1>,
-                MFC1_FM<3>, ISA_MIPS32R2, FGR_32;
-def MFHC1_D64 : MFC1_FT<"mfhc1", GPR32Opnd, FGR64Opnd, II_MFHC1>,
-                MFC1_FM<3>, ISA_MIPS32R2, FGR_64 {
-  let DecoderNamespace = "Mips64";
+let AdditionalPredicates = [NotInMicroMips] in {
+  def MFHC1_D32 : MMRel, MFC1_FT<"mfhc1", GPR32Opnd, AFGR64Opnd, II_MFHC1>,
+                  MFC1_FM<3>, ISA_MIPS32R2, FGR_32;
+  def MFHC1_D64 : MFC1_FT<"mfhc1", GPR32Opnd, FGR64Opnd, II_MFHC1>,
+                  MFC1_FM<3>, ISA_MIPS32R2, FGR_64 {
+    let DecoderNamespace = "Mips64";
+  }
 }
-def MTHC1_D32 : MMRel, MTC1_64_FT<"mthc1", AFGR64Opnd, GPR32Opnd, II_MTHC1>,
-                MFC1_FM<7>, ISA_MIPS32R2, FGR_32;
-def MTHC1_D64 : MTC1_64_FT<"mthc1", FGR64Opnd, GPR32Opnd, II_MTHC1>,
-                MFC1_FM<7>, ISA_MIPS32R2, FGR_64 {
-  let DecoderNamespace = "Mips64";
+let AdditionalPredicates = [NotInMicroMips] in {
+  def MTHC1_D32 : MMRel, StdMMR6Rel, MTC1_64_FT<"mthc1", AFGR64Opnd, GPR32Opnd, II_MTHC1>,
+                  MFC1_FM<7>, ISA_MIPS32R2, FGR_32;
+  def MTHC1_D64 : MTC1_64_FT<"mthc1", FGR64Opnd, GPR32Opnd, II_MTHC1>,
+                  MFC1_FM<7>, ISA_MIPS32R2, FGR_64 {
+    let DecoderNamespace = "Mips64";
+  }
 }
-def DMFC1 : MFC1_FT<"dmfc1", GPR64Opnd, FGR64Opnd, II_DMFC1,
-            bitconvert>, MFC1_FM<1>, ISA_MIPS3;
-def DMTC1 : MTC1_FT<"dmtc1", FGR64Opnd, GPR64Opnd, II_DMTC1,
-            bitconvert>, MFC1_FM<5>, ISA_MIPS3;
+let AdditionalPredicates = [NotInMicroMips] in {
+  def DMTC1 : MTC1_FT<"dmtc1", FGR64Opnd, GPR64Opnd, II_DMTC1,
+              bitconvert>, MFC1_FM<5>, ISA_MIPS3;
+  def DMFC1 : MFC1_FT<"dmfc1", GPR64Opnd, FGR64Opnd, II_DMFC1,
+                      bitconvert>, MFC1_FM<1>, ISA_MIPS3;
+}
 
 def FMOV_S   : MMRel, ABSS_FT<"mov.s", FGR32Opnd, FGR32Opnd, II_MOV_S>,
                ABSS_FM<0x6, 16>;
@@ -519,10 +525,12 @@ def BC1TL : MMRel, BC1F_FT<"bc1tl", brtarget, II_BC1TL, MIPS_BRANCH_T, 0>,
             BC1F_FM<1, 1>, ISA_MIPS2_NOT_32R6_64R6;
 
 /// Floating Point Compare
-def FCMP_S32 : MMRel, CEQS_FT<"s", FGR32, II_C_CC_S, MipsFPCmp>, CEQS_FM<16>,
-               ISA_MIPS1_NOT_32R6_64R6;
-def FCMP_D32 : MMRel, CEQS_FT<"d", AFGR64, II_C_CC_D, MipsFPCmp>, CEQS_FM<17>,
-               ISA_MIPS1_NOT_32R6_64R6, FGR_32;
+let AdditionalPredicates = [NotInMicroMips] in {
+  def FCMP_S32 : MMRel, CEQS_FT<"s", FGR32, II_C_CC_S, MipsFPCmp>, CEQS_FM<16>,
+                 ISA_MIPS1_NOT_32R6_64R6;
+  def FCMP_D32 : MMRel, CEQS_FT<"d", AFGR64, II_C_CC_D, MipsFPCmp>, CEQS_FM<17>,
+                 ISA_MIPS1_NOT_32R6_64R6, FGR_32;
+}
 let DecoderNamespace = "Mips64" in
 def FCMP_D64 : CEQS_FT<"d", FGR64, II_C_CC_D, MipsFPCmp>, CEQS_FM<17>,
                ISA_MIPS1_NOT_32R6_64R6, FGR_64;
@@ -535,7 +543,8 @@ def FCMP_D64 : CEQS_FT<"d", FGR64, II_C_CC_D, MipsFPCmp>, CEQS_FM<17>,
 // allocation.
 class BuildPairF64Base<RegisterOperand RO> :
   PseudoSE<(outs RO:$dst), (ins GPR32Opnd:$lo, GPR32Opnd:$hi),
-           [(set RO:$dst, (MipsBuildPairF64 GPR32Opnd:$lo, GPR32Opnd:$hi))]>;
+           [(set RO:$dst, (MipsBuildPairF64 GPR32Opnd:$lo, GPR32Opnd:$hi))],
+           II_MTC1>;
 
 def BuildPairF64 : BuildPairF64Base<AFGR64Opnd>, FGR_32, HARDFLOAT;
 def BuildPairF64_64 : BuildPairF64Base<FGR64Opnd>, FGR_64, HARDFLOAT;
@@ -544,12 +553,29 @@ def BuildPairF64_64 : BuildPairF64Base<FGR64Opnd>, FGR_64, HARDFLOAT;
 // allocation.
 // if n is 0, lower part of src is extracted.
 // if n is 1, higher part of src is extracted.
+// This node has associated scheduling information as the pre RA scheduler
+// asserts otherwise.
 class ExtractElementF64Base<RegisterOperand RO> :
   PseudoSE<(outs GPR32Opnd:$dst), (ins RO:$src, i32imm:$n),
-           [(set GPR32Opnd:$dst, (MipsExtractElementF64 RO:$src, imm:$n))]>;
+           [(set GPR32Opnd:$dst, (MipsExtractElementF64 RO:$src, imm:$n))],
+           II_MFC1>;
 
 def ExtractElementF64 : ExtractElementF64Base<AFGR64Opnd>, FGR_32, HARDFLOAT;
 def ExtractElementF64_64 : ExtractElementF64Base<FGR64Opnd>, FGR_64, HARDFLOAT;
+
+def PseudoTRUNC_W_S : MipsAsmPseudoInst<(outs FGR32Opnd:$fd),
+                                        (ins FGR32Opnd:$fs, GPR32Opnd:$rs),
+                                        "trunc.w.s\t$fd, $fs, $rs">;
+
+def PseudoTRUNC_W_D32 : MipsAsmPseudoInst<(outs FGR32Opnd:$fd),
+                                          (ins AFGR64Opnd:$fs, GPR32Opnd:$rs),
+                                          "trunc.w.d\t$fd, $fs, $rs">,
+                        FGR_32, HARDFLOAT;
+
+def PseudoTRUNC_W_D : MipsAsmPseudoInst<(outs FGR32Opnd:$fd),
+                                        (ins FGR64Opnd:$fs, GPR32Opnd:$rs),
+                                        "trunc.w.d\t$fd, $fs, $rs">,
+                      FGR_64, HARDFLOAT;
 
 //===----------------------------------------------------------------------===//
 // InstAliases.

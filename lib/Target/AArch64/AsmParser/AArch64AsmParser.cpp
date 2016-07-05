@@ -13,7 +13,6 @@
 #include "Utils/AArch64BaseInfo.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
@@ -24,13 +23,14 @@
 #include "llvm/MC/MCParser/MCAsmLexer.h"
 #include "llvm/MC/MCParser/MCAsmParser.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
+#include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
 #include "llvm/MC/MCSymbol.h"
-#include "llvm/MC/MCTargetAsmParser.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/TargetParser.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
 #include <cstdio>
@@ -70,6 +70,8 @@ private:
   bool Error(SMLoc L, const Twine &Msg) { return getParser().Error(L, Msg); }
   bool showMatchError(SMLoc Loc, unsigned ErrCode);
 
+  bool parseDirectiveArch(SMLoc L);
+  bool parseDirectiveCPU(SMLoc L);
   bool parseDirectiveWord(unsigned Size, SMLoc L);
   bool parseDirectiveInst(SMLoc L);
 
@@ -866,14 +868,7 @@ public:
     if (!CE) return false;
     uint64_t Value = CE->getValue();
 
-    if (RegWidth == 32)
-      Value &= 0xffffffffULL;
-
-    // "lsl #0" takes precedence: in practice this only affects "#0, lsl #0".
-    if (Value == 0 && Shift != 0)
-      return false;
-
-    return (Value & ~(0xffffULL << Shift)) == 0;
+    return AArch64_AM::isMOVZMovAlias(Value, Shift, RegWidth);
   }
 
   template<int RegWidth, int Shift>
@@ -884,16 +879,7 @@ public:
     if (!CE) return false;
     uint64_t Value = CE->getValue();
 
-    // MOVZ takes precedence over MOVN.
-    for (int MOVZShift = 0; MOVZShift <= 48; MOVZShift += 16)
-      if ((Value & ~(0xffffULL << MOVZShift)) == 0)
-        return false;
-
-    Value = ~Value;
-    if (RegWidth == 32)
-      Value &= 0xffffffffULL;
-
-    return (Value & ~(0xffffULL << Shift)) == 0;
+    return AArch64_AM::isMOVNMovAlias(Value, Shift, RegWidth);
   }
 
   bool isFPImm() const { return Kind == k_FPImm; }
@@ -4195,6 +4181,10 @@ bool AArch64AsmParser::ParseDirective(AsmToken DirectiveID) {
 
   StringRef IDVal = DirectiveID.getIdentifier();
   SMLoc Loc = DirectiveID.getLoc();
+  if (IDVal == ".arch")
+    return parseDirectiveArch(Loc);
+  if (IDVal == ".cpu")
+    return parseDirectiveCPU(Loc);
   if (IDVal == ".hword")
     return parseDirectiveWord(2, Loc);
   if (IDVal == ".word")
@@ -4214,6 +4204,99 @@ bool AArch64AsmParser::ParseDirective(AsmToken DirectiveID) {
   }
 
   return parseDirectiveLOH(IDVal, Loc);
+}
+
+static const struct {
+  const char *Name;
+  const FeatureBitset Features;
+} ExtensionMap[] = {
+  { "crc", {AArch64::FeatureCRC} },
+  { "crypto", {AArch64::FeatureCrypto} },
+  { "fp", {AArch64::FeatureFPARMv8} },
+  { "simd", {AArch64::FeatureNEON} },
+
+  // FIXME: Unsupported extensions
+  { "lse", {} },
+  { "pan", {} },
+  { "lor", {} },
+  { "rdma", {} },
+  { "profile", {} },
+};
+
+/// parseDirectiveArch
+///   ::= .arch token
+bool AArch64AsmParser::parseDirectiveArch(SMLoc L) {
+  SMLoc ArchLoc = getLoc();
+
+  StringRef Arch, ExtensionString;
+  std::tie(Arch, ExtensionString) =
+      getParser().parseStringToEndOfStatement().trim().split('+');
+
+  unsigned ID = AArch64::parseArch(Arch);
+  if (ID == ARM::AK_INVALID) {
+    Error(ArchLoc, "unknown arch name");
+    return false;
+  }
+
+  MCSubtargetInfo &STI = copySTI();
+  STI.setDefaultFeatures("", "");
+  if (!ExtensionString.empty())
+    STI.setDefaultFeatures("", ("+" + ExtensionString).str());
+  setAvailableFeatures(ComputeAvailableFeatures(STI.getFeatureBits()));
+
+  return false;
+}
+
+/// parseDirectiveCPU
+///   ::= .cpu id
+bool AArch64AsmParser::parseDirectiveCPU(SMLoc L) {
+  SMLoc CPULoc = getLoc();
+
+  StringRef CPU, ExtensionString;
+  std::tie(CPU, ExtensionString) =
+      getParser().parseStringToEndOfStatement().trim().split('+');
+
+  SmallVector<StringRef, 4> RequestedExtensions;
+  if (!ExtensionString.empty())
+    ExtensionString.split(RequestedExtensions, '+');
+
+  // FIXME This is using tablegen data, but should be moved to ARMTargetParser
+  // once that is tablegen'ed
+  if (!getSTI().isCPUStringValid(CPU)) {
+    Error(CPULoc, "unknown CPU name");
+    return false;
+  }
+
+  MCSubtargetInfo &STI = copySTI();
+  STI.setDefaultFeatures(CPU, "");
+
+  FeatureBitset Features = STI.getFeatureBits();
+  for (auto Name : RequestedExtensions) {
+    bool EnableFeature = true;
+
+    if (Name.startswith_lower("no")) {
+      EnableFeature = false;
+      Name = Name.substr(2);
+    }
+
+    for (const auto &Extension : ExtensionMap) {
+      if (Extension.Name != Name)
+        continue;
+
+      if (Extension.Features.none())
+        report_fatal_error("unsupported architectural extension: " + Name);
+
+      FeatureBitset ToggleFeatures = EnableFeature
+                                         ? (~Features & Extension.Features)
+                                         : ( Features & Extension.Features);
+      uint64_t Features =
+          ComputeAvailableFeatures(STI.ToggleFeature(ToggleFeatures));
+      setAvailableFeatures(Features);
+
+      break;
+    }
+  }
+  return false;
 }
 
 /// parseDirectiveWord

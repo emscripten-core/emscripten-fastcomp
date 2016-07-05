@@ -194,11 +194,10 @@ public:
   void printOptionValues();
 
   void registerCategory(OptionCategory *cat) {
-    assert(std::count_if(RegisteredOptionCategories.begin(),
-                         RegisteredOptionCategories.end(),
-                         [cat](const OptionCategory *Category) {
-                           return cat->getName() == Category->getName();
-                         }) == 0 &&
+    assert(count_if(RegisteredOptionCategories,
+                    [cat](const OptionCategory *Category) {
+             return cat->getName() == Category->getName();
+           }) == 0 &&
            "Duplicate option categories");
 
     RegisteredOptionCategories.insert(cat);
@@ -515,8 +514,6 @@ static bool isWhitespace(char C) { return strchr(" \t\n\r\f\v", C); }
 
 static bool isQuote(char C) { return C == '\"' || C == '\''; }
 
-static bool isGNUSpecial(char C) { return strchr("\\\"\' ", C); }
-
 void cl::TokenizeGNUCommandLine(StringRef Src, StringSaver &Saver,
                                 SmallVectorImpl<const char *> &NewArgv,
                                 bool MarkEOLs) {
@@ -534,9 +531,8 @@ void cl::TokenizeGNUCommandLine(StringRef Src, StringSaver &Saver,
         break;
     }
 
-    // Backslashes can escape backslashes, spaces, and other quotes.  Otherwise
-    // they are literal.  This makes it much easier to read Windows file paths.
-    if (I + 1 < E && Src[I] == '\\' && isGNUSpecial(Src[I + 1])) {
+    // Backslash escapes the next character.
+    if (I + 1 < E && Src[I] == '\\') {
       ++I; // Skip the escape.
       Token.push_back(Src[I]);
       continue;
@@ -546,8 +542,8 @@ void cl::TokenizeGNUCommandLine(StringRef Src, StringSaver &Saver,
     if (isQuote(Src[I])) {
       char Quote = Src[I++];
       while (I != E && Src[I] != Quote) {
-        // Backslashes are literal, unless they escape a special character.
-        if (Src[I] == '\\' && I + 1 != E && isGNUSpecial(Src[I + 1]))
+        // Backslash escapes the next character.
+        if (Src[I] == '\\' && I + 1 != E)
           ++I;
         Token.push_back(Src[I]);
         ++I;
@@ -787,9 +783,28 @@ void cl::ParseEnvironmentOptions(const char *progName, const char *envVar,
   assert(envVar && "Environment variable name missing");
 
   // Get the environment variable they want us to parse options out of.
+#ifdef _WIN32
+  std::wstring wenvVar;
+  if (!llvm::ConvertUTF8toWide(envVar, wenvVar)) {
+    assert(false &&
+           "Unicode conversion of environment variable name failed");
+    return;
+  }
+  const wchar_t *wenvValue = _wgetenv(wenvVar.c_str());
+  if (!wenvValue)
+    return;
+  std::string envValueBuffer;
+  if (!llvm::convertWideToUTF8(wenvValue, envValueBuffer)) {
+    assert(false &&
+           "Unicode conversion of environment variable value failed");
+    return;
+  }
+  const char *envValue = envValueBuffer.c_str();
+#else
   const char *envValue = getenv(envVar);
   if (!envValue)
     return;
+#endif
 
   // Get program's "name", which we wouldn't know without the caller
   // telling us.
@@ -1416,7 +1431,7 @@ PRINT_OPT_DIFF(float)
 PRINT_OPT_DIFF(char)
 
 void parser<std::string>::printOptionDiff(const Option &O, StringRef V,
-                                          OptionValue<std::string> D,
+                                          const OptionValue<std::string> &D,
                                           size_t GlobalWidth) const {
   printOptionName(O, GlobalWidth);
   outs() << "= " << V;
@@ -1449,7 +1464,7 @@ static int OptNameCompare(const std::pair<const char *, Option *> *LHS,
 static void sortOpts(StringMap<Option *> &OptMap,
                      SmallVectorImpl<std::pair<const char *, Option *>> &Opts,
                      bool ShowHidden) {
-  SmallPtrSet<Option *, 128> OptionSet; // Duplicate option detection.
+  SmallPtrSet<Option *, 32> OptionSet; // Duplicate option detection.
 
   for (StringMap<Option *>::iterator I = OptMap.begin(), E = OptMap.end();
        I != E; ++I) {
@@ -1589,7 +1604,8 @@ protected:
              E = SortedCategories.end();
          Category != E; ++Category) {
       // Hide empty categories for -help, but show for -help-hidden.
-      bool IsEmptyCategory = CategorizedOptions[*Category].size() == 0;
+      const auto &CategoryOptions = CategorizedOptions[*Category];
+      bool IsEmptyCategory = CategoryOptions.empty();
       if (!ShowHidden && IsEmptyCategory)
         continue;
 
@@ -1610,11 +1626,8 @@ protected:
         continue;
       }
       // Loop over the options in the category and print.
-      for (std::vector<Option *>::const_iterator
-               Opt = CategorizedOptions[*Category].begin(),
-               E = CategorizedOptions[*Category].end();
-           Opt != E; ++Opt)
-        (*Opt)->printOptionInfo(MaxArgLen);
+      for (const Option *Opt : CategoryOptions)
+        Opt->printOptionInfo(MaxArgLen);
     }
   }
 };
@@ -1737,8 +1750,12 @@ class VersionPrinter {
 public:
   void print() {
     raw_ostream &OS = outs();
-    OS << "LLVM (http://llvm.org/):\n"
-       << "  " << PACKAGE_NAME << " version " << PACKAGE_VERSION;
+#ifdef PACKAGE_VENDOR
+    OS << PACKAGE_VENDOR << " ";
+#else
+    OS << "LLVM (http://llvm.org/):\n  ";
+#endif
+    OS << PACKAGE_NAME << " version " << PACKAGE_VERSION;
 #ifdef LLVM_VERSION_INFO
     OS << " " << LLVM_VERSION_INFO;
 #endif
@@ -1755,9 +1772,6 @@ public:
     if (CPU == "generic")
       CPU = "(unknown)";
     OS << ".\n"
-#if (ENABLE_TIMESTAMPS == 1)
-       << "  Built " << __DATE__ << " (" << __TIME__ << ").\n"
-#endif
        << "  Default target: " << sys::getDefaultTargetTriple() << '\n'
        << "  Host CPU: " << CPU << '\n';
   }

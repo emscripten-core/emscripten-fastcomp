@@ -305,19 +305,51 @@ public:
     CALLSITE_DELEGATE_SETTER(setAttributes(PAL));
   }
 
-  /// \brief Return true if this function has the given attribute.
-  bool hasFnAttr(Attribute::AttrKind A) const {
-    CALLSITE_DELEGATE_GETTER(hasFnAttr(A));
+  void addAttribute(unsigned i, Attribute::AttrKind Kind) {
+    CALLSITE_DELEGATE_SETTER(addAttribute(i, Kind));
+  }
+
+  void addAttribute(unsigned i, StringRef Kind, StringRef Value) {
+    CALLSITE_DELEGATE_SETTER(addAttribute(i, Kind, Value));
+  }
+
+  void addAttribute(unsigned i, Attribute Attr) {
+    CALLSITE_DELEGATE_SETTER(addAttribute(i, Attr));
+  }
+
+  void removeAttribute(unsigned i, Attribute::AttrKind Kind) {
+    CALLSITE_DELEGATE_SETTER(removeAttribute(i, Kind));
+  }
+
+  void removeAttribute(unsigned i, StringRef Kind) {
+    CALLSITE_DELEGATE_SETTER(removeAttribute(i, Kind));
+  }
+
+  void removeAttribute(unsigned i, Attribute Attr) {
+    CALLSITE_DELEGATE_SETTER(removeAttribute(i, Attr));
   }
 
   /// \brief Return true if this function has the given attribute.
-  bool hasFnAttr(StringRef A) const {
-    CALLSITE_DELEGATE_GETTER(hasFnAttr(A));
+  bool hasFnAttr(Attribute::AttrKind Kind) const {
+    CALLSITE_DELEGATE_GETTER(hasFnAttr(Kind));
+  }
+
+  /// \brief Return true if this function has the given attribute.
+  bool hasFnAttr(StringRef Kind) const {
+    CALLSITE_DELEGATE_GETTER(hasFnAttr(Kind));
   }
 
   /// \brief Return true if the call or the callee has the given attribute.
-  bool paramHasAttr(unsigned i, Attribute::AttrKind A) const {
-    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, A));
+  bool paramHasAttr(unsigned i, Attribute::AttrKind Kind) const {
+    CALLSITE_DELEGATE_GETTER(paramHasAttr(i, Kind));
+  }
+
+  Attribute getAttribute(unsigned i, Attribute::AttrKind Kind) const {
+    CALLSITE_DELEGATE_GETTER(getAttribute(i, Kind));
+  }
+
+  Attribute getAttribute(unsigned i, StringRef Kind) const {
+    CALLSITE_DELEGATE_GETTER(getAttribute(i, Kind));
   }
 
   /// \brief Return true if the data operand at index \p i directly or
@@ -327,8 +359,8 @@ public:
   /// in the attribute set attached to this instruction, while operand bundle
   /// operands may have some attributes implied by the type of its containing
   /// operand bundle.
-  bool dataOperandHasImpliedAttr(unsigned i, Attribute::AttrKind A) const {
-    CALLSITE_DELEGATE_GETTER(dataOperandHasImpliedAttr(i, A));
+  bool dataOperandHasImpliedAttr(unsigned i, Attribute::AttrKind Kind) const {
+    CALLSITE_DELEGATE_GETTER(dataOperandHasImpliedAttr(i, Kind));
   }
 
   /// @brief Extract the alignment for a call or parameter (0=unknown).
@@ -410,6 +442,25 @@ public:
     CALLSITE_DELEGATE_SETTER(setDoesNotThrow());
   }
 
+  /// @brief Determine if the call can be duplicated.
+  bool cannotDuplicate() const {
+    CALLSITE_DELEGATE_GETTER(cannotDuplicate());
+  }
+  void setCannotDuplicate() {
+    CALLSITE_DELEGATE_GETTER(setCannotDuplicate());
+  }
+
+  /// @brief Determine if the call is convergent.
+  bool isConvergent() const {
+    CALLSITE_DELEGATE_GETTER(isConvergent());
+  }
+  void setConvergent() {
+    CALLSITE_DELEGATE_SETTER(setConvergent());
+  }
+  void setNotConvergent() {
+    CALLSITE_DELEGATE_SETTER(setNotConvergent());
+  }
+
   unsigned getNumOperandBundles() const {
     CALLSITE_DELEGATE_GETTER(getNumOperandBundles());
   }
@@ -440,6 +491,10 @@ public:
 
   Optional<OperandBundleUse> getOperandBundle(uint32_t ID) const {
     CALLSITE_DELEGATE_GETTER(getOperandBundle(ID));
+  }
+
+  unsigned countOperandBundlesOfType(uint32_t ID) const {
+    CALLSITE_DELEGATE_GETTER(countOperandBundlesOfType(ID));
   }
 
   IterTy arg_begin() const {

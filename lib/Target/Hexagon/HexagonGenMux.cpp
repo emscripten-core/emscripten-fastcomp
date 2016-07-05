@@ -49,6 +49,10 @@ namespace {
       MachineFunctionPass::getAnalysisUsage(AU);
     }
     bool runOnMachineFunction(MachineFunction &MF) override;
+    MachineFunctionProperties getRequiredProperties() const override {
+      return MachineFunctionProperties().set(
+          MachineFunctionProperties::Property::AllVRegsAllocated);
+    }
 
   private:
     const HexagonInstrInfo *HII;
@@ -128,7 +132,7 @@ void HexagonGenMux::getDefsUses(const MachineInstr *MI, BitVector &Defs,
       expandReg(*R++, Uses);
 
   // Look over all operands, and collect explicit defs and uses.
-  for (ConstMIOperands Mo(MI); Mo.isValid(); ++Mo) {
+  for (ConstMIOperands Mo(*MI); Mo.isValid(); ++Mo) {
     if (!Mo->isReg() || Mo->isImplicit())
       continue;
     unsigned R = Mo->getReg();
@@ -305,6 +309,8 @@ bool HexagonGenMux::genMuxInBlock(MachineBasicBlock &B) {
 }
 
 bool HexagonGenMux::runOnMachineFunction(MachineFunction &MF) {
+  if (skipFunction(*MF.getFunction()))
+    return false;
   HII = MF.getSubtarget<HexagonSubtarget>().getInstrInfo();
   HRI = MF.getSubtarget<HexagonSubtarget>().getRegisterInfo();
   bool Changed = false;
@@ -316,4 +322,3 @@ bool HexagonGenMux::runOnMachineFunction(MachineFunction &MF) {
 FunctionPass *llvm::createHexagonGenMux() {
   return new HexagonGenMux();
 }
-

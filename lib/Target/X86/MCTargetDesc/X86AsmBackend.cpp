@@ -21,7 +21,6 @@
 #include "llvm/MC/MCSectionCOFF.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/MC/MCSectionMachO.h"
-#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/ELF.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MachO.h"
@@ -43,6 +42,8 @@ static unsigned getFixupKindLog2Size(unsigned Kind) {
     return 1;
   case FK_PCRel_4:
   case X86::reloc_riprel_4byte:
+  case X86::reloc_riprel_4byte_relax:
+  case X86::reloc_riprel_4byte_relax_rex:
   case X86::reloc_riprel_4byte_movq_load:
   case X86::reloc_signed_4byte:
   case X86::reloc_global_offset_table:
@@ -69,19 +70,16 @@ public:
 class X86AsmBackend : public MCAsmBackend {
   const StringRef CPU;
   bool HasNopl;
-  uint64_t MaxNopLength;
+  const uint64_t MaxNopLength;
 public:
-  X86AsmBackend(const Target &T, StringRef CPU) : MCAsmBackend(), CPU(CPU) {
+  X86AsmBackend(const Target &T, StringRef CPU)
+      : MCAsmBackend(), CPU(CPU),
+        MaxNopLength((CPU == "slm" || CPU == "lakemont") ? 7 : 15) {
     HasNopl = CPU != "generic" && CPU != "i386" && CPU != "i486" &&
               CPU != "i586" && CPU != "pentium" && CPU != "pentium-mmx" &&
               CPU != "i686" && CPU != "k6" && CPU != "k6-2" && CPU != "k6-3" &&
               CPU != "geode" && CPU != "winchip-c6" && CPU != "winchip2" &&
               CPU != "c3" && CPU != "c3-2";
-    // Max length of true long nop instruction is 15 bytes.
-    // Max length of long nop replacement instruction is 7 bytes.
-    // Taking into account SilverMont architecture features max length of nops
-    // is reduced for it to achieve better performance.
-    MaxNopLength = (!HasNopl || CPU == "slm") ? 7 : 15;
   }
 
   unsigned getNumFixupKinds() const override {
@@ -90,10 +88,13 @@ public:
 
   const MCFixupKindInfo &getFixupKindInfo(MCFixupKind Kind) const override {
     const static MCFixupKindInfo Infos[X86::NumTargetFixupKinds] = {
-      { "reloc_riprel_4byte", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel },
-      { "reloc_riprel_4byte_movq_load", 0, 4 * 8, MCFixupKindInfo::FKF_IsPCRel},
-      { "reloc_signed_4byte", 0, 4 * 8, 0},
-      { "reloc_global_offset_table", 0, 4 * 8, 0}
+        {"reloc_riprel_4byte", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+        {"reloc_riprel_4byte_movq_load", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+        {"reloc_riprel_4byte_relax", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+        {"reloc_riprel_4byte_relax_rex", 0, 32, MCFixupKindInfo::FKF_IsPCRel},
+        {"reloc_signed_4byte", 0, 32, 0},
+        {"reloc_global_offset_table", 0, 32, 0},
+        {"reloc_global_offset_table8", 0, 64, 0},
     };
 
     if (Kind < FirstTargetFixupKind)
@@ -299,7 +300,7 @@ void X86AsmBackend::relaxInstruction(const MCInst &Inst, MCInst &Res) const {
 /// bytes.
 /// \return - true on success, false on failure
 bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
-  static const uint8_t TrueNops[10][10] = {
+  static const uint8_t Nops[10][10] = {
     // nop
     {0x90},
     // xchg %ax,%ax
@@ -322,31 +323,17 @@ bool X86AsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
     {0x66, 0x2e, 0x0f, 0x1f, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00},
   };
 
-  // Alternative nop instructions for CPUs which don't support long nops.
-  static const uint8_t AltNops[7][10] = {
-      // nop
-      {0x90},
-      // xchg %ax,%ax
-      {0x66, 0x90},
-      // lea 0x0(%esi),%esi
-      {0x8d, 0x76, 0x00},
-      // lea 0x0(%esi),%esi
-      {0x8d, 0x74, 0x26, 0x00},
-      // nop + lea 0x0(%esi),%esi
-      {0x90, 0x8d, 0x74, 0x26, 0x00},
-      // lea 0x0(%esi),%esi
-      {0x8d, 0xb6, 0x00, 0x00, 0x00, 0x00 },
-      // lea 0x0(%esi),%esi
-      {0x8d, 0xb4, 0x26, 0x00, 0x00, 0x00, 0x00},
-  };
+  // This CPU doesn't support long nops. If needed add more.
+  // FIXME: Can we get this from the subtarget somehow?
+  // FIXME: We could generated something better than plain 0x90.
+  if (!HasNopl) {
+    for (uint64_t i = 0; i < Count; ++i)
+      OW->write8(0x90);
+    return true;
+  }
 
-  // Select the right NOP table.
-  // FIXME: Can we get if CPU supports long nops from the subtarget somehow?
-  const uint8_t (*Nops)[10] = HasNopl ? TrueNops : AltNops;
-  assert(HasNopl || MaxNopLength <= 7);
-
-  // Emit as many largest nops as needed, then emit a nop of the remaining
-  // length.
+  // 15 is the longest single nop instruction.  Emit as many 15-byte nops as
+  // needed, then emit a nop of the remaining length.
   do {
     const uint8_t ThisNopLength = (uint8_t) std::min(Count, MaxNopLength);
     const uint8_t Prefixes = ThisNopLength <= 10 ? 0 : ThisNopLength - 10;
@@ -421,6 +408,14 @@ public:
   WindowsX86AsmBackend(const Target &T, bool is64Bit, StringRef CPU)
     : X86AsmBackend(T, CPU)
     , Is64Bit(is64Bit) {
+  }
+
+  Optional<MCFixupKind> getFixupKind(StringRef Name) const override {
+    return StringSwitch<Optional<MCFixupKind>>(Name)
+        .Case("dir32", FK_Data_4)
+        .Case("secrel32", FK_SecRel_4)
+        .Case("secidx", FK_SecRel_2)
+        .Default(MCAsmBackend::getFixupKind(Name));
   }
 
   MCObjectWriter *createObjectWriter(raw_pwrite_stream &OS) const override {
@@ -821,7 +816,7 @@ MCAsmBackend *llvm::createX86_32AsmBackend(const Target &T,
   if (TheTriple.isOSBinFormatMachO())
     return new DarwinX86_32AsmBackend(T, MRI, CPU);
 
-  if (TheTriple.isOSWindows() && !TheTriple.isOSBinFormatELF())
+  if (TheTriple.isOSWindows() && TheTriple.isOSBinFormatCOFF())
     return new WindowsX86AsmBackend(T, false, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());
@@ -844,7 +839,7 @@ MCAsmBackend *llvm::createX86_64AsmBackend(const Target &T,
     return new DarwinX86_64AsmBackend(T, MRI, CPU, CS);
   }
 
-  if (TheTriple.isOSWindows() && !TheTriple.isOSBinFormatELF())
+  if (TheTriple.isOSWindows() && TheTriple.isOSBinFormatCOFF())
     return new WindowsX86AsmBackend(T, true, CPU);
 
   uint8_t OSABI = MCELFObjectTargetWriter::getOSABI(TheTriple.getOS());

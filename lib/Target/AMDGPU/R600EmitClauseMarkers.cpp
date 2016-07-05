@@ -276,7 +276,7 @@ private:
     BuildMI(MBB, ClauseHead, MBB.findDebugLoc(ClauseHead), TII->get(Opcode))
     // We don't use the ADDR field until R600ControlFlowFinalizer pass, where
     // it is safe to assume it is 0. However if we always put 0 here, the ifcvt
-    // pass may assume that identical ALU clause starter at the beginning of a 
+    // pass may assume that identical ALU clause starter at the beginning of a
     // true and false branch can be factorized which is not the case.
         .addImm(Address++) // ADDR
         .addImm(KCacheBanks.empty()?0:KCacheBanks[0].first) // KB0
@@ -298,7 +298,8 @@ public:
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    TII = static_cast<const R600InstrInfo *>(MF.getSubtarget().getInstrInfo());
+    const R600Subtarget &ST = MF.getSubtarget<R600Subtarget>();
+    TII = ST.getInstrInfo();
 
     for (MachineFunction::iterator BB = MF.begin(), BB_E = MF.end();
                                                     BB != BB_E; ++BB) {

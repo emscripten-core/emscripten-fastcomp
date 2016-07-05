@@ -21,14 +21,12 @@
 //
 //
 //===----------------------------------------------------------------------===//
-#include "llvm/PassSupport.h"
 #include "Hexagon.h"
 #include "HexagonInstrInfo.h"
 #include "HexagonMachineFunctionInfo.h"
 #include "HexagonRegisterInfo.h"
 #include "HexagonSubtarget.h"
 #include "HexagonTargetMachine.h"
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LiveVariables.h"
 #include "llvm/CodeGen/MachineFunctionAnalysis.h"
@@ -37,14 +35,13 @@
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/ScheduleDAGInstrs.h"
+#include "llvm/PassSupport.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetRegisterInfo.h"
-#include <map>
 using namespace llvm;
 
 #define DEBUG_TYPE "hexagon-nvj"
@@ -87,6 +84,10 @@ namespace {
     }
 
     bool runOnMachineFunction(MachineFunction &Fn) override;
+    MachineFunctionProperties getRequiredProperties() const override {
+      return MachineFunctionProperties().set(
+          MachineFunctionProperties::Property::AllVRegsAllocated);
+    }
 
   private:
     /// \brief A handle to the branch probability pass.
@@ -116,7 +117,7 @@ static bool canBeFeederToNewValueJump(const HexagonInstrInfo *QII,
                                       MachineFunction &MF) {
 
   // Predicated instruction can not be feeder to NVJ.
-  if (QII->isPredicated(II))
+  if (QII->isPredicated(*II))
     return false;
 
   // Bail out if feederReg is a paired register (double regs in
@@ -393,6 +394,9 @@ bool HexagonNewValueJump::runOnMachineFunction(MachineFunction &MF) {
                << "********** Function: "
                << MF.getName() << "\n");
 
+  if (skipFunction(*MF.getFunction()))
+    return false;
+
   // If we move NewValueJump before register allocation we'll need live variable
   // analysis here too.
 
@@ -485,6 +489,8 @@ bool HexagonNewValueJump::runOnMachineFunction(MachineFunction &MF) {
         if (predLive)
           break;
 
+        if (!MI->getOperand(1).isMBB())
+          continue;
         jmpTarget = MI->getOperand(1).getMBB();
         foundJump = true;
         if (MI->getOpcode() == Hexagon::J2_jumpf ||

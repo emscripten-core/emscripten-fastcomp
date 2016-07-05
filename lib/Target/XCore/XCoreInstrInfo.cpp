@@ -200,14 +200,14 @@ XCoreInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
   if (I == MBB.end())
     return false;
 
-  if (!isUnpredicatedTerminator(I))
+  if (!isUnpredicatedTerminator(*I))
     return false;
 
   // Get the last instruction in the block.
   MachineInstr *LastInst = I;
   
   // If there is only one terminator instruction, process it.
-  if (I == MBB.begin() || !isUnpredicatedTerminator(--I)) {
+  if (I == MBB.begin() || !isUnpredicatedTerminator(*--I)) {
     if (IsBRU(LastInst->getOpcode())) {
       TBB = LastInst->getOperand(0).getMBB();
       return false;
@@ -230,8 +230,7 @@ XCoreInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
   MachineInstr *SecondLastInst = I;
 
   // If there are three terminators, we don't know what sort of block this is.
-  if (SecondLastInst && I != MBB.begin() &&
-      isUnpredicatedTerminator(--I))
+  if (SecondLastInst && I != MBB.begin() && isUnpredicatedTerminator(*--I))
     return true;
   
   unsigned SecondLastOpc    = SecondLastInst->getOpcode();
@@ -273,11 +272,11 @@ XCoreInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
   return true;
 }
 
-unsigned
-XCoreInstrInfo::InsertBranch(MachineBasicBlock &MBB,MachineBasicBlock *TBB,
-                             MachineBasicBlock *FBB,
-                             ArrayRef<MachineOperand> Cond,
-                             DebugLoc DL)const{
+unsigned XCoreInstrInfo::InsertBranch(MachineBasicBlock &MBB,
+                                      MachineBasicBlock *TBB,
+                                      MachineBasicBlock *FBB,
+                                      ArrayRef<MachineOperand> Cond,
+                                      const DebugLoc &DL) const {
   // Shouldn't be a fall through.
   assert(TBB && "InsertBranch must not be told to insert a fallthrough");
   assert((Cond.size() == 2 || Cond.size() == 0) &&
@@ -330,9 +329,9 @@ XCoreInstrInfo::RemoveBranch(MachineBasicBlock &MBB) const {
 }
 
 void XCoreInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
-                                 MachineBasicBlock::iterator I, DebugLoc DL,
-                                 unsigned DestReg, unsigned SrcReg,
-                                 bool KillSrc) const {
+                                 MachineBasicBlock::iterator I,
+                                 const DebugLoc &DL, unsigned DestReg,
+                                 unsigned SrcReg, bool KillSrc) const {
   bool GRDest = XCore::GRRegsRegClass.contains(DestReg);
   bool GRSrc  = XCore::GRRegsRegClass.contains(SrcReg);
 

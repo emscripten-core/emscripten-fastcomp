@@ -25,6 +25,10 @@ In order to use the LLVM testing infrastructure, you will need all of the
 software required to build LLVM, as well as `Python <http://python.org>`_ 2.7 or
 later.
 
+If you intend to run the :ref:`test-suite <test-suite-overview>`, you will also
+need a development version of zlib (zlib1g-dev is known to work on several Linux
+distributions).
+
 LLVM testing infrastructure organization
 ========================================
 
@@ -99,19 +103,11 @@ is in the ``test-suite`` module. See :ref:`test-suite Quickstart
 Regression tests
 ----------------
 
-To run all of the LLVM regression tests, use the master Makefile in the
-``llvm/test`` directory. LLVM Makefiles require GNU Make (read the :doc:`LLVM
-Makefile Guide <MakefileGuide>` for more details):
+To run all of the LLVM regression tests use the check-llvm target:
 
 .. code-block:: bash
 
-    % make -C llvm/test
-
-or:
-
-.. code-block:: bash
-
-    % make check
+    % make check-llvm
 
 If you have `Clang <http://clang.llvm.org/>`_ checked out and built, you
 can run the LLVM and Clang tests simultaneously using:
@@ -542,6 +538,8 @@ the last RUN: line. This has two side effects:
 
 (b) it speeds things up for really big test cases by avoiding
     interpretation of the remainder of the file.
+
+.. _test-suite-overview:
 
 ``test-suite`` Overview
 =======================

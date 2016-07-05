@@ -321,6 +321,9 @@ private:
 
   /// \brief Check whether the data dependence could prevent store-load
   /// forwarding.
+  ///
+  /// \return false if we shouldn't vectorize at all or avoid larger
+  /// vectorization factors by limiting MaxSafeDepDistBytes.
   bool couldPreventStoreLoadForward(unsigned Distance, unsigned TypeByteSize);
 };
 
@@ -363,10 +366,10 @@ public:
   }
 
   /// Insert a pointer and calculate the start and end SCEVs.
-  /// \p We need Preds in order to compute the SCEV expression of the pointer
+  /// We need \p PSE in order to compute the SCEV expression of the pointer
   /// according to the assumptions that we've made during the analysis.
   /// The method might also version the pointer stride according to \p Strides,
-  /// and change \p Preds.
+  /// and add new predicates to \p PSE.
   void insert(Loop *Lp, Value *Ptr, bool WritePtr, unsigned DepSetId,
               unsigned ASId, const ValueToValueMap &Strides,
               PredicatedScalarEvolution &PSE);
@@ -510,21 +513,20 @@ class LoopAccessInfo {
 public:
   LoopAccessInfo(Loop *L, ScalarEvolution *SE, const DataLayout &DL,
                  const TargetLibraryInfo *TLI, AliasAnalysis *AA,
-                 DominatorTree *DT, LoopInfo *LI,
-                 const ValueToValueMap &Strides);
+                 DominatorTree *DT, LoopInfo *LI);
 
   /// Return true we can analyze the memory accesses in the loop and there are
   /// no memory dependence cycles.
   bool canVectorizeMemory() const { return CanVecMem; }
 
   const RuntimePointerChecking *getRuntimePointerChecking() const {
-    return &PtrRtChecking;
+    return PtrRtChecking.get();
   }
 
   /// \brief Number of memchecks required to prove independence of otherwise
   /// may-alias pointers.
   unsigned getNumRuntimePointerChecks() const {
-    return PtrRtChecking.getNumberOfChecks();
+    return PtrRtChecking->getNumberOfChecks();
   }
 
   /// Return true if the block BB needs to be predicated in order for the loop
@@ -563,22 +565,24 @@ public:
 
   /// \brief the Memory Dependence Checker which can determine the
   /// loop-independent and loop-carried dependences between memory accesses.
-  const MemoryDepChecker &getDepChecker() const { return DepChecker; }
+  const MemoryDepChecker &getDepChecker() const { return *DepChecker; }
 
   /// \brief Return the list of instructions that use \p Ptr to read or write
   /// memory.
   SmallVector<Instruction *, 4> getInstructionsForAccess(Value *Ptr,
                                                          bool isWrite) const {
-    return DepChecker.getInstructionsForAccess(Ptr, isWrite);
+    return DepChecker->getInstructionsForAccess(Ptr, isWrite);
   }
+
+  /// \brief If an access has a symbolic strides, this maps the pointer value to
+  /// the stride symbol.
+  const ValueToValueMap &getSymbolicStrides() const { return SymbolicStrides; }
+
+  /// \brief Pointer has a symbolic stride.
+  bool hasStride(Value *V) const { return StrideSet.count(V); }
 
   /// \brief Print the information about the memory accesses in the loop.
   void print(raw_ostream &OS, unsigned Depth = 0) const;
-
-  /// \brief Used to ensure that if the analysis was run with speculating the
-  /// value of symbolic strides, the client queries it with the same assumption.
-  /// Only used in DEBUG build but we don't want NDEBUG-dependent ABI.
-  unsigned NumSymbolicStrides;
 
   /// \brief Checks existence of store to invariant address inside loop.
   /// If the loop has any store to invariant address, then it returns true,
@@ -595,8 +599,8 @@ public:
   PredicatedScalarEvolution PSE;
 
 private:
-  /// \brief Analyze the loop.  Substitute symbolic strides using Strides.
-  void analyzeLoop(const ValueToValueMap &Strides);
+  /// \brief Analyze the loop.
+  void analyzeLoop();
 
   /// \brief Check if the structure of the loop allows it to be analyzed by this
   /// pass.
@@ -604,13 +608,19 @@ private:
 
   void emitAnalysis(LoopAccessReport &Message);
 
+  /// \brief Collect memory access with loop invariant strides.
+  ///
+  /// Looks for accesses like "a[i * StrideA]" where "StrideA" is loop
+  /// invariant.
+  void collectStridedAccess(Value *LoadOrStoreInst);
+
   /// We need to check that all of the pointers in this list are disjoint
-  /// at runtime.
-  RuntimePointerChecking PtrRtChecking;
+  /// at runtime. Using std::unique_ptr to make using move ctor simpler.
+  std::unique_ptr<RuntimePointerChecking> PtrRtChecking;
 
   /// \brief the Memory Dependence Checker which can determine the
   /// loop-independent and loop-carried dependences between memory accesses.
-  MemoryDepChecker DepChecker;
+  std::unique_ptr<MemoryDepChecker> DepChecker;
 
   Loop *TheLoop;
   const DataLayout &DL;
@@ -634,15 +644,23 @@ private:
   /// \brief The diagnostics report generated for the analysis.  E.g. why we
   /// couldn't analyze the loop.
   Optional<LoopAccessReport> Report;
+
+  /// \brief If an access has a symbolic strides, this maps the pointer value to
+  /// the stride symbol.
+  ValueToValueMap SymbolicStrides;
+
+  /// \brief Set of symbolic strides values.
+  SmallPtrSet<Value *, 8> StrideSet;
 };
 
 Value *stripIntegerCast(Value *V);
 
-///\brief Return the SCEV corresponding to a pointer with the symbolic stride
-/// replaced with constant one, assuming \p Preds is true.
+/// \brief Return the SCEV corresponding to a pointer with the symbolic stride
+/// replaced with constant one, assuming the SCEV predicate associated with
+/// \p PSE is true.
 ///
 /// If necessary this method will version the stride of the pointer according
-/// to \p PtrToStride and therefore add a new predicate to \p Preds.
+/// to \p PtrToStride and therefore add further predicates to \p PSE.
 ///
 /// If \p OrigPtr is not null, use it to look up the stride value instead of \p
 /// Ptr.  \p PtrToStride provides the mapping between the pointer value and its
@@ -651,13 +669,26 @@ const SCEV *replaceSymbolicStrideSCEV(PredicatedScalarEvolution &PSE,
                                       const ValueToValueMap &PtrToStride,
                                       Value *Ptr, Value *OrigPtr = nullptr);
 
-/// \brief Check the stride of the pointer and ensure that it does not wrap in
-/// the address space, assuming \p Preds is true.
+/// \brief If the pointer has a constant stride return it in units of its
+/// element size.  Otherwise return zero.
+///
+/// Ensure that it does not wrap in the address space, assuming the predicate
+/// associated with \p PSE is true.
 ///
 /// If necessary this method will version the stride of the pointer according
-/// to \p PtrToStride and therefore add a new predicate to \p Preds.
-int isStridedPtr(PredicatedScalarEvolution &PSE, Value *Ptr, const Loop *Lp,
-                 const ValueToValueMap &StridesMap);
+/// to \p PtrToStride and therefore add further predicates to \p PSE.
+/// The \p Assume parameter indicates if we are allowed to make additional
+/// run-time assumptions.
+/// The \p ShouldCheckWrap indicates that we should ensure that address 
+/// calculation does not wrap.
+int getPtrStride(PredicatedScalarEvolution &PSE, Value *Ptr, const Loop *Lp,
+                 const ValueToValueMap &StridesMap = ValueToValueMap(),
+                 bool Assume = false, bool ShouldCheckWrap = true);
+
+/// \brief Returns true if the memory operations \p A and \p B are consecutive.
+/// This is a simple API that does not depend on the analysis pass. 
+bool isConsecutiveAccess(Value *A, Value *B, const DataLayout &DL,
+                         ScalarEvolution &SE, bool CheckType = true);
 
 /// \brief This analysis provides dependence information for the memory accesses
 /// of a loop.
@@ -680,11 +711,8 @@ public:
 
   /// \brief Query the result of the loop access information for the loop \p L.
   ///
-  /// If the client speculates (and then issues run-time checks) for the values
-  /// of symbolic strides, \p Strides provides the mapping (see
-  /// replaceSymbolicStrideSCEV).  If there is no cached result available run
-  /// the analysis.
-  const LoopAccessInfo &getInfo(Loop *L, const ValueToValueMap &Strides);
+  /// If there is no cached result available run the analysis.
+  const LoopAccessInfo &getInfo(Loop *L);
 
   void releaseMemory() override {
     // Invalidate the cache when the pass is freed.

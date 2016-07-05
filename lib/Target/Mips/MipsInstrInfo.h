@@ -19,7 +19,6 @@
 #define LLVM_LIB_TARGET_MIPS_MIPSINSTRINFO_H
 
 #include "Mips.h"
-#include "MipsAnalyzeImmediate.h"
 #include "MipsRegisterInfo.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/Support/ErrorHandling.h"
@@ -60,7 +59,7 @@ public:
 
   unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        DebugLoc DL) const override;
+                        const DebugLoc &DL) const override;
 
   bool
   ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
@@ -70,6 +69,15 @@ public:
                            SmallVectorImpl<MachineOperand> &Cond,
                            bool AllowModify,
                            SmallVectorImpl<MachineInstr*> &BranchInstrs) const;
+
+  /// Determine the opcode of a non-delay slot form for a branch if one exists.
+  unsigned getEquivalentCompactForm(const MachineBasicBlock::iterator I) const;
+
+  /// Predicate to determine if an instruction can go in a forbidden slot.
+  bool SafeInForbiddenSlot(const MachineInstr &MI) const;
+
+  /// Predicate to determine if an instruction has a forbidden slot.
+  bool HasForbiddenSlot(const MachineInstr &MI) const;
 
   /// Insert nop instruction when hazard condition is found
   void insertNoop(MachineBasicBlock &MBB,
@@ -138,8 +146,8 @@ private:
                      MachineBasicBlock *&BB,
                      SmallVectorImpl<MachineOperand> &Cond) const;
 
-  void BuildCondBr(MachineBasicBlock &MBB, MachineBasicBlock *TBB, DebugLoc DL,
-                   ArrayRef<MachineOperand> Cond) const;
+  void BuildCondBr(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
+                   const DebugLoc &DL, ArrayRef<MachineOperand> Cond) const;
 };
 
 /// Create MipsInstrInfo objects.

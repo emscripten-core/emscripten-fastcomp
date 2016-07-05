@@ -97,16 +97,6 @@ static unsigned int branchTargetOperand(MachineInstr *MI) {
   llvm_unreachable("Unknown branch type");
 }
 
-static bool isUnconditionalBranch(unsigned int Opcode) {
-  switch (Opcode) {
-  default: return false;
-  case Mips::Bimm16:
-  case Mips::BimmX16:
-  case Mips::JalB16:
-    return true;
-  }
-}
-
 static unsigned int longformBranchOpcode(unsigned int Opcode) {
   switch (Opcode) {
   case Mips::Bimm16:
@@ -342,8 +332,6 @@ namespace {
   /// the branch fix up pass.
   bool HasFarJump;
 
-  const TargetMachine &TM;
-  bool IsPIC;
   const MipsSubtarget *STI;
   const Mips16InstrInfo *TII;
   MipsFunctionInfo *MFI;
@@ -364,16 +352,20 @@ namespace {
 
   public:
     static char ID;
-    MipsConstantIslands(TargetMachine &tm)
-        : MachineFunctionPass(ID), TM(tm),
-          IsPIC(TM.getRelocationModel() == Reloc::PIC_), STI(nullptr),
-          MF(nullptr), MCP(nullptr), PrescannedForConstants(false) {}
+    MipsConstantIslands()
+        : MachineFunctionPass(ID), STI(nullptr), MF(nullptr), MCP(nullptr),
+          PrescannedForConstants(false) {}
 
     const char *getPassName() const override {
       return "Mips Constant Islands";
     }
 
     bool runOnMachineFunction(MachineFunction &F) override;
+
+    MachineFunctionProperties getRequiredProperties() const override {
+      return MachineFunctionProperties().set(
+          MachineFunctionProperties::Property::AllVRegsAllocated);
+    }
 
     void doInitialPlacement(std::vector<MachineInstr*> &CPEMIs);
     CPEntry *findConstPoolEntry(unsigned CPI, const MachineInstr *CPEMI);
@@ -437,10 +429,9 @@ void MipsConstantIslands::dumpBBs() {
     }
   });
 }
-/// createMipsLongBranchPass - Returns a pass that converts branches to long
-/// branches.
-FunctionPass *llvm::createMipsConstantIslandPass(MipsTargetMachine &tm) {
-  return new MipsConstantIslands(tm);
+/// Returns a pass that converts branches to long branches.
+FunctionPass *llvm::createMipsConstantIslandPass() {
+  return new MipsConstantIslands();
 }
 
 bool MipsConstantIslands::runOnMachineFunction(MachineFunction &mf) {
@@ -985,7 +976,7 @@ bool MipsConstantIslands::isWaterInRange(unsigned UserOffset,
     Growth = CPEEnd - NextBlockOffset;
     // Compute the padding that would go at the end of the CPE to align the next
     // block.
-    Growth += OffsetToAlignment(CPEEnd, 1u << NextBlockAlignment);
+    Growth += OffsetToAlignment(CPEEnd, 1ULL << NextBlockAlignment);
 
     // If the CPE is to be inserted before the instruction, that will raise
     // the offset of the instruction. Also account for unknown alignment padding
@@ -1610,7 +1601,7 @@ MipsConstantIslands::fixupConditionalBr(ImmBranch &Br) {
   ++NumCBrFixed;
   if (BMI != MI) {
     if (std::next(MachineBasicBlock::iterator(MI)) == std::prev(MBB->end()) &&
-        isUnconditionalBranch(BMI->getOpcode())) {
+        BMI->isUnconditionalBranch()) {
       // Last MI in the BB is an unconditional branch. Can we simply invert the
       // condition and swap destinations:
       // beqz L1
@@ -1710,4 +1701,3 @@ void MipsConstantIslands::prescanForConstants() {
     }
   }
 }
-

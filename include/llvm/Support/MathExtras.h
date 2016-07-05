@@ -16,9 +16,11 @@
 
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/SwapByteOrder.h"
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <type_traits>
+#include <limits>
 
 #ifdef _MSC_VER
 #include <intrin.h>
@@ -310,16 +312,37 @@ inline bool isShiftedUInt(uint64_t x) {
   return isUInt<N+S>(x) && (x % (1<<S) == 0);
 }
 
+/// Gets the maximum value for a N-bit unsigned integer.
+inline uint64_t maxUIntN(uint64_t N) {
+  assert(N > 0 && N <= 64 && "integer width out of range");
+
+  return (UINT64_C(1) << N) - 1;
+}
+
+/// Gets the minimum value for a N-bit signed integer.
+inline int64_t minIntN(int64_t N) {
+  assert(N > 0 && N <= 64 && "integer width out of range");
+
+  return -(INT64_C(1)<<(N-1));
+}
+
+/// Gets the maximum value for a N-bit signed integer.
+inline int64_t maxIntN(int64_t N) {
+  assert(N > 0 && N <= 64 && "integer width out of range");
+
+  return (INT64_C(1)<<(N-1)) - 1;
+}
+
 /// isUIntN - Checks if an unsigned integer fits into the given (dynamic)
 /// bit width.
 inline bool isUIntN(unsigned N, uint64_t x) {
-  return N >= 64 || x < (UINT64_C(1)<<(N));
+  return N >= 64 || x <= maxUIntN(N);
 }
 
 /// isIntN - Checks if an signed integer fits into the given (dynamic)
 /// bit width.
 inline bool isIntN(unsigned N, int64_t x) {
-  return N >= 64 || (-(INT64_C(1)<<(N-1)) <= x && x < (INT64_C(1)<<(N-1)));
+  return N >= 64 || (minIntN(N) <= x && x <= maxIntN(N));
 }
 
 /// isMask_32 - This function returns true if the argument is a non-empty
@@ -606,27 +629,33 @@ inline uint64_t PowerOf2Floor(uint64_t A) {
 ///
 /// Examples:
 /// \code
-///   RoundUpToAlignment(5, 8) = 8
-///   RoundUpToAlignment(17, 8) = 24
-///   RoundUpToAlignment(~0LL, 8) = 0
-///   RoundUpToAlignment(321, 255) = 510
+///   alignTo(5, 8) = 8
+///   alignTo(17, 8) = 24
+///   alignTo(~0LL, 8) = 0
+///   alignTo(321, 255) = 510
 ///
-///   RoundUpToAlignment(5, 8, 7) = 7
-///   RoundUpToAlignment(17, 8, 1) = 17
-///   RoundUpToAlignment(~0LL, 8, 3) = 3
-///   RoundUpToAlignment(321, 255, 42) = 552
+///   alignTo(5, 8, 7) = 7
+///   alignTo(17, 8, 1) = 17
+///   alignTo(~0LL, 8, 3) = 3
+///   alignTo(321, 255, 42) = 552
 /// \endcode
-inline uint64_t RoundUpToAlignment(uint64_t Value, uint64_t Align,
-                                   uint64_t Skew = 0) {
+inline uint64_t alignTo(uint64_t Value, uint64_t Align, uint64_t Skew = 0) {
   Skew %= Align;
   return (Value + Align - 1 - Skew) / Align * Align + Skew;
+}
+
+/// Returns the largest uint64_t less than or equal to \p Value and is
+/// \p Skew mod \p Align. \p Align must be non-zero
+inline uint64_t alignDown(uint64_t Value, uint64_t Align, uint64_t Skew = 0) {
+  Skew %= Align;
+  return (Value - Skew) / Align * Align + Skew;
 }
 
 /// Returns the offset to the next integer (mod 2**64) that is greater than
 /// or equal to \p Value and is a multiple of \p Align. \p Align must be
 /// non-zero.
 inline uint64_t OffsetToAlignment(uint64_t Value, uint64_t Align) {
-  return RoundUpToAlignment(Value, Align) - Value;
+  return alignTo(Value, Align) - Value;
 }
 
 /// SignExtend32 - Sign extend B-bit number x to 32-bit int.
@@ -651,6 +680,14 @@ template <unsigned B> inline int64_t SignExtend64(uint64_t x) {
 /// Requires 0 < B <= 64.
 inline int64_t SignExtend64(uint64_t X, unsigned B) {
   return int64_t(X << (64 - B)) >> (64 - B);
+}
+
+/// \brief Subtract two unsigned integers, X and Y, of type T and return their
+/// absolute value.
+template <typename T>
+typename std::enable_if<std::is_unsigned<T>::value, T>::type
+AbsoluteDifference(T X, T Y) {
+  return std::max(X, Y) - std::min(X, Y);
 }
 
 /// \brief Add two unsigned integers, X and Y, of type T.

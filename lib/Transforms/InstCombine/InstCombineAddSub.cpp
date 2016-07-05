@@ -58,7 +58,6 @@ namespace {
     // operators inevitably call FAddendCoef's constructor which is not cheap.
     void operator=(const FAddendCoef &A);
     void operator+=(const FAddendCoef &A);
-    void operator-=(const FAddendCoef &A);
     void operator*=(const FAddendCoef &S);
 
     bool isOne() const { return isInt() && IntVal == 1; }
@@ -123,11 +122,18 @@ namespace {
     bool isConstant() const { return Val == nullptr; }
     bool isZero() const { return Coeff.isZero(); }
 
-    void set(short Coefficient, Value *V) { Coeff.set(Coefficient), Val = V; }
-    void set(const APFloat& Coefficient, Value *V)
-      { Coeff.set(Coefficient); Val = V; }
-    void set(const ConstantFP* Coefficient, Value *V)
-      { Coeff.set(Coefficient->getValueAPF()); Val = V; }
+    void set(short Coefficient, Value *V) {
+      Coeff.set(Coefficient);
+      Val = V;
+    }
+    void set(const APFloat &Coefficient, Value *V) {
+      Coeff.set(Coefficient);
+      Val = V;
+    }
+    void set(const ConstantFP *Coefficient, Value *V) {
+      Coeff.set(Coefficient->getValueAPF());
+      Val = V;
+    }
 
     void negate() { Coeff.negate(); }
 
@@ -272,27 +278,6 @@ void FAddendCoef::operator+=(const FAddendCoef &That) {
   T.add(createAPFloatFromInt(T.getSemantics(), That.IntVal), RndMode);
 }
 
-void FAddendCoef::operator-=(const FAddendCoef &That) {
-  enum APFloat::roundingMode RndMode = APFloat::rmNearestTiesToEven;
-  if (isInt() == That.isInt()) {
-    if (isInt())
-      IntVal -= That.IntVal;
-    else
-      getFpVal().subtract(That.getFpVal(), RndMode);
-    return;
-  }
-
-  if (isInt()) {
-    const APFloat &T = That.getFpVal();
-    convertToFpType(T.getSemantics());
-    getFpVal().subtract(T, RndMode);
-    return;
-  }
-
-  APFloat &T = getFpVal();
-  T.subtract(createAPFloatFromInt(T.getSemantics(), IntVal), RndMode);
-}
-
 void FAddendCoef::operator*=(const FAddendCoef &That) {
   if (That.isOne())
     return;
@@ -321,8 +306,6 @@ void FAddendCoef::operator*=(const FAddendCoef &That) {
                 APFloat::rmNearestTiesToEven);
   else
     F0.multiply(That.getFpVal(), APFloat::rmNearestTiesToEven);
-
-  return;
 }
 
 void FAddendCoef::negate() {
@@ -716,10 +699,9 @@ Value *FAddCombine::createNaryFAdd
   bool LastValNeedNeg = false;
 
   // Iterate the addends, creating fadd/fsub using adjacent two addends.
-  for (AddendVect::const_iterator I = Opnds.begin(), E = Opnds.end();
-       I != E; I++) {
+  for (const FAddend *Opnd : Opnds) {
     bool NeedNeg;
-    Value *V = createAddendVal(**I, NeedNeg);
+    Value *V = createAddendVal(*Opnd, NeedNeg);
     if (!LastVal) {
       LastVal = V;
       LastValNeedNeg = NeedNeg;
@@ -808,9 +790,7 @@ unsigned FAddCombine::calcInstrNumber(const AddendVect &Opnds) {
   unsigned NegOpndNum = 0;
 
   // Adjust the number of instructions needed to emit the N-ary add.
-  for (AddendVect::const_iterator I = Opnds.begin(), E = Opnds.end();
-       I != E; I++) {
-    const FAddend *Opnd = *I;
+  for (const FAddend *Opnd : Opnds) {
     if (Opnd->isConstant())
       continue;
 
@@ -1052,15 +1032,15 @@ Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
 
   if (Value *V = SimplifyVectorOp(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (Value *V = SimplifyAddInst(LHS, RHS, I.hasNoSignedWrap(),
                                  I.hasNoUnsignedWrap(), DL, TLI, DT, AC))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
    // (A*B)+(A*C) -> A*(B+C) etc
   if (Value *V = SimplifyUsingDistributiveLaws(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (ConstantInt *CI = dyn_cast<ConstantInt>(RHS)) {
     // X + (signbit) --> X ^ signbit
@@ -1157,7 +1137,7 @@ Instruction *InstCombiner::visitAdd(BinaryOperator &I) {
       return BinaryOperator::CreateSub(LHS, V);
 
   if (Value *V = checkForNegativeOperand(I, Builder))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   // A+B --> A|B iff A and B have no bits set in common.
   if (haveNoCommonBitsSet(LHS, RHS, DL, AC, &I, DT))
@@ -1317,11 +1297,11 @@ Instruction *InstCombiner::visitFAdd(BinaryOperator &I) {
   Value *LHS = I.getOperand(0), *RHS = I.getOperand(1);
 
   if (Value *V = SimplifyVectorOp(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (Value *V =
           SimplifyFAddInst(LHS, RHS, I.getFastMathFlags(), DL, TLI, DT, AC))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (isa<Constant>(RHS)) {
     if (isa<PHINode>(LHS))
@@ -1415,7 +1395,7 @@ Instruction *InstCombiner::visitFAdd(BinaryOperator &I) {
 
   if (I.hasUnsafeAlgebra()) {
     if (Value *V = FAddCombine(Builder).simplify(&I))
-      return ReplaceInstUsesWith(I, V);
+      return replaceInstUsesWith(I, V);
   }
 
   return Changed ? &I : nullptr;
@@ -1493,15 +1473,15 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
 
   if (Value *V = SimplifyVectorOp(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (Value *V = SimplifySubInst(Op0, Op1, I.hasNoSignedWrap(),
                                  I.hasNoUnsignedWrap(), DL, TLI, DT, AC))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   // (A*B)-(A*C) -> A*(B-C) etc
   if (Value *V = SimplifyUsingDistributiveLaws(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   // If this is a 'B = x-(-A)', change to B = x+A.
   if (Value *V = dyn_castNegVal(Op1)) {
@@ -1667,13 +1647,13 @@ Instruction *InstCombiner::visitSub(BinaryOperator &I) {
   if (match(Op0, m_PtrToInt(m_Value(LHSOp))) &&
       match(Op1, m_PtrToInt(m_Value(RHSOp))))
     if (Value *Res = OptimizePointerDifference(LHSOp, RHSOp, I.getType()))
-      return ReplaceInstUsesWith(I, Res);
+      return replaceInstUsesWith(I, Res);
 
   // trunc(p)-trunc(q) -> trunc(p-q)
   if (match(Op0, m_Trunc(m_PtrToInt(m_Value(LHSOp)))) &&
       match(Op1, m_Trunc(m_PtrToInt(m_Value(RHSOp)))))
     if (Value *Res = OptimizePointerDifference(LHSOp, RHSOp, I.getType()))
-      return ReplaceInstUsesWith(I, Res);
+      return replaceInstUsesWith(I, Res);
 
   bool Changed = false;
   if (!I.hasNoSignedWrap() && WillNotOverflowSignedSub(Op0, Op1, I)) {
@@ -1692,11 +1672,11 @@ Instruction *InstCombiner::visitFSub(BinaryOperator &I) {
   Value *Op0 = I.getOperand(0), *Op1 = I.getOperand(1);
 
   if (Value *V = SimplifyVectorOp(I))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   if (Value *V =
           SimplifyFSubInst(Op0, Op1, I.getFastMathFlags(), DL, TLI, DT, AC))
-    return ReplaceInstUsesWith(I, V);
+    return replaceInstUsesWith(I, V);
 
   // fsub nsz 0, X ==> fsub nsz -0.0, X
   if (I.getFastMathFlags().noSignedZeros() && match(Op0, m_Zero())) {
@@ -1736,7 +1716,7 @@ Instruction *InstCombiner::visitFSub(BinaryOperator &I) {
 
   if (I.hasUnsafeAlgebra()) {
     if (Value *V = FAddCombine(Builder).simplify(&I))
-      return ReplaceInstUsesWith(I, V);
+      return replaceInstUsesWith(I, V);
   }
 
   return nullptr;

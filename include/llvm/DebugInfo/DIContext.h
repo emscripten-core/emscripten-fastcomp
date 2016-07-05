@@ -15,7 +15,6 @@
 #ifndef LLVM_DEBUGINFO_DICONTEXT_H
 #define LLVM_DEBUGINFO_DICONTEXT_H
 
-#include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Object/RelocVisitor.h"
@@ -140,7 +139,8 @@ public:
   DIContext(DIContextKind K) : Kind(K) {}
   virtual ~DIContext() {}
 
-  virtual void dump(raw_ostream &OS, DIDumpType DumpType = DIDT_All) = 0;
+  virtual void dump(raw_ostream &OS, DIDumpType DumpType = DIDT_All,
+                    bool DumpEH = false) = 0;
 
   virtual DILineInfo getLineInfoForAddress(uint64_t Address,
       DILineInfoSpecifier Specifier = DILineInfoSpecifier()) = 0;

@@ -74,14 +74,13 @@ public:
 
   unsigned InsertBranch(MachineBasicBlock &MBB, MachineBasicBlock *TBB,
                         MachineBasicBlock *FBB, ArrayRef<MachineOperand> Cond,
-                        DebugLoc DL) const override;
+                        const DebugLoc &DL) const override;
 
   bool
   ReverseBranchCondition(SmallVectorImpl<MachineOperand> &Cond) const override;
 
-  void copyPhysReg(MachineBasicBlock &MBB,
-                   MachineBasicBlock::iterator I, DebugLoc DL,
-                   unsigned DestReg, unsigned SrcReg,
+  void copyPhysReg(MachineBasicBlock &MBB, MachineBasicBlock::iterator I,
+                   const DebugLoc &DL, unsigned DestReg, unsigned SrcReg,
                    bool KillSrc) const override;
 
   void storeRegToStackSlot(MachineBasicBlock &MBB,
@@ -97,6 +96,9 @@ public:
                             const TargetRegisterInfo *TRI) const override;
 
   unsigned getGlobalBaseReg(MachineFunction *MF) const;
+
+  // Lower pseudo instructions after register allocation.
+  bool expandPostRAPseudo(MachineBasicBlock::iterator MI) const override;
 };
 
 }

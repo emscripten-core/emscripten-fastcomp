@@ -39,16 +39,16 @@ struct CFStack {
     FIRST_NON_WQM_PUSH_W_FULL_ENTRY = 3
   };
 
-  const AMDGPUSubtarget *ST;
+  const R600Subtarget *ST;
   std::vector<StackItem> BranchStack;
   std::vector<StackItem> LoopStack;
   unsigned MaxStackSize;
   unsigned CurrentEntries;
   unsigned CurrentSubEntries;
 
-  CFStack(const AMDGPUSubtarget *st, unsigned ShaderType) : ST(st),
+  CFStack(const R600Subtarget *st, CallingConv::ID cc) : ST(st),
       // We need to reserve a stack entry for CALL_FS in vertex shaders.
-      MaxStackSize(ShaderType == ShaderType::VERTEX ? 1 : 0),
+      MaxStackSize(cc == CallingConv::AMDGPU_VS ? 1 : 0),
       CurrentEntries(0), CurrentSubEntries(0) { }
 
   unsigned getLoopDepth();
@@ -119,7 +119,7 @@ unsigned CFStack::getSubEntrySize(CFStack::StackItem Item) {
     return 0;
   case CFStack::FIRST_NON_WQM_PUSH:
   assert(!ST->hasCaymanISA());
-  if (ST->getGeneration() <= AMDGPUSubtarget::R700) {
+  if (ST->getGeneration() <= R600Subtarget::R700) {
     // +1 For the push operation.
     // +2 Extra space required.
     return 3;
@@ -132,7 +132,7 @@ unsigned CFStack::getSubEntrySize(CFStack::StackItem Item) {
     return 2;
   }
   case CFStack::FIRST_NON_WQM_PUSH_W_FULL_ENTRY:
-    assert(ST->getGeneration() >= AMDGPUSubtarget::EVERGREEN);
+    assert(ST->getGeneration() >= R600Subtarget::EVERGREEN);
     // +1 For the push operation.
     // +1 Extra space required.
     return 2;
@@ -142,8 +142,8 @@ unsigned CFStack::getSubEntrySize(CFStack::StackItem Item) {
 }
 
 void CFStack::updateMaxStackSize() {
-  unsigned CurrentStackSize = CurrentEntries +
-                              (RoundUpToAlignment(CurrentSubEntries, 4) / 4);
+  unsigned CurrentStackSize =
+      CurrentEntries + (alignTo(CurrentSubEntries, 4) / 4);
   MaxStackSize = std::max(CurrentStackSize, MaxStackSize);
 }
 
@@ -159,7 +159,7 @@ void CFStack::pushBranch(unsigned Opcode, bool isWQM) {
                                              // See comment in
                                              // CFStack::getSubEntrySize()
       else if (CurrentEntries > 0 &&
-               ST->getGeneration() > AMDGPUSubtarget::EVERGREEN &&
+               ST->getGeneration() > R600Subtarget::EVERGREEN &&
                !ST->hasCaymanISA() &&
                !branchStackContains(CFStack::FIRST_NON_WQM_PUSH_W_FULL_ENTRY))
         Item = CFStack::FIRST_NON_WQM_PUSH_W_FULL_ENTRY;
@@ -220,7 +220,7 @@ private:
   const R600InstrInfo *TII;
   const R600RegisterInfo *TRI;
   unsigned MaxFetchInst;
-  const AMDGPUSubtarget *ST;
+  const R600Subtarget *ST;
 
   bool IsTrivialInst(MachineInstr *MI) const {
     switch (MI->getOpcode()) {
@@ -234,7 +234,7 @@ private:
 
   const MCInstrDesc &getHWInstrDesc(ControlFlowInstruction CFI) const {
     unsigned Opcode = 0;
-    bool isEg = (ST->getGeneration() >= AMDGPUSubtarget::EVERGREEN);
+    bool isEg = (ST->getGeneration() >= R600Subtarget::EVERGREEN);
     switch (CFI) {
     case CF_TC:
       Opcode = isEg ? AMDGPU::CF_TC_EG : AMDGPU::CF_TC_R600;
@@ -340,7 +340,7 @@ private:
     return ClauseFile(MIb, std::move(ClauseContent));
   }
 
-  void getLiteral(MachineInstr *MI, std::vector<int64_t> &Lits) const {
+  void getLiteral(MachineInstr *MI, std::vector<MachineOperand *> &Lits) const {
     static const unsigned LiteralRegs[] = {
       AMDGPU::ALU_LITERAL_X,
       AMDGPU::ALU_LITERAL_Y,
@@ -349,19 +349,28 @@ private:
     };
     const SmallVector<std::pair<MachineOperand *, int64_t>, 3 > Srcs =
         TII->getSrcs(MI);
-    for (unsigned i = 0, e = Srcs.size(); i < e; ++i) {
-      if (Srcs[i].first->getReg() != AMDGPU::ALU_LITERAL_X)
+    for (const auto &Src:Srcs) {
+      if (Src.first->getReg() != AMDGPU::ALU_LITERAL_X)
         continue;
-      int64_t Imm = Srcs[i].second;
-      std::vector<int64_t>::iterator It =
-          std::find(Lits.begin(), Lits.end(), Imm);
+      int64_t Imm = Src.second;
+      std::vector<MachineOperand*>::iterator It =
+          std::find_if(Lits.begin(), Lits.end(),
+                    [&](MachineOperand* val)
+                        { return val->isImm() && (val->getImm() == Imm);});
+
+      // Get corresponding Operand
+      MachineOperand &Operand = MI->getOperand(
+              TII->getOperandIdx(MI->getOpcode(), AMDGPU::OpName::literal));
+
       if (It != Lits.end()) {
+        // Reuse existing literal reg
         unsigned Index = It - Lits.begin();
-        Srcs[i].first->setReg(LiteralRegs[Index]);
+        Src.first->setReg(LiteralRegs[Index]);
       } else {
+        // Allocate new literal reg
         assert(Lits.size() < 4 && "Too many literals in Instruction Group");
-        Srcs[i].first->setReg(LiteralRegs[Lits.size()]);
-        Lits.push_back(Imm);
+        Src.first->setReg(LiteralRegs[Lits.size()]);
+        Lits.push_back(&Operand);
       }
     }
   }
@@ -394,14 +403,13 @@ private:
       }
       if (!I->isBundle() && !TII->isALUInstr(I->getOpcode()))
         break;
-      std::vector<int64_t> Literals;
+      std::vector<MachineOperand *>Literals;
       if (I->isBundle()) {
         MachineInstr *DeleteMI = I;
         MachineBasicBlock::instr_iterator BI = I.getInstrIterator();
         while (++BI != E && BI->isBundledWithPred()) {
           BI->unbundleFromPred();
-          for (unsigned i = 0, e = BI->getNumOperands(); i != e; ++i) {
-            MachineOperand &MO = BI->getOperand(i);
+          for (MachineOperand &MO : BI->operands()) {
             if (MO.isReg() && MO.isInternalRead())
               MO.setIsInternalRead(false);
           }
@@ -415,13 +423,24 @@ private:
         ClauseContent.push_back(I);
         I++;
       }
-      for (unsigned i = 0, e = Literals.size(); i < e; i+=2) {
-        unsigned literal0 = Literals[i];
-        unsigned literal2 = (i + 1 < e)?Literals[i + 1]:0;
-        MachineInstr *MILit = BuildMI(MBB, I, I->getDebugLoc(),
-            TII->get(AMDGPU::LITERALS))
-            .addImm(literal0)
-            .addImm(literal2);
+      for (unsigned i = 0, e = Literals.size(); i < e; i += 2) {
+        MachineInstrBuilder MILit = BuildMI(MBB, I, I->getDebugLoc(),
+            TII->get(AMDGPU::LITERALS));
+        if (Literals[i]->isImm()) {
+            MILit.addImm(Literals[i]->getImm());
+        } else {
+            MILit.addGlobalAddress(Literals[i]->getGlobal(),
+                                   Literals[i]->getOffset());
+        }
+        if (i + 1 < e) {
+          if (Literals[i + 1]->isImm()) {
+            MILit.addImm(Literals[i + 1]->getImm());
+          } else {
+            MILit.addGlobalAddress(Literals[i + 1]->getGlobal(),
+                                   Literals[i + 1]->getOffset());
+          }
+        } else
+          MILit.addImm(0);
         ClauseContent.push_back(MILit);
       }
     }
@@ -472,20 +491,21 @@ public:
       : MachineFunctionPass(ID), TII(nullptr), TRI(nullptr), ST(nullptr) {}
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    ST = &MF.getSubtarget<AMDGPUSubtarget>();
+    ST = &MF.getSubtarget<R600Subtarget>();
     MaxFetchInst = ST->getTexVTXClauseSize();
-    TII = static_cast<const R600InstrInfo *>(ST->getInstrInfo());
-    TRI = static_cast<const R600RegisterInfo *>(ST->getRegisterInfo());
+    TII = ST->getInstrInfo();
+    TRI = ST->getRegisterInfo();
+
     R600MachineFunctionInfo *MFI = MF.getInfo<R600MachineFunctionInfo>();
 
-    CFStack CFStack(ST, MFI->getShaderType());
+    CFStack CFStack(ST, MF.getFunction()->getCallingConv());
     for (MachineFunction::iterator MB = MF.begin(), ME = MF.end(); MB != ME;
         ++MB) {
       MachineBasicBlock &MBB = *MB;
       unsigned CfCount = 0;
       std::vector<std::pair<unsigned, std::set<MachineInstr *> > > LoopStack;
       std::vector<MachineInstr * > IfThenElseStack;
-      if (MFI->getShaderType() == ShaderType::VERTEX) {
+      if (MF.getFunction()->getCallingConv() == CallingConv::AMDGPU_VS) {
         BuildMI(MBB, MBB.begin(), MBB.findDebugLoc(MBB.begin()),
             getHWInstrDesc(CF_CALL_FS));
         CfCount++;
@@ -493,7 +513,7 @@ public:
       std::vector<ClauseFile> FetchClauses, AluClauses;
       std::vector<MachineInstr *> LastAlu(1);
       std::vector<MachineInstr *> ToPopAfter;
-      
+
       for (MachineBasicBlock::iterator I = MBB.begin(), E = MBB.end();
           I != E;) {
         if (TII->usesTextureCache(I) || TII->usesVertexCache(I)) {
@@ -595,7 +615,7 @@ public:
             DEBUG(dbgs() << CfCount << ":"; MIb->dump(););
             CfCount++;
           }
-          
+
           MachineInstr *IfOrElseInst = IfThenElseStack.back();
           IfThenElseStack.pop_back();
           CounterPropagateAddr(IfOrElseInst, CfCount);
@@ -625,15 +645,16 @@ public:
         case AMDGPU::RETURN: {
           BuildMI(MBB, MI, MBB.findDebugLoc(MI), getHWInstrDesc(CF_END));
           CfCount++;
-          MI->eraseFromParent();
           if (CfCount % 2) {
             BuildMI(MBB, I, MBB.findDebugLoc(MI), TII->get(AMDGPU::PAD));
             CfCount++;
           }
+          MI->eraseFromParent();
           for (unsigned i = 0, e = FetchClauses.size(); i < e; i++)
             EmitFetchClause(I, FetchClauses[i], CfCount);
           for (unsigned i = 0, e = AluClauses.size(); i < e; i++)
             EmitALUClause(I, AluClauses[i], CfCount);
+          break;
         }
         default:
           if (TII->isExport(MI->getOpcode())) {

@@ -67,32 +67,38 @@ way to model this. Again, this tutorial won't dwell on good software
 engineering practices: for our purposes, adding a virtual method is
 simplest.
 
-The second thing we want is an "Error" method like we used for the
+The second thing we want is an "LogError" method like we used for the
 parser, which will be used to report errors found during code generation
 (for example, use of an undeclared parameter):
 
 .. code-block:: c++
 
-    static std::unique_ptr<Module> *TheModule;
-    static IRBuilder<> Builder(getGlobalContext());
-    static std::map<std::string, Value*> NamedValues;
+    static LLVMContext TheContext;
+    static IRBuilder<> Builder(TheContext);
+    static std::unique_ptr<Module> TheModule;
+    static std::map<std::string, Value *> NamedValues;
 
-    Value *ErrorV(const char *Str) {
-      Error(Str);
+    Value *LogErrorV(const char *Str) {
+      LogError(Str);
       return nullptr;
     }
 
-The static variables will be used during code generation. ``TheModule``
-is an LLVM construct that contains functions and global variables. In many
-ways, it is the top-level structure that the LLVM IR uses to contain code.
-It will own the memory for all of the IR that we generate, which is why
-the codegen() method returns a raw Value\*, rather than a unique_ptr<Value>.
+The static variables will be used during code generation. ``TheContext``
+is an opaque object that owns a lot of core LLVM data structures, such as
+the type and constant value tables. We don't need to understand it in
+detail, we just need a single instance to pass into APIs that require it.
 
 The ``Builder`` object is a helper object that makes it easy to generate
 LLVM instructions. Instances of the
 `IRBuilder <http://llvm.org/doxygen/IRBuilder_8h-source.html>`_
 class template keep track of the current place to insert instructions
 and has methods to create new instructions.
+
+``TheModule`` is an LLVM construct that contains functions and global
+variables. In many ways, it is the top-level structure that the LLVM IR
+uses to contain code. It will own the memory for all of the IR that we
+generate, which is why the codegen() method returns a raw Value\*,
+rather than a unique_ptr<Value>.
 
 The ``NamedValues`` map keeps track of which values are defined in the
 current scope and what their LLVM representation is. (In other words, it
@@ -116,7 +122,7 @@ First we'll do numeric literals:
 .. code-block:: c++
 
     Value *NumberExprAST::codegen() {
-      return ConstantFP::get(getGlobalContext(), APFloat(Val));
+      return ConstantFP::get(LLVMContext, APFloat(Val));
     }
 
 In the LLVM IR, numeric constants are represented with the
@@ -133,7 +139,7 @@ are all uniqued together and shared. For this reason, the API uses the
       // Look this variable up in the function.
       Value *V = NamedValues[Name];
       if (!V)
-        ErrorV("Unknown variable name");
+        LogErrorV("Unknown variable name");
       return V;
     }
 
@@ -165,10 +171,10 @@ variables <LangImpl7.html#user-defined-local-variables>`_.
       case '<':
         L = Builder.CreateFCmpULT(L, R, "cmptmp");
         // Convert bool 0/1 to double 0.0 or 1.0
-        return Builder.CreateUIToFP(L, Type::getDoubleTy(getGlobalContext()),
+        return Builder.CreateUIToFP(L, Type::getDoubleTy(LLVMContext),
                                     "booltmp");
       default:
-        return ErrorV("invalid binary operator");
+        return LogErrorV("invalid binary operator");
       }
     }
 
@@ -214,11 +220,11 @@ would return 0.0 and -1.0, depending on the input value.
       // Look up the name in the global module table.
       Function *CalleeF = TheModule->getFunction(Callee);
       if (!CalleeF)
-        return ErrorV("Unknown function referenced");
+        return LogErrorV("Unknown function referenced");
 
       // If argument mismatch error.
       if (CalleeF->arg_size() != Args.size())
-        return ErrorV("Incorrect # arguments passed");
+        return LogErrorV("Incorrect # arguments passed");
 
       std::vector<Value *> ArgsV;
       for (unsigned i = 0, e = Args.size(); i != e; ++i) {
@@ -264,9 +270,9 @@ with:
     Function *PrototypeAST::codegen() {
       // Make the function type:  double(double,double) etc.
       std::vector<Type*> Doubles(Args.size(),
-                                 Type::getDoubleTy(getGlobalContext()));
+                                 Type::getDoubleTy(LLVMContext));
       FunctionType *FT =
-        FunctionType::get(Type::getDoubleTy(getGlobalContext()), Doubles, false);
+        FunctionType::get(Type::getDoubleTy(LLVMContext), Doubles, false);
 
       Function *F =
         Function::Create(FT, Function::ExternalLinkage, Name, TheModule);
@@ -328,7 +334,7 @@ codegen and attach a function body.
       return nullptr;
 
     if (!TheFunction->empty())
-      return (Function*)ErrorV("Function cannot be redefined.");
+      return (Function*)LogErrorV("Function cannot be redefined.");
 
 
 For function definitions, we start by searching TheModule's symbol table for an
@@ -340,7 +346,7 @@ assert that the function is empty (i.e. has no body yet) before we start.
 .. code-block:: c++
 
   // Create a new basic block to start insertion into.
-  BasicBlock *BB = BasicBlock::Create(getGlobalContext(), "entry", TheFunction);
+  BasicBlock *BB = BasicBlock::Create(LLVMContext, "entry", TheFunction);
   Builder.SetInsertPoint(BB);
 
   // Record the function arguments in the NamedValues map.

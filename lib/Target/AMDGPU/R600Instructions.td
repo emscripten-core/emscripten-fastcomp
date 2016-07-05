@@ -160,7 +160,8 @@ class R600_2OP <bits<11> inst, string opName, list<dag> pattern,
   let Inst{63-32} = Word1;
 }
 
-class R600_2OP_Helper <bits<11> inst, string opName, SDPatternOperator node,
+class R600_2OP_Helper <bits<11> inst, string opName,
+                       SDPatternOperator node = null_frag,
                        InstrItinClass itin = AnyALU> :
     R600_2OP <inst, opName,
               [(set R600_Reg32:$dst, (node R600_Reg32:$src0,
@@ -335,11 +336,11 @@ def load_param : LoadParamFrag<load>;
 def load_param_exti8 : LoadParamFrag<az_extloadi8>;
 def load_param_exti16 : LoadParamFrag<az_extloadi16>;
 
-def isR600 : Predicate<"Subtarget->getGeneration() <= AMDGPUSubtarget::R700">;
+def isR600 : Predicate<"Subtarget->getGeneration() <= R600Subtarget::R700">;
 
 def isR600toCayman
     : Predicate<
-          "Subtarget->getGeneration() <= AMDGPUSubtarget::NORTHERN_ISLANDS">;
+          "Subtarget->getGeneration() <= R600Subtarget::NORTHERN_ISLANDS">;
 
 //===----------------------------------------------------------------------===//
 // R600 SDNodes
@@ -678,7 +679,7 @@ let Predicates = [isR600toCayman] in {
 
 def ADD : R600_2OP_Helper <0x0, "ADD", fadd>;
 // Non-IEEE MUL: 0 * anything = 0
-def MUL : R600_2OP_Helper <0x1, "MUL NON-IEEE", int_AMDGPU_mul>;
+def MUL : R600_2OP_Helper <0x1, "MUL NON-IEEE">;
 def MUL_IEEE : R600_2OP_Helper <0x2, "MUL_IEEE", fmul>;
 // TODO: Do these actually match the regular fmin/fmax behavior?
 def MAX : R600_2OP_Helper <0x3, "MAX", AMDGPUfmax_legacy>;
@@ -733,6 +734,7 @@ def SETNE_DX10 : R600_2OP <
   [(set i32:$dst, (selectcc f32:$src0, f32:$src1, -1, 0, COND_UNE_NE))]
 >;
 
+// FIXME: Need combine for AMDGPUfract
 def FRACT : R600_1OP_Helper <0x10, "FRACT", AMDGPUfract>;
 def TRUNC : R600_1OP_Helper <0x11, "TRUNC", ftrunc>;
 def CEIL : R600_1OP_Helper <0x12, "CEIL", fceil>;
@@ -757,6 +759,13 @@ def : Pat <
   (imm:$val),
   (MOV_IMM_I32 imm:$val)
 >;
+
+def MOV_IMM_GLOBAL_ADDR : MOV_IMM<iPTR, i32imm>;
+def : Pat <
+  (AMDGPUconstdata_ptr tglobaladdr:$addr),
+  (MOV_IMM_GLOBAL_ADDR tglobaladdr:$addr)
+>;
+
 
 def MOV_IMM_F32 : MOV_IMM<f32, f32imm>;
 def : Pat <
@@ -1099,7 +1108,7 @@ class RECIP_UINT_Common <bits<11> inst> : R600_1OP_Helper <
 
 // Clamped to maximum.
 class RECIPSQRT_CLAMPED_Common <bits<11> inst> : R600_1OP_Helper <
-  inst, "RECIPSQRT_CLAMPED", AMDGPUrsq_clamped
+  inst, "RECIPSQRT_CLAMPED", AMDGPUrsq_clamp
 > {
   let Itinerary = TransALU;
 }
@@ -1135,23 +1144,12 @@ def FNEG_R600 : FNEG<R600_Reg32>;
 // FIXME: Should be predicated on unsafe fp math.
 multiclass DIV_Common <InstR600 recip_ieee> {
 def : Pat<
-  (int_AMDGPU_div f32:$src0, f32:$src1),
-  (MUL_IEEE $src0, (recip_ieee $src1))
->;
-
-def : Pat<
   (fdiv f32:$src0, f32:$src1),
   (MUL_IEEE $src0, (recip_ieee $src1))
 >;
 
 def : RcpPat<recip_ieee, f32>;
 }
-
-class TGSI_LIT_Z_Common <InstR600 mul_lit, InstR600 log_clamped, InstR600 exp_ieee>
-  : Pat <
-  (int_TGSI_lit_z f32:$src_x, f32:$src_y, f32:$src_w),
-  (exp_ieee (mul_lit (log_clamped (MAX $src_y, (f32 ZERO))), $src_w, $src_x))
->;
 
 //===----------------------------------------------------------------------===//
 // R600 / R700 Instructions
@@ -1191,7 +1189,6 @@ let Predicates = [isR600] in {
 
   defm DIV_r600 : DIV_Common<RECIP_IEEE_r600>;
   def : POW_Common <LOG_IEEE_r600, EXP_IEEE_r600, MUL>;
-  def TGSI_LIT_Z_r600 : TGSI_LIT_Z_Common<MUL_LIT_r600, LOG_CLAMPED_r600, EXP_IEEE_r600>;
 
   def : Pat<(fsqrt f32:$src), (MUL $src, (RECIPSQRT_CLAMPED_r600 $src))>;
   def : RsqPat<RECIPSQRT_IEEE_r600, f32>;
@@ -1542,8 +1539,9 @@ let isTerminator = 1, usesCustomInserter = 1, isBranch = 1, isBarrier = 1 in {
 //===---------------------------------------------------------------------===//
 let isTerminator = 1, isReturn = 1, hasCtrlDep = 1,
     usesCustomInserter = 1 in {
-  def RETURN          : ILFormat<(outs), (ins variable_ops),
-      "RETURN", [(IL_retflag)]>;
+  def RETURN : ILFormat<(outs), (ins variable_ops),
+    "RETURN", [(AMDGPUendpgm)]
+  >;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1728,12 +1726,6 @@ def : BitConvert <v4i32, v4f32, R600_Reg128>;
 def : DwordAddrPat  <i32, R600_Reg32>;
 
 } // End isR600toCayman Predicate
-
-let Predicates = [isR600] in {
-// Intrinsic patterns
-defm : Expand24IBitOps<MULLO_INT_r600, ADD_INT>;
-defm : Expand24UBitOps<MULLO_UINT_r600, ADD_INT>;
-} // End isR600
 
 def getLDSNoRetOp : InstrMapping {
   let FilterClass = "R600_LDS_1A1D";

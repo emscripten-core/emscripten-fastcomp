@@ -39,20 +39,24 @@ add_llvm_library(LLVMAnalysis
   Lint.cpp
   Loads.cpp
   LoopAccessAnalysis.cpp
+  LoopUnrollAnalyzer.cpp
   LoopInfo.cpp
   LoopPass.cpp
+  LoopPassManager.cpp
   MemDepPrinter.cpp
   MemDerefPrinter.cpp
   MemoryBuiltins.cpp
   MemoryDependenceAnalysis.cpp
   MemoryLocation.cpp
   ModuleDebugInfoPrinter.cpp
+  ModuleSummaryAnalysis.cpp
   ObjCARCAliasAnalysis.cpp
   ObjCARCAnalysisUtils.cpp
   ObjCARCInstKind.cpp
   OrderedBasicBlock.cpp
   PHITransAddr.cpp
   PostDominators.cpp
+  ProfileSummaryInfo.cpp
   PtrUseVisitor.cpp
   RegionInfo.cpp
   RegionPass.cpp
@@ -66,6 +70,7 @@ add_llvm_library(LLVMAnalysis
   TargetTransformInfo.cpp
   Trace.cpp
   TypeBasedAliasAnalysis.cpp
+  TypeMetadataUtils.cpp
   ScopedNoAliasAA.cpp
   ValueTracking.cpp
   VectorUtils.cpp
