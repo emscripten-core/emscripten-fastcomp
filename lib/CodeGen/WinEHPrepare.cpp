@@ -257,10 +257,14 @@ static void calculateCXXStateNumbers(WinEHFuncInfo &FuncInfo,
         if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI))
           if (InnerCatchSwitch->getUnwindDest() == CatchSwitch->getUnwindDest())
             calculateCXXStateNumbers(FuncInfo, UserI, CatchLow);
-        if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI))
-          if (getCleanupRetUnwindDest(InnerCleanupPad) ==
-              CatchSwitch->getUnwindDest())
+        if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI)) {
+          BasicBlock *UnwindDest = getCleanupRetUnwindDest(InnerCleanupPad);
+          // If a nested cleanup pad reports a null unwind destination and the
+          // enclosing catch pad doesn't it must be post-dominated by an
+          // unreachable instruction.
+          if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
             calculateCXXStateNumbers(FuncInfo, UserI, CatchLow);
+        }
       }
     }
     int CatchHigh = FuncInfo.getLastStateNumber();
@@ -360,10 +364,14 @@ static void calculateSEHStateNumbers(WinEHFuncInfo &FuncInfo,
       if (auto *InnerCatchSwitch = dyn_cast<CatchSwitchInst>(UserI))
         if (InnerCatchSwitch->getUnwindDest() == CatchSwitch->getUnwindDest())
           calculateSEHStateNumbers(FuncInfo, UserI, ParentState);
-      if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI))
-        if (getCleanupRetUnwindDest(InnerCleanupPad) ==
-            CatchSwitch->getUnwindDest())
+      if (auto *InnerCleanupPad = dyn_cast<CleanupPadInst>(UserI)) {
+        BasicBlock *UnwindDest = getCleanupRetUnwindDest(InnerCleanupPad);
+        // If a nested cleanup pad reports a null unwind destination and the
+        // enclosing catch pad doesn't it must be post-dominated by an
+        // unreachable instruction.
+        if (!UnwindDest || UnwindDest == CatchSwitch->getUnwindDest())
           calculateSEHStateNumbers(FuncInfo, UserI, ParentState);
+      }
     }
   } else {
     auto *CleanupPad = cast<CleanupPadInst>(FirstNonPHI);
@@ -787,7 +795,7 @@ void WinEHPrepare::cloneCommonBlocks(Function &F) {
       FixupCatchrets.clear();
       for (BasicBlock *Pred : predecessors(OldBlock))
         if (auto *CatchRet = dyn_cast<CatchReturnInst>(Pred->getTerminator()))
-          if (CatchRet->getParentPad() == FuncletToken)
+          if (CatchRet->getCatchSwitchParentPad() == FuncletToken)
             FixupCatchrets.push_back(CatchRet);
 
       for (CatchReturnInst *CatchRet : FixupCatchrets)
@@ -802,7 +810,7 @@ void WinEHPrepare::cloneCommonBlocks(Function &F) {
         bool EdgeTargetsFunclet;
         if (auto *CRI =
                 dyn_cast<CatchReturnInst>(IncomingBlock->getTerminator())) {
-          EdgeTargetsFunclet = (CRI->getParentPad() == FuncletToken);
+          EdgeTargetsFunclet = (CRI->getCatchSwitchParentPad() == FuncletToken);
         } else {
           ColorVector &IncomingColors = BlockColors[IncomingBlock];
           assert(!IncomingColors.empty() && "Block not colored!");

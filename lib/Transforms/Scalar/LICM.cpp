@@ -77,7 +77,8 @@ DisablePromotion("disable-licm-promotion", cl::Hidden,
 static bool inSubLoop(BasicBlock *BB, Loop *CurLoop, LoopInfo *LI);
 static bool isNotUsedInLoop(const Instruction &I, const Loop *CurLoop,
                             const LICMSafetyInfo *SafetyInfo);
-static bool hoist(Instruction &I, BasicBlock *Preheader);
+static bool hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
+                  const LICMSafetyInfo *SafetyInfo);
 static bool sink(Instruction &I, const LoopInfo *LI, const DominatorTree *DT,
                  const Loop *CurLoop, AliasSetTracker *CurAST,
                  const LICMSafetyInfo *SafetyInfo);
@@ -310,14 +311,12 @@ bool llvm::sinkRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
          DT != nullptr && CurLoop != nullptr && CurAST != nullptr && 
          SafetyInfo != nullptr && "Unexpected input to sinkRegion");
 
-  // Set changed as false.
-  bool Changed = false;
-  // Get basic block
   BasicBlock *BB = N->getBlock();
   // If this subregion is not in the top level loop at all, exit.
-  if (!CurLoop->contains(BB)) return Changed;
+  if (!CurLoop->contains(BB)) return false;
 
   // We are processing blocks in reverse dfo, so process children first.
+  bool Changed = false;
   const std::vector<DomTreeNode*> &Children = N->getChildren();
   for (DomTreeNode *Child : Children)
     Changed |= sinkRegion(Child, AA, LI, DT, TLI, CurLoop, CurAST, SafetyInfo);
@@ -366,14 +365,15 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
   assert(N != nullptr && AA != nullptr && LI != nullptr && 
          DT != nullptr && CurLoop != nullptr && CurAST != nullptr && 
          SafetyInfo != nullptr && "Unexpected input to hoistRegion");
-  // Set changed as false.
-  bool Changed = false;
-  // Get basic block
+
   BasicBlock *BB = N->getBlock();
+
   // If this subregion is not in the top level loop at all, exit.
-  if (!CurLoop->contains(BB)) return Changed;
+  if (!CurLoop->contains(BB)) return false;
+
   // Only need to process the contents of this block if it is not part of a
   // subloop (which would already have been processed).
+  bool Changed = false;
   if (!inSubLoop(BB, CurLoop, LI))
     for (BasicBlock::iterator II = BB->begin(), E = BB->end(); II != E; ) {
       Instruction &I = *II++;
@@ -398,7 +398,7 @@ bool llvm::hoistRegion(DomTreeNode *N, AliasAnalysis *AA, LoopInfo *LI,
           canSinkOrHoistInst(I, AA, DT, TLI, CurLoop, CurAST, SafetyInfo) &&
           isSafeToExecuteUnconditionally(I, DT, TLI, CurLoop, SafetyInfo,
                                  CurLoop->getLoopPreheader()->getTerminator()))
-        Changed |= hoist(I, CurLoop->getLoopPreheader());
+        Changed |= hoist(I, DT, CurLoop, SafetyInfo);
     }
 
   const std::vector<DomTreeNode*> &Children = N->getChildren();
@@ -717,15 +717,25 @@ static bool sink(Instruction &I, const LoopInfo *LI, const DominatorTree *DT,
 /// When an instruction is found to only use loop invariant operands that
 /// is safe to hoist, this instruction is called to do the dirty work.
 ///
-static bool hoist(Instruction &I, BasicBlock *Preheader) {
+static bool hoist(Instruction &I, const DominatorTree *DT, const Loop *CurLoop,
+                  const LICMSafetyInfo *SafetyInfo) {
+  auto *Preheader = CurLoop->getLoopPreheader();
   DEBUG(dbgs() << "LICM hoisting to " << Preheader->getName() << ": "
         << I << "\n");
+
+  // Metadata can be dependent on conditions we are hoisting above.
+  // Conservatively strip all metadata on the instruction unless we were
+  // guaranteed to execute I if we entered the loop, in which case the metadata
+  // is valid in the loop preheader.
+  if (I.hasMetadataOtherThanDebugLoc() &&
+      // The check on hasMetadataOtherThanDebugLoc is to prevent us from burning
+      // time in isGuaranteedToExecute if we don't actually have anything to
+      // drop.  It is a compile time optimization, not required for correctness.
+      !isGuaranteedToExecute(I, DT, CurLoop, SafetyInfo))
+    I.dropUnknownNonDebugMetadata();
+
   // Move the new node to the Preheader, before its terminator.
   I.moveBefore(Preheader->getTerminator());
-
-  // Metadata can be dependent on the condition we are hoisting above.
-  // Conservatively strip all metadata on the instruction.
-  I.dropUnknownNonDebugMetadata();
 
   if (isa<LoadInst>(I)) ++NumMovedLoads;
   else if (isa<CallInst>(I)) ++NumMovedCalls;
@@ -883,14 +893,13 @@ bool llvm::promoteLoopAccessesToScalars(AliasSet &AS,
          CurLoop != nullptr && CurAST != nullptr && 
          SafetyInfo != nullptr && 
          "Unexpected Input to promoteLoopAccessesToScalars");
-  // Initially set Changed status to false.
-  bool Changed = false;
+
   // We can promote this alias set if it has a store, if it is a "Must" alias
   // set, if the pointer is loop invariant, and if we are not eliminating any
   // volatile loads or stores.
   if (AS.isForwardingAliasSet() || !AS.isMod() || !AS.isMustAlias() ||
       AS.isVolatile() || !CurLoop->isLoopInvariant(AS.begin()->getValue()))
-    return Changed;
+    return false;
 
   assert(!AS.empty() &&
          "Must alias set should have at least one pointer element in it!");
@@ -925,6 +934,7 @@ bool llvm::promoteLoopAccessesToScalars(AliasSet &AS,
   // Check that all of the pointers in the alias set have the same type.  We
   // cannot (yet) promote a memory location that is loaded and stored in
   // different sizes.  While we are at it, collect alignment and AA info.
+  bool Changed = false;
   for (AliasSet::iterator ASI = AS.begin(), E = AS.end(); ASI != E; ++ASI) {
     Value *ASIV = ASI->getValue();
     PointerMustAliases.insert(ASIV);

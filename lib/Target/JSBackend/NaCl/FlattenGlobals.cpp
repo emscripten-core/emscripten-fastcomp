@@ -354,8 +354,8 @@ static void ExpandConstant(const DataLayout *DL, Constant *Val,
     ExpandConstant(DL, CE->getOperand(0), ResultGlobal, ResultOffset);
     if (CE->getOpcode() == Instruction::GetElementPtr) {
       SmallVector<Value *, 8> Indexes(CE->op_begin() + 1, CE->op_end());
-      *ResultOffset += DL->getIndexedOffset(CE->getOperand(0)->getType(),
-                                            Indexes);
+      *ResultOffset += DL->getIndexedOffsetInType(CE->getOperand(0)->getType(),
+                                                  Indexes);
     } else if (CE->getOpcode() == Instruction::BitCast ||
                CE->getOpcode() == Instruction::IntToPtr) {
       // Nothing more to do.

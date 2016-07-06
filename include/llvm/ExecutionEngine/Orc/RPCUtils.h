@@ -15,6 +15,7 @@
 #define LLVM_EXECUTIONENGINE_ORC_RPCUTILS_H
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ExecutionEngine/Orc/OrcError.h"
 
 namespace llvm {
 namespace orc {
@@ -63,6 +64,10 @@ protected:
     static std::error_code readAndHandle(ChannelT &C, HandlerT Handler,
                                          llvm::index_sequence<Is...> _) {
       std::tuple<ArgTs...> RPCArgs;
+      // GCC 4.7 and 4.8 incorrectly issue a -Wunused-but-set-variable warning
+      // for RPCArgs. Void cast RPCArgs to work around this for now.
+      // FIXME: Remove this workaround once we can assume a working GCC version.
+      (void)RPCArgs;
       if (auto EC = deserialize_seq(C, std::get<Is>(RPCArgs)...))
         return EC;
       return Handler(std::get<Is>(RPCArgs)...);

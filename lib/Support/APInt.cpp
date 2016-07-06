@@ -490,21 +490,8 @@ APInt APInt::operator-(const APInt& RHS) const {
 }
 
 bool APInt::EqualSlowCase(const APInt& RHS) const {
-  // Get some facts about the number of bits used in the two operands.
-  unsigned n1 = getActiveBits();
-  unsigned n2 = RHS.getActiveBits();
-
-  // If the number of bits isn't the same, they aren't equal
-  if (n1 != n2)
-    return false;
-
-  // If the number of bits fits in a word, we only need to compare the low word.
-  if (n1 <= APINT_BITS_PER_WORD)
-    return pVal[0] == RHS.pVal[0];
-
-  // Otherwise, compare everything
-  for (int i = whichWord(n1 - 1); i >= 0; --i)
-    if (pVal[i] != RHS.pVal[i])
+  for (unsigned I = 0, NumWords = getNumWords(); I < NumWords; ++I)
+    if (pVal[I] != RHS.pVal[I])
       return false;
   return true;
 }
@@ -2268,7 +2255,7 @@ std::string APInt::toString(unsigned Radix = 10, bool Signed = true) const {
 }
 
 
-void APInt::dump() const {
+LLVM_DUMP_METHOD void APInt::dump() const {
   SmallString<40> S, U;
   this->toStringUnsigned(U);
   this->toStringSigned(S);

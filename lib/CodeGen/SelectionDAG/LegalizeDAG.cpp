@@ -922,8 +922,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
       break;
     }
     case TargetLowering::Custom: {
-      SDValue Res = TLI.LowerOperation(RVal, DAG);
-      if (Res.getNode()) {
+      if (SDValue Res = TLI.LowerOperation(RVal, DAG)) {
         RVal = Res;
         RChain = Res.getValue(1);
       }
@@ -1099,8 +1098,7 @@ void SelectionDAGLegalize::LegalizeLoadOps(SDNode *Node) {
       Chain = SDValue(Node, 1);
 
       if (isCustom) {
-        SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG);
-        if (Res.getNode()) {
+        if (SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG)) {
           Value = Res;
           Chain = Res.getValue(1);
         }
@@ -1399,8 +1397,7 @@ void SelectionDAGLegalize::LegalizeOp(SDNode *Node) {
     case TargetLowering::Custom: {
       // FIXME: The handling for custom lowering with multiple results is
       // a complete mess.
-      SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG);
-      if (Res.getNode()) {
+      if (SDValue Res = TLI.LowerOperation(SDValue(Node, 0), DAG)) {
         if (!(Res.getNode() != Node || Res.getResNo() != 0))
           return;
 
@@ -3416,7 +3413,7 @@ bool SelectionDAGLegalize::ExpandNode(SDNode *Node) {
         SDValue FloatVal = DAG.getNode(ISD::FP_ROUND, dl, MVT::f32, Op,
                                        DAG.getIntPtrConstant(0, dl));
         Results.push_back(
-            DAG.getNode(ISD::FP_TO_FP16, dl, MVT::i16, FloatVal));
+            DAG.getNode(ISD::FP_TO_FP16, dl, Node->getValueType(0), FloatVal));
       }
     }
     break;

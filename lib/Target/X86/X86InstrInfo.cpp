@@ -998,6 +998,7 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
     { X86::MINSDrr_Int,     X86::MINSDrm_Int,   0 },
     { X86::MINSSrr,         X86::MINSSrm,       0 },
     { X86::MINSSrr_Int,     X86::MINSSrm_Int,   0 },
+    { X86::MOVLHPSrr,       X86::MOVHPSrm,      TB_NO_REVERSE },
     { X86::MPSADBWrri,      X86::MPSADBWrmi,    TB_ALIGN_16 },
     { X86::MULPDrr,         X86::MULPDrm,       TB_ALIGN_16 },
     { X86::MULPSrr,         X86::MULPSrm,       TB_ALIGN_16 },
@@ -1298,6 +1299,7 @@ X86InstrInfo::X86InstrInfo(X86Subtarget &STI)
     { X86::VMINSDrr_Int,      X86::VMINSDrm_Int,       0 },
     { X86::VMINSSrr,          X86::VMINSSrm,           0 },
     { X86::VMINSSrr_Int,      X86::VMINSSrm_Int,       0 },
+    { X86::VMOVLHPSrr,        X86::VMOVHPSrm,          TB_NO_REVERSE },
     { X86::VMPSADBWrri,       X86::VMPSADBWrmi,        0 },
     { X86::VMULPDrr,          X86::VMULPDrm,           0 },
     { X86::VMULPSrr,          X86::VMULPSrm,           0 },
@@ -3275,6 +3277,20 @@ MachineInstr *X86InstrInfo::commuteInstructionImpl(MachineInstr *MI,
     MI->getOperand(3).setImm(Imm);
     return TargetInstrInfo::commuteInstructionImpl(MI, NewMI, OpIdx1, OpIdx2);
   }
+  case X86::VPERM2F128rr:
+  case X86::VPERM2I128rr: {
+    // Flip permute source immediate.
+    // Imm & 0x02: lo = if set, select Op1.lo/hi else Op0.lo/hi.
+    // Imm & 0x20: hi = if set, select Op1.lo/hi else Op0.lo/hi.
+    unsigned Imm = MI->getOperand(3).getImm() & 0xFF;
+    if (NewMI) {
+      MachineFunction &MF = *MI->getParent()->getParent();
+      MI = MF.CloneMachineInstr(MI);
+      NewMI = false;
+    }
+    MI->getOperand(3).setImm(Imm ^ 0x22);
+    return TargetInstrInfo::commuteInstructionImpl(MI, NewMI, OpIdx1, OpIdx2);
+  }
   case X86::CMOVB16rr:  case X86::CMOVB32rr:  case X86::CMOVB64rr:
   case X86::CMOVAE16rr: case X86::CMOVAE32rr: case X86::CMOVAE64rr:
   case X86::CMOVE16rr:  case X86::CMOVE32rr:  case X86::CMOVE64rr:
@@ -4590,7 +4606,11 @@ bool X86InstrInfo::getMemOpBaseRegImmOfs(MachineInstr *MemOp, unsigned &BaseReg,
 
   MemRefBegin += X86II::getOperandBias(Desc);
 
-  BaseReg = MemOp->getOperand(MemRefBegin + X86::AddrBaseReg).getReg();
+  MachineOperand &BaseMO = MemOp->getOperand(MemRefBegin + X86::AddrBaseReg);
+  if (!BaseMO.isReg()) // Can be an MO_FrameIndex
+    return false;
+
+  BaseReg = BaseMO.getReg();
   if (MemOp->getOperand(MemRefBegin + X86::AddrScaleAmt).getImm() != 1)
     return false;
 
@@ -5513,6 +5533,23 @@ MachineInstr *X86InstrInfo::foldMemoryOperandCustom(
       }
     }
     break;
+  case X86::MOVHLPSrr:
+  case X86::VMOVHLPSrr:
+    // Move the upper 64-bits of the second operand to the lower 64-bits.
+    // To fold the load, adjust the pointer to the upper and use (V)MOVLPS.
+    // TODO: In most cases AVX doesn't have a 8-byte alignment requirement.
+    if (OpNum == 2) {
+      unsigned RCSize = getRegClass(MI->getDesc(), OpNum, &RI, MF)->getSize();
+      if (Size <= RCSize && 8 <= Align) {
+        unsigned NewOpCode =
+            (MI->getOpcode() == X86::VMOVHLPSrr ? X86::VMOVLPSrm
+                                                : X86::MOVLPSrm);
+        MachineInstr *NewMI =
+            FuseInst(MF, NewOpCode, OpNum, MOs, InsertPt, MI, *this, 8);
+        return NewMI;
+      }
+    }
+    break;
   };
 
   return nullptr;
@@ -5723,6 +5760,10 @@ static bool hasPartialRegUpdate(unsigned Opcode) {
   case X86::CVTSS2SDrm:
   case X86::Int_CVTSS2SDrr:
   case X86::Int_CVTSS2SDrm:
+  case X86::MOVHPDrm:
+  case X86::MOVHPSrm:
+  case X86::MOVLPDrm:
+  case X86::MOVLPSrm:
   case X86::RCPSSr:
   case X86::RCPSSm:
   case X86::RCPSSr_Int:

@@ -188,8 +188,6 @@ void ReplaceableMetadataImpl::moveRef(void *Ref, void *New,
 }
 
 void ReplaceableMetadataImpl::replaceAllUsesWith(Metadata *MD) {
-  assert(!(MD && isa<MDNode>(MD) && cast<MDNode>(MD)->isTemporary()) &&
-         "Expected non-temp node");
   assert(CanReplace &&
          "Attempted to replace Metadata marked for no replacement");
 
@@ -433,7 +431,7 @@ void *MDNode::operator new(size_t Size, unsigned NumOps) {
   size_t OpSize = NumOps * sizeof(MDOperand);
   // uint64_t is the most aligned type we need support (ensured by static_assert
   // above)
-  OpSize = RoundUpToAlignment(OpSize, llvm::alignOf<uint64_t>());
+  OpSize = alignTo(OpSize, llvm::alignOf<uint64_t>());
   void *Ptr = reinterpret_cast<char *>(::operator new(OpSize + Size)) + OpSize;
   MDOperand *O = static_cast<MDOperand *>(Ptr);
   for (MDOperand *E = O - NumOps; O != E; --O)
@@ -444,7 +442,7 @@ void *MDNode::operator new(size_t Size, unsigned NumOps) {
 void MDNode::operator delete(void *Mem) {
   MDNode *N = static_cast<MDNode *>(Mem);
   size_t OpSize = N->NumOperands * sizeof(MDOperand);
-  OpSize = RoundUpToAlignment(OpSize, llvm::alignOf<uint64_t>());
+  OpSize = alignTo(OpSize, llvm::alignOf<uint64_t>());
 
   MDOperand *O = static_cast<MDOperand *>(Mem);
   for (MDOperand *E = O - N->NumOperands; O != E; --O)

@@ -280,11 +280,7 @@ public:
   // when using them since you might not get all uses.
   // The methods that don't start with materialized_ assert that modules is
   // fully materialized.
-#ifdef NDEBUG
-  void assertModuleIsMaterialized() const {}
-#else
   void assertModuleIsMaterialized() const;
-#endif
 
   bool use_empty() const {
     assertModuleIsMaterialized();
@@ -351,13 +347,19 @@ public:
     assertModuleIsMaterialized();
     return *materialized_user_begin();
   }
+  iterator_range<user_iterator> materialized_users() {
+    return make_range(materialized_user_begin(), user_end());
+  }
+  iterator_range<const_user_iterator> materialized_users() const {
+    return make_range(materialized_user_begin(), user_end());
+  }
   iterator_range<user_iterator> users() {
     assertModuleIsMaterialized();
-    return make_range(materialized_user_begin(), user_end());
+    return materialized_users();
   }
   iterator_range<const_user_iterator> users() const {
     assertModuleIsMaterialized();
-    return make_range(materialized_user_begin(), user_end());
+    return materialized_users();
   }
 
   /// \brief Return true if there is exactly one user of this value.
@@ -594,6 +596,16 @@ void Use::set(Value *V) {
   if (Val) removeFromList();
   Val = V;
   if (V) V->addUse(*this);
+}
+
+Value *Use::operator=(Value *RHS) {
+  set(RHS);
+  return RHS;
+}
+
+const Use &Use::operator=(const Use &RHS) {
+  set(RHS.Val);
+  return *this;
 }
 
 template <class Compare> void Value::sortUseList(Compare Cmp) {

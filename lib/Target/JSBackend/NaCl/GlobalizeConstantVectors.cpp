@@ -44,7 +44,7 @@ public:
   virtual bool runOnModule(Module &M);
 
 private:
-  typedef SmallPtrSet<Constant *, 64> Constants;
+  typedef SmallPtrSet<Constant *, 32> Constants;
   typedef std::pair<Function *, Constants> FunctionConstants;
   typedef std::vector<FunctionConstants> FunctionConstantList;
   typedef DenseMap<Constant *, GlobalVariable *> GlobalizedConstants;
@@ -117,7 +117,7 @@ void GlobalizeConstantVectors::materializeConstantVectors(
                                             GV->getAlignment(), FirstInst);
 
     // Find users of the constant vector.
-    typedef SmallVector<User *, 64> UserList;
+    typedef SmallVector<User *, 32> UserList;
     UserList CVUsers;
     for (auto U : C->users()) {
       if (Instruction *I = dyn_cast<Instruction>(U))

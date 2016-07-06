@@ -2512,6 +2512,14 @@ public:
     return block_begin() + getNumOperands();
   }
 
+  iterator_range<block_iterator> blocks() {
+    return make_range(block_begin(), block_end());
+  }
+
+  iterator_range<const_block_iterator> blocks() const {
+    return make_range(block_begin(), block_end());
+  }
+
   op_range incoming_values() { return operands(); }
 
   const_op_range incoming_values() const { return operands(); }
@@ -4152,7 +4160,9 @@ public:
   }
   unsigned getNumSuccessors() const { return 1; }
 
-  Value *getParentPad() const {
+  /// Get the parentPad of this catchret's catchpad's catchswitch.
+  /// The successor block is implicitly a member of this funclet.
+  Value *getCatchSwitchParentPad() const {
     return getCatchPad()->getCatchSwitch()->getParentPad();
   }
 

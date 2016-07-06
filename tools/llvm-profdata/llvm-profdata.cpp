@@ -17,6 +17,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/ProfileData/InstrProfReader.h"
 #include "llvm/ProfileData/InstrProfWriter.h"
+#include "llvm/ProfileData/ProfileCommon.h"
 #include "llvm/ProfileData/SampleProfReader.h"
 #include "llvm/ProfileData/SampleProfWriter.h"
 #include "llvm/Support/CommandLine.h"
@@ -35,105 +36,6 @@
 using namespace llvm;
 
 enum ProfileFormat { PF_None = 0, PF_Text, PF_Binary, PF_GCC };
-
-///// Profile summary computation ////
-// The 'show' command displays richer summary of the profile data. The profile
-// summary is one or more (Cutoff, MinBlockCount, NumBlocks) triplets. Given a
-// target execution count percentile, we compute the minimum number of blocks
-// needed to reach this target and the minimum execution count of these blocks.
-struct ProfileSummaryEntry {
-  uint32_t Cutoff;        //< The required percentile of total execution count.
-  uint64_t MinBlockCount; //< The minimum execution count for this percentile.
-  uint64_t NumBlocks;     //< Number of blocks >= the minumum execution count.
-};
-
-class ProfileSummary {
-  // We keep track of the number of times a count appears in the profile and
-  // keep the map sorted in the descending order of counts.
-  std::map<uint64_t, uint32_t, std::greater<uint64_t>> CountFrequencies;
-  std::vector<ProfileSummaryEntry> DetailedSummary;
-  std::vector<uint32_t> DetailedSummaryCutoffs;
-  // Sum of all counts.
-  uint64_t TotalCount;
-  uint64_t MaxBlockCount, MaxFunctionCount;
-  uint32_t NumBlocks, NumFunctions;
-  void addCount(uint64_t Count);
-  void computeDetailedSummary();
-
-public:
-  static const int Scale = 1000000;
-  ProfileSummary(std::vector<uint32_t> Cutoffs)
-      : DetailedSummaryCutoffs(Cutoffs), TotalCount(0), MaxBlockCount(0),
-        MaxFunctionCount(0), NumBlocks(0), NumFunctions(0) {}
-  void addRecord(const InstrProfRecord &);
-  std::vector<ProfileSummaryEntry> &getDetailedSummary();
-  uint32_t getNumBlocks() { return NumBlocks; }
-  uint64_t getTotalCount() { return TotalCount; }
-  uint32_t getNumFunctions() { return NumFunctions; }
-  uint64_t getMaxFunctionCount() { return MaxFunctionCount; }
-  uint64_t getMaxBlockCount() { return MaxBlockCount; }
-};
-
-// This is called when a count is seen in the profile.
-void ProfileSummary::addCount(uint64_t Count) {
-  TotalCount += Count;
-  if (Count > MaxBlockCount)
-    MaxBlockCount = Count;
-  NumBlocks++;
-  CountFrequencies[Count]++;
-}
-
-void ProfileSummary::addRecord(const InstrProfRecord &R) {
-  NumFunctions++;
-  if (R.Counts[0] > MaxFunctionCount)
-    MaxFunctionCount = R.Counts[0];
-
-  for (size_t I = 1, E = R.Counts.size(); I < E; ++I)
-    addCount(R.Counts[I]);
-}
-
-// The argument to this method is a vector of cutoff percentages and the return
-// value is a vector of (Cutoff, MinBlockCount, NumBlocks) triplets.
-void ProfileSummary::computeDetailedSummary() {
-  if (DetailedSummaryCutoffs.empty())
-    return;
-  auto Iter = CountFrequencies.begin();
-  auto End = CountFrequencies.end();
-  std::sort(DetailedSummaryCutoffs.begin(), DetailedSummaryCutoffs.end());
-
-  uint32_t BlocksSeen = 0;
-  uint64_t CurrSum = 0, Count;
-
-  for (uint32_t Cutoff : DetailedSummaryCutoffs) {
-    assert(Cutoff <= 999999);
-    APInt Temp(128, TotalCount);
-    APInt N(128, Cutoff);
-    APInt D(128, ProfileSummary::Scale);
-    Temp *= N;
-    Temp = Temp.sdiv(D);
-    uint64_t DesiredCount = Temp.getZExtValue();
-    dbgs() << "Cutoff = " << Cutoff << "\n";
-    dbgs() << "DesiredCount = " << DesiredCount << "\n";
-    assert(DesiredCount <= TotalCount);
-    while (CurrSum < DesiredCount && Iter != End) {
-      Count = Iter->first;
-      uint32_t Freq = Iter->second;
-      CurrSum += (Count * Freq);
-      BlocksSeen += Freq;
-      Iter++;
-    }
-    assert(CurrSum >= DesiredCount);
-    ProfileSummaryEntry PSE = {Cutoff, Count, BlocksSeen};
-    DetailedSummary.push_back(PSE);
-  }
-  return;
-}
-
-std::vector<ProfileSummaryEntry> &ProfileSummary::getDetailedSummary() {
-  if (!DetailedSummaryCutoffs.empty() && DetailedSummary.empty())
-    computeDetailedSummary();
-  return DetailedSummary;
-}
 
 static void exitWithError(const Twine &Message, StringRef Whence = "",
                           StringRef Hint = "") {
@@ -206,7 +108,7 @@ typedef SmallVector<WeightedFile, 5> WeightedFileVector;
 
 static void mergeInstrProfile(const WeightedFileVector &Inputs,
                               StringRef OutputFilename,
-                              ProfileFormat OutputFormat) {
+                              ProfileFormat OutputFormat, bool OutputSparse) {
   if (OutputFilename.compare("-") == 0)
     exitWithError("Cannot write indexed profdata format to stdout.");
 
@@ -218,7 +120,7 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
   if (EC)
     exitWithErrorCode(EC, OutputFilename);
 
-  InstrProfWriter Writer;
+  InstrProfWriter Writer(OutputSparse);
   SmallSet<std::error_code, 4> WriterErrorCodes;
   for (const auto &Input : Inputs) {
     auto ReaderOrErr = InstrProfReader::create(Input.Filename);
@@ -226,6 +128,10 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
       exitWithErrorCode(ec, Input.Filename);
 
     auto Reader = std::move(ReaderOrErr.get());
+    bool IsIRProfile = Reader->isIRLevelProfile();
+    if (Writer.setIsIRLevelProfile(IsIRProfile))
+      exitWithError("Merge IR generated profile with Clang generated profile.");
+
     for (auto &I : *Reader) {
       if (std::error_code EC = Writer.addRecord(std::move(I), Input.Weight)) {
         // Only show hint the first time an error occurs.
@@ -327,6 +233,9 @@ static int merge_main(int argc, const char *argv[]) {
                             "GCC encoding (only meaningful for -sample)"),
                  clEnumValEnd));
 
+  cl::opt<bool> OutputSparse("sparse", cl::init(false),
+      cl::desc("Generate a sparse profile (only meaningful for -instr)"));
+
   cl::ParseCommandLineOptions(argc, argv, "LLVM profile data merger\n");
 
   if (InputFilenames.empty() && WeightedInputFilenames.empty())
@@ -340,7 +249,8 @@ static int merge_main(int argc, const char *argv[]) {
     WeightedInputs.push_back(parseWeightedFile(WeightedFilename));
 
   if (ProfileKind == instr)
-    mergeInstrProfile(WeightedInputs, OutputFilename, OutputFormat);
+    mergeInstrProfile(WeightedInputs, OutputFilename, OutputFormat,
+                      OutputSparse);
   else
     mergeSampleProfile(WeightedInputs, OutputFilename, OutputFormat);
 
@@ -363,6 +273,7 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
     exitWithErrorCode(EC, Filename);
 
   auto Reader = std::move(ReaderOrErr.get());
+  bool IsIRInstr = Reader->isIRLevelProfile();
   size_t ShownFunctions = 0;
   for (const auto &Func : *Reader) {
     bool Show =
@@ -389,8 +300,9 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
 
       OS << "  " << Func.Name << ":\n"
          << "    Hash: " << format("0x%016" PRIx64, Func.Hash) << "\n"
-         << "    Counters: " << Func.Counts.size() << "\n"
-         << "    Function count: " << Func.Counts[0] << "\n";
+         << "    Counters: " << Func.Counts.size() << "\n";
+      if (!IsIRInstr)
+        OS << "    Function count: " << Func.Counts[0] << "\n";
 
       if (ShowIndirectCallTargets)
         OS << "    Indirect Call Site Count: "
@@ -398,8 +310,9 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
 
       if (ShowCounts) {
         OS << "    Block counts: [";
-        for (size_t I = 1, E = Func.Counts.size(); I < E; ++I) {
-          OS << (I == 1 ? "" : ", ") << Func.Counts[I];
+        size_t Start = (IsIRInstr ? 0 : 1);
+        for (size_t I = Start, E = Func.Counts.size(); I < E; ++I) {
+          OS << (I == Start ? "" : ", ") << Func.Counts[I];
         }
         OS << "]\n";
       }
@@ -432,7 +345,7 @@ static int showInstrProfile(std::string Filename, bool ShowCounts,
     OS << "Functions shown: " << ShownFunctions << "\n";
   OS << "Total functions: " << PS.getNumFunctions() << "\n";
   OS << "Maximum function count: " << PS.getMaxFunctionCount() << "\n";
-  OS << "Maximum internal block count: " << PS.getMaxBlockCount() << "\n";
+  OS << "Maximum internal block count: " << PS.getMaxInternalBlockCount() << "\n";
 
   if (ShowDetailedSummary) {
     OS << "Detailed summary:\n";

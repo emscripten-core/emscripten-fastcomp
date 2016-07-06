@@ -93,7 +93,7 @@ private:
 
   friend class Constant;
   void destroyConstantImpl();
-  Value *handleOperandChangeImpl(Value *From, Value *To, Use *U);
+  Value *handleOperandChangeImpl(Value *From, Value *To);
 
 protected:
   /// \brief The intrinsic ID for this subclass (which must be a Function).
@@ -345,6 +345,10 @@ public:
   bool isStrongDefinitionForLinker() const {
     return !(isDeclarationForLinker() || isWeakForLinker());
   }
+
+  // Returns true if the alignment of the value can be unilaterally
+  // increased.
+  bool canIncreaseAlignment() const;
 
   /// This method unlinks 'this' from the containing module, but does not delete
   /// it.

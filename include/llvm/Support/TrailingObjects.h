@@ -197,7 +197,7 @@ struct TrailingObjectsImpl<Align, BaseTy, TopTrailingObj, PrevTy, NextTy,
       typename ExtractSecondType<MoreTys, size_t>::type... MoreCounts) {
     return additionalSizeToAllocImpl(
         (requiresRealignment()
-             ? llvm::RoundUpToAlignment(SizeSoFar, llvm::alignOf<NextTy>())
+             ? llvm::alignTo(SizeSoFar, llvm::alignOf<NextTy>())
              : SizeSoFar) +
             sizeof(NextTy) * Count1,
         MoreCounts...);
@@ -290,7 +290,7 @@ class TrailingObjects : private trailing_objects_internal::TrailingObjectsImpl<
   }
 
 public:
-  // make this (privately inherited) class public.
+  // Make this (privately inherited) member public.
   using ParentType::OverloadToken;
 
   /// Returns a pointer to the trailing object array of the given type
