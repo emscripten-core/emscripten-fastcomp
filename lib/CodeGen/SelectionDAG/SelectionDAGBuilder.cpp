@@ -42,6 +42,7 @@
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Instructions.h"
@@ -1206,7 +1207,7 @@ void SelectionDAGBuilder::visitCatchRet(const CatchReturnInst &I) {
   // This will be used by the FuncletLayout pass to determine how to order the
   // BB's.
   // A 'catchret' returns to the outer scope's color.
-  Value *ParentPad = I.getParentPad();
+  Value *ParentPad = I.getCatchSwitchParentPad();
   const BasicBlock *SuccessorColor;
   if (isa<ConstantTokenNone>(ParentPad))
     SuccessorColor = &FuncInfo.Fn->getEntryBlock();
@@ -2982,8 +2983,7 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
   Value *Op0 = I.getOperand(0);
   // Note that the pointer operand may be a vector of pointers. Take the scalar
   // element which holds a pointer.
-  Type *Ty = Op0->getType()->getScalarType();
-  unsigned AS = Ty->getPointerAddressSpace();
+  unsigned AS = Op0->getType()->getScalarType()->getPointerAddressSpace();
   SDValue N = getValue(Op0);
   SDLoc dl = getCurSDLoc();
 
@@ -2997,10 +2997,10 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
     SmallVector<SDValue, 16> Ops(VectorWidth, N);
     N = DAG.getNode(ISD::BUILD_VECTOR, dl, VT, Ops);
   }
-  for (GetElementPtrInst::const_op_iterator OI = I.op_begin()+1, E = I.op_end();
-       OI != E; ++OI) {
-    const Value *Idx = *OI;
-    if (StructType *StTy = dyn_cast<StructType>(Ty)) {
+  for (gep_type_iterator GTI = gep_type_begin(&I), E = gep_type_end(&I);
+       GTI != E; ++GTI) {
+    const Value *Idx = GTI.getOperand();
+    if (StructType *StTy = dyn_cast<StructType>(*GTI)) {
       unsigned Field = cast<Constant>(Idx)->getUniqueInteger().getZExtValue();
       if (Field) {
         // N = N + Offset
@@ -3015,14 +3015,11 @@ void SelectionDAGBuilder::visitGetElementPtr(const User &I) {
         N = DAG.getNode(ISD::ADD, dl, N.getValueType(), N,
                         DAG.getConstant(Offset, dl, N.getValueType()), &Flags);
       }
-
-      Ty = StTy->getElementType(Field);
     } else {
-      Ty = cast<SequentialType>(Ty)->getElementType();
       MVT PtrTy =
           DAG.getTargetLoweringInfo().getPointerTy(DAG.getDataLayout(), AS);
       unsigned PtrSize = PtrTy.getSizeInBits();
-      APInt ElementSize(PtrSize, DL->getTypeAllocSize(Ty));
+      APInt ElementSize(PtrSize, DL->getTypeAllocSize(GTI.getIndexedType()));
 
       // If this is a scalar constant or a splat vector of constants,
       // handle it quickly.
@@ -5060,15 +5057,20 @@ SelectionDAGBuilder::visitIntrinsicCall(const CallInst &I, unsigned Intrinsic) {
                              getValue(I.getArgOperand(0))));
     return nullptr;
   }
-  case Intrinsic::gcroot:
-    if (GFI) {
-      const Value *Alloca = I.getArgOperand(0)->stripPointerCasts();
-      const Constant *TypeMap = cast<Constant>(I.getArgOperand(1));
+  case Intrinsic::gcroot: {
+    MachineFunction &MF = DAG.getMachineFunction();
+    const Function *F = MF.getFunction();
+    (void)F;
+    assert(F->hasGC() &&
+           "only valid in functions with gc specified, enforced by Verifier");
+    assert(GFI && "implied by previous");
+    const Value *Alloca = I.getArgOperand(0)->stripPointerCasts();
+    const Constant *TypeMap = cast<Constant>(I.getArgOperand(1));
 
-      FrameIndexSDNode *FI = cast<FrameIndexSDNode>(getValue(Alloca).getNode());
-      GFI->addStackRoot(FI->getIndex(), TypeMap);
-    }
+    FrameIndexSDNode *FI = cast<FrameIndexSDNode>(getValue(Alloca).getNode());
+    GFI->addStackRoot(FI->getIndex(), TypeMap);
     return nullptr;
+  }
   case Intrinsic::gcread:
   case Intrinsic::gcwrite:
     llvm_unreachable("GC failed to lower gcread/gcwrite intrinsics!");
@@ -5378,9 +5380,8 @@ SelectionDAGBuilder::lowerInvokable(TargetLowering::CallLoweringInfo &CLI,
 void SelectionDAGBuilder::LowerCallTo(ImmutableCallSite CS, SDValue Callee,
                                       bool isTailCall,
                                       const BasicBlock *EHPadBB) {
-  PointerType *PT = cast<PointerType>(CS.getCalledValue()->getType());
-  FunctionType *FTy = cast<FunctionType>(PT->getElementType());
-  Type *RetTy = FTy->getReturnType();
+  FunctionType *FTy = CS.getFunctionType();
+  Type *RetTy = CS.getType();
 
   TargetLowering::ArgListTy Args;
   TargetLowering::ArgListEntry Entry;
@@ -5449,7 +5450,7 @@ static SDValue getMemCmpLoad(const Value *PtrVal, MVT LoadVT,
                                          PointerType::getUnqual(LoadTy));
 
     if (const Constant *LoadCst = ConstantFoldLoadFromConstPtr(
-            const_cast<Constant *>(LoadInput), *Builder.DL))
+            const_cast<Constant *>(LoadInput), LoadTy, *Builder.DL))
       return Builder.getValue(LoadCst);
   }
 

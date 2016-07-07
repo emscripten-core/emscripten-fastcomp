@@ -103,6 +103,7 @@ SITargetLowering::SITargetLowering(TargetMachine &TM,
   setOperationAction(ISD::SELECT_CC, MVT::i64, Expand);
   setOperationAction(ISD::SELECT_CC, MVT::f64, Expand);
 
+  setOperationAction(ISD::SETCC, MVT::i1, Promote);
   setOperationAction(ISD::SETCC, MVT::v2i1, Expand);
   setOperationAction(ISD::SETCC, MVT::v4i1, Expand);
 
@@ -531,6 +532,16 @@ bool SITargetLowering::shouldConvertConstantLoadToIntImm(const APInt &Imm,
   const SIInstrInfo *TII =
       static_cast<const SIInstrInfo *>(Subtarget->getInstrInfo());
   return TII->isInlineConstant(Imm);
+}
+
+bool SITargetLowering::isTypeDesirableForOp(unsigned Op, EVT VT) const {
+
+  // SimplifySetCC uses this function to determine whether or not it should
+  // create setcc with i1 operands.  We don't have instructions for i1 setcc.
+  if (VT == MVT::i1 && Op == ISD::SETCC)
+    return false;
+
+  return TargetLowering::isTypeDesirableForOp(Op, VT);
 }
 
 SDValue SITargetLowering::LowerParameter(SelectionDAG &DAG, EVT VT, EVT MemVT,
@@ -1301,7 +1312,8 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
   case Intrinsic::r600_read_local_size_z:
     return lowerImplicitZextParam(DAG, Op, MVT::i16,
                                   SI::KernelInputOffsets::LOCAL_SIZE_Z);
-  case Intrinsic::AMDGPU_read_workdim:
+  case Intrinsic::amdgcn_read_workdim:
+  case AMDGPUIntrinsic::AMDGPU_read_workdim: // Legacy name.
     // Really only 2 bits.
     return lowerImplicitZextParam(DAG, Op, MVT::i8,
                                   getImplicitParameterOffset(MFI, GRID_DIM));
@@ -1350,10 +1362,6 @@ SDValue SITargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                        Op.getOperand(2),
                        Op.getOperand(3));
 
-  case AMDGPUIntrinsic::AMDGPU_fract:
-  case AMDGPUIntrinsic::AMDIL_fraction: // Legacy name.
-    return DAG.getNode(ISD::FSUB, DL, VT, Op.getOperand(1),
-                       DAG.getNode(ISD::FFLOOR, DL, VT, Op.getOperand(1)));
   case AMDGPUIntrinsic::SI_fs_constant: {
     SDValue M0 = copyToM0(DAG, DAG.getEntryNode(), DL, Op.getOperand(3));
     SDValue Glue = M0.getValue(1);
@@ -1914,6 +1922,9 @@ SDValue SITargetLowering::performAndCombine(SDNode *N,
                                             DAGCombinerInfo &DCI) const {
   if (DCI.isBeforeLegalize())
     return SDValue();
+
+  if (SDValue Base = AMDGPUTargetLowering::performAndCombine(N, DCI))
+    return Base;
 
   SelectionDAG &DAG = DCI.DAG;
 

@@ -134,6 +134,9 @@ def FeatureBWI     : SubtargetFeature<"avx512bw", "HasBWI", "true",
 def FeatureVLX     : SubtargetFeature<"avx512vl", "HasVLX", "true",
                       "Enable AVX-512 Vector Length eXtensions",
                                       [FeatureAVX512]>;
+def FeatureVBMI     : SubtargetFeature<"avx512vbmi", "HasVBMI", "true",
+                      "Enable AVX-512 Vector Bit Manipulation Instructions",
+                                      [FeatureAVX512]>;
 def FeaturePKU   : SubtargetFeature<"pku", "HasPKU", "true",
                       "Enable protection keys">;
 def FeaturePCLMUL  : SubtargetFeature<"pclmul", "HasPCLMUL", "true",
@@ -522,6 +525,43 @@ class SkylakeProc<string Name> : ProcessorModel<Name, HaswellModel, [
 def : SkylakeProc<"skylake">;
 def : SkylakeProc<"skx">; // Legacy alias.
 
+class CannonlakeProc<string Name> : ProcessorModel<Name, HaswellModel, [
+  FeatureMMX,
+  FeatureAVX512,
+  FeatureFXSR,
+  FeatureCDI,
+  FeatureDQI,
+  FeatureBWI,
+  FeatureVLX,
+  FeaturePKU,
+  FeatureCMPXCHG16B,
+  FeatureSlowBTMem,
+  FeaturePOPCNT,
+  FeatureAES,
+  FeaturePCLMUL,
+  FeatureXSAVE,
+  FeatureXSAVEOPT,
+  FeatureRDRAND,
+  FeatureF16C,
+  FeatureFSGSBase,
+  FeatureMOVBE,
+  FeatureLZCNT,
+  FeatureBMI,
+  FeatureBMI2,
+  FeatureVBMI,
+  FeatureFMA,
+  FeatureRTM,
+  FeatureHLE,
+  FeatureADX,
+  FeatureRDSEED,
+  FeatureSlowIncDec,
+  FeatureMPX,
+  FeatureXSAVEC,
+  FeatureXSAVES,
+  FeatureLAHFSAHF
+]>;
+def : CannonlakeProc<"cannonlake">;
+def : CannonlakeProc<"cnl">;
 
 // AMD CPUs.
 

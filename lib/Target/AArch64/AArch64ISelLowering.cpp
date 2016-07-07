@@ -1135,6 +1135,35 @@ static void changeFPCCToAArch64CC(ISD::CondCode CC,
   }
 }
 
+/// Convert a DAG fp condition code to an AArch64 CC.
+/// This differs from changeFPCCToAArch64CC in that it returns cond codes that
+/// should be AND'ed instead of OR'ed.
+static void changeFPCCToANDAArch64CC(ISD::CondCode CC,
+                                     AArch64CC::CondCode &CondCode,
+                                     AArch64CC::CondCode &CondCode2) {
+  CondCode2 = AArch64CC::AL;
+  switch (CC) {
+  default:
+    changeFPCCToAArch64CC(CC, CondCode, CondCode2);
+    assert(CondCode2 == AArch64CC::AL);
+    break;
+  case ISD::SETONE:
+    // (a one b)
+    // == ((a olt b) || (a ogt b))
+    // == ((a ord b) && (a une b))
+    CondCode = AArch64CC::VC;
+    CondCode2 = AArch64CC::NE;
+    break;
+  case ISD::SETUEQ:
+    // (a ueq b)
+    // == ((a uno b) || (a oeq b))
+    // == ((a ule b) && (a uge b))
+    CondCode = AArch64CC::PL;
+    CondCode2 = AArch64CC::LE;
+    break;
+  }
+}
+
 /// changeVectorFPCCToAArch64CC - Convert a DAG fp condition code to an AArch64
 /// CC usable with the vector instructions. Fewer operations are available
 /// without a real NZCV register, so we have to use less efficient combinations
@@ -1258,7 +1287,8 @@ static SDValue emitComparison(SDValue LHS, SDValue RHS, ISD::CondCode CC,
 /// Create a conditional comparison; Use CCMP, CCMN or FCCMP as appropriate.
 static SDValue emitConditionalComparison(SDValue LHS, SDValue RHS,
                                          ISD::CondCode CC, SDValue CCOp,
-                                         SDValue Condition, unsigned NZCV,
+                                         AArch64CC::CondCode Predicate,
+                                         AArch64CC::CondCode OutCC,
                                          SDLoc DL, SelectionDAG &DAG) {
   unsigned Opcode = 0;
   if (LHS.getValueType().isFloatingPoint())
@@ -1274,6 +1304,9 @@ static SDValue emitConditionalComparison(SDValue LHS, SDValue RHS,
   if (Opcode == 0)
     Opcode = AArch64ISD::CCMP;
 
+  SDValue Condition = DAG.getConstant(Predicate, DL, MVT_CC);
+  AArch64CC::CondCode InvOutCC = AArch64CC::getInvertedCondCode(OutCC);
+  unsigned NZCV = AArch64CC::getNZCVToSatisfyCondCode(InvOutCC);
   SDValue NZCVOp = DAG.getConstant(NZCV, DL, MVT::i32);
   return DAG.getNode(Opcode, DL, MVT_CC, LHS, RHS, NZCVOp, Condition, CCOp);
 }
@@ -1344,24 +1377,18 @@ static SDValue emitConjunctionDisjunctionTree(SelectionDAG &DAG, SDValue Val,
     } else {
       assert(LHS.getValueType().isFloatingPoint());
       AArch64CC::CondCode ExtraCC;
-      changeFPCCToAArch64CC(CC, OutCC, ExtraCC);
-      // Surpisingly some floating point conditions can't be tested with a
-      // single condition code. Construct an additional comparison in this case.
-      // See comment below on how we deal with OR conditions.
+      changeFPCCToANDAArch64CC(CC, OutCC, ExtraCC);
+      // Some floating point conditions can't be tested with a single condition
+      // code. Construct an additional comparison in this case.
       if (ExtraCC != AArch64CC::AL) {
         SDValue ExtraCmp;
         if (!CCOp.getNode())
           ExtraCmp = emitComparison(LHS, RHS, CC, DL, DAG);
-        else {
-          SDValue ConditionOp = DAG.getConstant(Predicate, DL, MVT_CC);
-          // Note that we want the inverse of ExtraCC, so NZCV is not inversed.
-          unsigned NZCV = AArch64CC::getNZCVToSatisfyCondCode(ExtraCC);
-          ExtraCmp = emitConditionalComparison(LHS, RHS, CC, CCOp, ConditionOp,
-                                               NZCV, DL, DAG);
-        }
+        else
+          ExtraCmp = emitConditionalComparison(LHS, RHS, CC, CCOp, Predicate,
+                                               ExtraCC, DL, DAG);
         CCOp = ExtraCmp;
-        Predicate = AArch64CC::getInvertedCondCode(ExtraCC);
-        OutCC = AArch64CC::getInvertedCondCode(OutCC);
+        Predicate = ExtraCC;
       }
     }
 
@@ -1369,10 +1396,7 @@ static SDValue emitConjunctionDisjunctionTree(SelectionDAG &DAG, SDValue Val,
     if (!CCOp.getNode())
       return emitComparison(LHS, RHS, CC, DL, DAG);
     // Otherwise produce a ccmp.
-    SDValue ConditionOp = DAG.getConstant(Predicate, DL, MVT_CC);
-    AArch64CC::CondCode InvOutCC = AArch64CC::getInvertedCondCode(OutCC);
-    unsigned NZCV = AArch64CC::getNZCVToSatisfyCondCode(InvOutCC);
-    return emitConditionalComparison(LHS, RHS, CC, CCOp, ConditionOp, NZCV, DL,
+    return emitConditionalComparison(LHS, RHS, CC, CCOp, Predicate, OutCC, DL,
                                      DAG);
   } else if ((Opcode != ISD::AND && Opcode != ISD::OR) || !Val->hasOneUse())
     return SDValue();
@@ -1418,11 +1442,13 @@ static SDValue emitConjunctionDisjunctionTree(SelectionDAG &DAG, SDValue Val,
   AArch64CC::CondCode RHSCC;
   SDValue CmpR = emitConjunctionDisjunctionTree(DAG, RHS, RHSCC, PushNegate,
                                                 CCOp, Predicate, Depth+1);
+  assert(CmpR && "Transform legality should have been checked already!");
   if (NegateOperands && !PushNegate)
     RHSCC = AArch64CC::getInvertedCondCode(RHSCC);
   // Emit LHS. We must push the negate through if we need to negate it.
   SDValue CmpL = emitConjunctionDisjunctionTree(DAG, LHS, OutCC, NegateOperands,
                                                 CmpR, RHSCC, Depth+1);
+  assert(CmpL && "Transform legality should have been checked already!");
   // If we transformed an OR to and AND then we have to negate the result
   // (or absorb a PushNegate resulting in a double negation).
   if (Opcode == ISD::OR && !PushNegate)
@@ -2545,7 +2571,7 @@ SDValue AArch64TargetLowering::LowerFormalArguments(
     // This is a non-standard ABI so by fiat I say we're allowed to make full
     // use of the stack area to be popped, which must be aligned to 16 bytes in
     // any case:
-    StackArgSize = RoundUpToAlignment(StackArgSize, 16);
+    StackArgSize = alignTo(StackArgSize, 16);
 
     // If we're expected to restore the stack (e.g. fastcc) then we'll be adding
     // a multiple of 16.
@@ -2959,7 +2985,7 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
 
     // Since callee will pop argument stack as a tail call, we must keep the
     // popped size 16-byte aligned.
-    NumBytes = RoundUpToAlignment(NumBytes, 16);
+    NumBytes = alignTo(NumBytes, 16);
 
     // FPDiff will be negative if this tail call requires more space than we
     // would automatically have in our incoming argument space. Positive if we
@@ -3199,9 +3225,8 @@ AArch64TargetLowering::LowerCall(CallLoweringInfo &CLI,
   Chain = DAG.getNode(AArch64ISD::CALL, DL, NodeTys, Ops);
   InFlag = Chain.getValue(1);
 
-  uint64_t CalleePopBytes = DoesCalleeRestoreStack(CallConv, TailCallOpt)
-                                ? RoundUpToAlignment(NumBytes, 16)
-                                : 0;
+  uint64_t CalleePopBytes =
+      DoesCalleeRestoreStack(CallConv, TailCallOpt) ? alignTo(NumBytes, 16) : 0;
 
   Chain = DAG.getCALLSEQ_END(Chain, DAG.getIntPtrConstant(NumBytes, DL, true),
                              DAG.getIntPtrConstant(CalleePopBytes, DL, true),
@@ -4864,9 +4889,10 @@ SDValue AArch64TargetLowering::ReconstructShuffle(SDValue Op,
     SDValue V = Op.getOperand(i);
     if (V.getOpcode() == ISD::UNDEF)
       continue;
-    else if (V.getOpcode() != ISD::EXTRACT_VECTOR_ELT) {
+    else if (V.getOpcode() != ISD::EXTRACT_VECTOR_ELT ||
+             !isa<ConstantSDNode>(V.getOperand(1))) {
       // A shuffle can only come from building a vector from various
-      // elements of other vectors.
+      // elements of other vectors, provided their indices are constant.
       return SDValue();
     }
 
@@ -6688,6 +6714,9 @@ SDValue AArch64TargetLowering::LowerVSETCC(SDValue Op,
         EmitVectorComparison(LHS, RHS, AArch64CC, false, CmpVT, dl, DAG);
     return DAG.getSExtOrTrunc(Cmp, dl, Op.getValueType());
   }
+
+  if (LHS.getValueType().getVectorElementType() == MVT::f16)
+    return SDValue();
 
   assert(LHS.getValueType().getVectorElementType() == MVT::f32 ||
          LHS.getValueType().getVectorElementType() == MVT::f64);
@@ -10133,6 +10162,7 @@ void AArch64TargetLowering::insertCopiesSplitCSR(
 
   const TargetInstrInfo *TII = Subtarget->getInstrInfo();
   MachineRegisterInfo *MRI = &Entry->getParent()->getRegInfo();
+  MachineBasicBlock::iterator MBBI = Entry->begin();
   for (const MCPhysReg *I = IStart; *I; ++I) {
     const TargetRegisterClass *RC = nullptr;
     if (AArch64::GPR64RegClass.contains(*I))
@@ -10152,13 +10182,13 @@ void AArch64TargetLowering::insertCopiesSplitCSR(
                Attribute::NoUnwind) &&
            "Function should be nounwind in insertCopiesSplitCSR!");
     Entry->addLiveIn(*I);
-    BuildMI(*Entry, Entry->begin(), DebugLoc(), TII->get(TargetOpcode::COPY),
-            NewVR)
+    BuildMI(*Entry, MBBI, DebugLoc(), TII->get(TargetOpcode::COPY), NewVR)
         .addReg(*I);
 
+    // Insert the copy-back instructions right before the terminator.
     for (auto *Exit : Exits)
-      BuildMI(*Exit, Exit->begin(), DebugLoc(), TII->get(TargetOpcode::COPY),
-              *I)
+      BuildMI(*Exit, Exit->getFirstTerminator(), DebugLoc(),
+              TII->get(TargetOpcode::COPY), *I)
           .addReg(NewVR);
   }
 }

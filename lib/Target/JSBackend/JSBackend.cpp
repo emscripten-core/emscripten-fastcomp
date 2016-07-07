@@ -293,7 +293,7 @@ namespace {
     #define STACK_ALIGN_BITS 128
 
     unsigned stackAlign(unsigned x) {
-      return RoundUpToAlignment(x, STACK_ALIGN);
+      return alignTo(x, STACK_ALIGN);
     }
     std::string stackAlignStr(std::string x) {
       return "((" + x + "+" + utostr(STACK_ALIGN-1) + ")&-" + utostr(STACK_ALIGN) + ")";

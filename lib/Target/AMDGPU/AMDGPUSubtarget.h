@@ -69,6 +69,7 @@ private:
   bool FP64Denormals;
   bool FP32Denormals;
   bool FastFMAF32;
+  bool HalfRate64Ops;
   bool CaymanISA;
   bool FlatAddressSpace;
   bool FlatForGlobal;
@@ -91,6 +92,7 @@ private:
   int LDSBankCount;
   unsigned IsaVersion;
   bool EnableHugeScratchBuffer;
+  bool EnableSIScheduler;
 
   std::unique_ptr<AMDGPUFrameLowering> FrameLowering;
   std::unique_ptr<AMDGPUTargetLowering> TLInfo;
@@ -156,6 +158,10 @@ public:
 
   bool hasFastFMAF32() const {
     return FastFMAF32;
+  }
+
+  bool hasHalfRate64Ops() const {
+    return HalfRate64Ops;
   }
 
   bool hasFlatAddressSpace() const {
@@ -279,6 +285,10 @@ public:
 
   bool enableHugeScratchBuffer() const {
     return EnableHugeScratchBuffer;
+  }
+
+  bool enableSIScheduler() const {
+    return EnableSIScheduler;
   }
 
   bool dumpCode() const {

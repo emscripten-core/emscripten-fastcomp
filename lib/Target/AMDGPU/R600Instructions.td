@@ -733,6 +733,7 @@ def SETNE_DX10 : R600_2OP <
   [(set i32:$dst, (selectcc f32:$src0, f32:$src1, -1, 0, COND_UNE_NE))]
 >;
 
+// FIXME: Need combine for AMDGPUfract
 def FRACT : R600_1OP_Helper <0x10, "FRACT", AMDGPUfract>;
 def TRUNC : R600_1OP_Helper <0x11, "TRUNC", ftrunc>;
 def CEIL : R600_1OP_Helper <0x12, "CEIL", fceil>;
@@ -1147,12 +1148,6 @@ def : Pat<
 def : RcpPat<recip_ieee, f32>;
 }
 
-class TGSI_LIT_Z_Common <InstR600 mul_lit, InstR600 log_clamped, InstR600 exp_ieee>
-  : Pat <
-  (int_TGSI_lit_z f32:$src_x, f32:$src_y, f32:$src_w),
-  (exp_ieee (mul_lit (log_clamped (MAX $src_y, (f32 ZERO))), $src_w, $src_x))
->;
-
 //===----------------------------------------------------------------------===//
 // R600 / R700 Instructions
 //===----------------------------------------------------------------------===//
@@ -1191,7 +1186,6 @@ let Predicates = [isR600] in {
 
   defm DIV_r600 : DIV_Common<RECIP_IEEE_r600>;
   def : POW_Common <LOG_IEEE_r600, EXP_IEEE_r600, MUL>;
-  def TGSI_LIT_Z_r600 : TGSI_LIT_Z_Common<MUL_LIT_r600, LOG_CLAMPED_r600, EXP_IEEE_r600>;
 
   def : Pat<(fsqrt f32:$src), (MUL $src, (RECIPSQRT_CLAMPED_r600 $src))>;
   def : RsqPat<RECIPSQRT_IEEE_r600, f32>;

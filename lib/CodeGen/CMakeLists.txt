@@ -10,18 +10,17 @@ add_llvm_library(LLVMCodeGen
   AtomicExpandPass.cpp
   BasicTargetTransformInfo.cpp
   BranchFolding.cpp
+  BuiltinGCs.cpp
   CalcSpillWeights.cpp
   CallingConvLower.cpp
   CodeGen.cpp
   CodeGenPrepare.cpp
-  CoreCLRGC.cpp
   CriticalAntiDepBreaker.cpp
   DFAPacketizer.cpp
   DeadMachineInstructionElim.cpp
   DwarfEHPrepare.cpp
   EarlyIfConversion.cpp
   EdgeBundles.cpp
-  ErlangGC.cpp
   ExecutionDepsFix.cpp
   ExpandISelPseudos.cpp
   ExpandPostRAPseudos.cpp
@@ -53,6 +52,7 @@ add_llvm_library(LLVMCodeGen
   LiveStackAnalysis.cpp
   LiveVariables.cpp
   LocalStackSlotAllocation.cpp
+  LowerEmuTLS.cpp
   MachineBasicBlock.cpp
   MachineBlockFrequencyInfo.cpp
   MachineBlockPlacement.cpp
@@ -83,7 +83,6 @@ add_llvm_library(LLVMCodeGen
   MachineVerifier.cpp
   MIRPrinter.cpp
   MIRPrintingPass.cpp
-  OcamlGC.cpp
   OptimizePHIs.cpp
   PHIElimination.cpp
   PHIEliminationUtils.cpp
@@ -108,7 +107,6 @@ add_llvm_library(LLVMCodeGen
   ScheduleDAGPrinter.cpp
   ScoreboardHazardRecognizer.cpp
   ShrinkWrap.cpp
-  ShadowStackGC.cpp
   ShadowStackGCLowering.cpp
   SjLjEHPrepare.cpp
   SlotIndexes.cpp
@@ -119,7 +117,6 @@ add_llvm_library(LLVMCodeGen
   StackSlotColoring.cpp
   StackMapLivenessAnalysis.cpp
   StackMaps.cpp
-  StatepointExampleGC.cpp
   TailDuplication.cpp
   TargetFrameLoweringImpl.cpp
   TargetInstrInfo.cpp
@@ -145,3 +142,6 @@ add_dependencies(LLVMCodeGen intrinsics_gen)
 add_subdirectory(SelectionDAG)
 add_subdirectory(AsmPrinter)
 add_subdirectory(MIRParser)
+if(LLVM_BUILD_GLOBAL_ISEL)
+  add_subdirectory(GlobalISel)
+endif()

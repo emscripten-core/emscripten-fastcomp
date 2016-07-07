@@ -120,7 +120,7 @@ static bool isLeakCheckerRoot(GlobalVariable *GV) {
     return false;
 
   SmallVector<Type *, 4> Types;
-  Types.push_back(cast<PointerType>(GV->getType())->getElementType());
+  Types.push_back(GV->getValueType());
 
   unsigned Limit = 20;
   do {
@@ -329,7 +329,7 @@ static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
         // we already know what the result of any load from that GEP is.
         // TODO: Handle splats.
         if (Init && isa<ConstantAggregateZero>(Init) && GEP->isInBounds())
-          SubInit = Constant::getNullValue(GEP->getType()->getElementType());
+          SubInit = Constant::getNullValue(GEP->getResultElementType());
       }
       Changed |= CleanupConstantGlobalUsers(GEP, SubInit, DL, TLI);
 
@@ -499,6 +499,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
                                                GV->getThreadLocalMode(),
                                               GV->getType()->getAddressSpace());
       NGV->setExternallyInitialized(GV->isExternallyInitialized());
+      NGV->copyAttributesFrom(GV);
       Globals.push_back(NGV);
       NewGlobals.push_back(NGV);
 
@@ -533,6 +534,7 @@ static GlobalVariable *SRAGlobal(GlobalVariable *GV, const DataLayout &DL) {
                                                GV->getThreadLocalMode(),
                                               GV->getType()->getAddressSpace());
       NGV->setExternallyInitialized(GV->isExternallyInitialized());
+      NGV->copyAttributesFrom(GV);
       Globals.push_back(NGV);
       NewGlobals.push_back(NGV);
 
@@ -867,9 +869,8 @@ OptimizeGlobalAddressOfMalloc(GlobalVariable *GV, CallInst *CI, Type *AllocTy,
   }
 
   Constant *RepValue = NewGV;
-  if (NewGV->getType() != GV->getType()->getElementType())
-    RepValue = ConstantExpr::getBitCast(RepValue,
-                                        GV->getType()->getElementType());
+  if (NewGV->getType() != GV->getValueType())
+    RepValue = ConstantExpr::getBitCast(RepValue, GV->getValueType());
 
   // If there is a comparison against null, we will insert a global bool to
   // keep track of whether the global was initialized yet or not.
@@ -1292,6 +1293,7 @@ static GlobalVariable *PerformHeapAllocSRoA(GlobalVariable *GV, CallInst *CI,
         *GV->getParent(), PFieldTy, false, GlobalValue::InternalLinkage,
         Constant::getNullValue(PFieldTy), GV->getName() + ".f" + Twine(FieldNo),
         nullptr, GV->getThreadLocalMode());
+    NGV->copyAttributesFrom(GV);
     FieldGlobals.push_back(NGV);
 
     unsigned TypeSize = DL.getTypeAllocSize(FieldTy);
@@ -1397,8 +1399,8 @@ static GlobalVariable *PerformHeapAllocSRoA(GlobalVariable *GV, CallInst *CI,
 
     // Insert a store of null into each global.
     for (unsigned i = 0, e = FieldGlobals.size(); i != e; ++i) {
-      PointerType *PT = cast<PointerType>(FieldGlobals[i]->getType());
-      Constant *Null = Constant::getNullValue(PT->getElementType());
+      Type *ValTy = cast<GlobalValue>(FieldGlobals[i])->getValueType();
+      Constant *Null = Constant::getNullValue(ValTy);
       new StoreInst(Null, FieldGlobals[i], SI);
     }
     // Erase the original store.
@@ -1638,7 +1640,7 @@ static bool TryToAddRangeMetadata(GlobalVariable *GV, Constant *OtherVal) {
 /// boolean and select between the two values whenever it is used.  This exposes
 /// the values to other scalar optimizations.
 static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
-  Type *GVElType = GV->getType()->getElementType();
+  Type *GVElType = GV->getValueType();
 
   // If GVElType is already i1, it is already shrunk.  If the type of the GV is
   // an FP value, pointer or vector, don't do this optimization because a select
@@ -1666,6 +1668,7 @@ static bool TryToShrinkGlobalToBoolean(GlobalVariable *GV, Constant *OtherVal) {
                                              GV->getName()+".b",
                                              GV->getThreadLocalMode(),
                                              GV->getType()->getAddressSpace());
+  NewGV->copyAttributesFrom(GV);
   GV->getParent()->getGlobalList().insert(GV->getIterator(), NewGV);
 
   Constant *InitVal = GV->getInitializer();
@@ -1934,7 +1937,7 @@ bool GlobalOpt::processInternalGlobal(GlobalVariable *GV,
   // If the global is in different address space, don't bring it to stack.
   if (!GS.HasMultipleAccessingFunctions &&
       GS.AccessingFunction &&
-      GV->getType()->getElementType()->isSingleValueType() &&
+      GV->getValueType()->isSingleValueType() &&
       GV->getType()->getAddressSpace() == 0 &&
       !GV->isExternallyInitialized() &&
       allNonInstructionUsersCanBeMadeInstructions(GV) &&
@@ -1943,7 +1946,7 @@ bool GlobalOpt::processInternalGlobal(GlobalVariable *GV,
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV << "\n");
     Instruction &FirstI = const_cast<Instruction&>(*GS.AccessingFunction
                                                    ->getEntryBlock().begin());
-    Type *ElemTy = GV->getType()->getElementType();
+    Type *ElemTy = GV->getValueType();
     // FIXME: Pass Global's alignment when globals have alignment
     AllocaInst *Alloca = new AllocaInst(ElemTy, nullptr,
                                         GV->getName(), &FirstI);
@@ -2625,7 +2628,7 @@ bool Evaluator::EvaluateBlock(BasicBlock::iterator CurInst,
         DEBUG(dbgs() << "Found an array alloca. Can not evaluate.\n");
         return false;  // Cannot handle array allocs.
       }
-      Type *Ty = AI->getType()->getElementType();
+      Type *Ty = AI->getAllocatedType();
       AllocaTmps.push_back(
           make_unique<GlobalVariable>(Ty, false, GlobalValue::InternalLinkage,
                                       UndefValue::get(Ty), AI->getName()));
@@ -2683,7 +2686,7 @@ bool Evaluator::EvaluateBlock(BasicBlock::iterator CurInst,
           Value *PtrArg = getVal(II->getArgOperand(1));
           Value *Ptr = PtrArg->stripPointerCasts();
           if (GlobalVariable *GV = dyn_cast<GlobalVariable>(Ptr)) {
-            Type *ElemTy = cast<PointerType>(GV->getType())->getElementType();
+            Type *ElemTy = GV->getValueType();
             if (!Size->isAllOnesValue() &&
                 Size->getValue().getLimitedValue() >=
                     DL.getTypeStoreSize(ElemTy)) {

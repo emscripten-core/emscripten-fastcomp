@@ -75,6 +75,7 @@ private:
   typedef typename ELFO::Elf_Dyn_Range Elf_Dyn_Range;
   typedef typename ELFO::Elf_Rel Elf_Rel;
   typedef typename ELFO::Elf_Rela Elf_Rela;
+  typedef typename ELFO::Elf_Rel_Range Elf_Rel_Range;
   typedef typename ELFO::Elf_Rela_Range Elf_Rela_Range;
   typedef typename ELFO::Elf_Phdr Elf_Phdr;
   typedef typename ELFO::Elf_Half Elf_Half;
@@ -104,12 +105,16 @@ private:
   void printSymbol(const Elf_Sym *Symbol, const Elf_Shdr *SymTab,
                    StringRef StrTable, bool IsDynamic);
 
+  void printDynamicRelocation(Elf_Rela Rel);
   void printRelocations(const Elf_Shdr *Sec);
   void printRelocation(Elf_Rela Rel, const Elf_Shdr *SymTab);
   void printValue(uint64_t Type, uint64_t Value);
 
-  const Elf_Rela *dyn_rela_begin() const;
-  const Elf_Rela *dyn_rela_end() const;
+  template <typename REL>
+  static const REL *dyn_rel_begin(const DynRegionInfo &region);
+  template <typename REL>
+  static const REL *dyn_rel_end(const DynRegionInfo &region);
+  Elf_Rel_Range dyn_rels() const;
   Elf_Rela_Range dyn_relas() const;
   StringRef getDynamicString(uint64_t Offset) const;
   const Elf_Dyn *dynamic_table_begin() const {
@@ -129,6 +134,7 @@ private:
   void LoadVersionDefs(const Elf_Shdr *sec) const;
 
   const ELFO *Obj;
+  DynRegionInfo DynRelRegion;
   DynRegionInfo DynRelaRegion;
   const Elf_Phdr *DynamicProgHeader = nullptr;
   StringRef DynamicStringTable;
@@ -800,11 +806,32 @@ static const EnumEntry<unsigned> ElfSectionFlags[] = {
   LLVM_READOBJ_ENUM_ENT(ELF, SHF_TLS             ),
   LLVM_READOBJ_ENUM_ENT(ELF, XCORE_SHF_CP_SECTION),
   LLVM_READOBJ_ENUM_ENT(ELF, XCORE_SHF_DP_SECTION),
-  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_NOSTRIP    ),
+};
+
+static const EnumEntry<unsigned> ElfAMDGPUSectionFlags[] = {
   LLVM_READOBJ_ENUM_ENT(ELF, SHF_AMDGPU_HSA_GLOBAL),
   LLVM_READOBJ_ENUM_ENT(ELF, SHF_AMDGPU_HSA_READONLY),
   LLVM_READOBJ_ENUM_ENT(ELF, SHF_AMDGPU_HSA_CODE),
   LLVM_READOBJ_ENUM_ENT(ELF, SHF_AMDGPU_HSA_AGENT)
+};
+
+static const EnumEntry<unsigned> ElfHexagonSectionFlags[] = {
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_HEX_GPREL)
+};
+
+static const EnumEntry<unsigned> ElfMipsSectionFlags[] = {
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_NODUPES),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_NAMES  ),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_LOCAL  ),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_NOSTRIP),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_GPREL  ),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_MERGE  ),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_ADDR   ),
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_MIPS_STRING )
+};
+
+static const EnumEntry<unsigned> ElfX86_64SectionFlags[] = {
+  LLVM_READOBJ_ENUM_ENT(ELF, SHF_X86_64_LARGE)
 };
 
 static const char *getElfSegmentType(unsigned Arch, unsigned Type) {
@@ -944,6 +971,15 @@ ELFDumper<ELFT>::ELFDumper(const ELFFile<ELFT> *Obj, StreamWriter &Writer)
       GnuHashTable =
           reinterpret_cast<const Elf_GnuHash *>(toMappedAddr(Dyn.getPtr()));
       break;
+    case ELF::DT_REL:
+      DynRelRegion.Addr = toMappedAddr(Dyn.getPtr());
+      break;
+    case ELF::DT_RELSZ:
+      DynRelRegion.Size = Dyn.getVal();
+      break;
+    case ELF::DT_RELENT:
+      DynRelRegion.EntSize = Dyn.getVal();
+      break;
     case ELF::DT_RELA:
       DynRelaRegion.Addr = toMappedAddr(Dyn.getPtr());
       break;
@@ -1011,25 +1047,32 @@ ELFDumper<ELFT>::ELFDumper(const ELFFile<ELFT> *Obj, StreamWriter &Writer)
 }
 
 template <typename ELFT>
-const typename ELFDumper<ELFT>::Elf_Rela *
-ELFDumper<ELFT>::dyn_rela_begin() const {
-  if (DynRelaRegion.Size && DynRelaRegion.EntSize != sizeof(Elf_Rela))
+template <typename REL>
+const REL *ELFDumper<ELFT>::dyn_rel_begin(const DynRegionInfo &Region) {
+  if (Region.Size && Region.EntSize != sizeof(REL))
     report_fatal_error("Invalid relocation entry size");
-  return reinterpret_cast<const Elf_Rela *>(DynRelaRegion.Addr);
+  return reinterpret_cast<const REL *>(Region.Addr);
 }
 
 template <typename ELFT>
-const typename ELFDumper<ELFT>::Elf_Rela *
-ELFDumper<ELFT>::dyn_rela_end() const {
-  uint64_t Size = DynRelaRegion.Size;
-  if (Size % sizeof(Elf_Rela))
+template <typename REL>
+const REL *ELFDumper<ELFT>::dyn_rel_end(const DynRegionInfo &Region) {
+  uint64_t Size = Region.Size;
+  if (Size % sizeof(REL))
     report_fatal_error("Invalid relocation table size");
-  return dyn_rela_begin() + Size / sizeof(Elf_Rela);
+  return dyn_rel_begin<REL>(Region) + Size / sizeof(REL);
+}
+
+template <typename ELFT>
+typename ELFDumper<ELFT>::Elf_Rel_Range ELFDumper<ELFT>::dyn_rels() const {
+  return make_range(dyn_rel_begin<Elf_Rel>(DynRelRegion),
+                    dyn_rel_end<Elf_Rel>(DynRelRegion));
 }
 
 template <typename ELFT>
 typename ELFDumper<ELFT>::Elf_Rela_Range ELFDumper<ELFT>::dyn_relas() const {
-  return make_range(dyn_rela_begin(), dyn_rela_end());
+  return make_range(dyn_rel_begin<Elf_Rela>(DynRelaRegion),
+                    dyn_rel_end<Elf_Rela>(DynRelaRegion));
 }
 
 template<class ELFT>
@@ -1096,7 +1139,31 @@ void ELFDumper<ELFT>::printSections() {
     W.printHex("Type",
                getElfSectionType(Obj->getHeader()->e_machine, Sec.sh_type),
                Sec.sh_type);
-    W.printFlags("Flags", Sec.sh_flags, makeArrayRef(ElfSectionFlags));
+    std::vector<EnumEntry<unsigned>> SectionFlags(std::begin(ElfSectionFlags),
+                                                  std::end(ElfSectionFlags));
+    switch (Obj->getHeader()->e_machine) {
+    case EM_AMDGPU:
+      SectionFlags.insert(SectionFlags.end(), std::begin(ElfAMDGPUSectionFlags),
+                          std::end(ElfAMDGPUSectionFlags));
+      break;
+    case EM_HEXAGON:
+      SectionFlags.insert(SectionFlags.end(),
+                          std::begin(ElfHexagonSectionFlags),
+                          std::end(ElfHexagonSectionFlags));
+      break;
+    case EM_MIPS:
+      SectionFlags.insert(SectionFlags.end(), std::begin(ElfMipsSectionFlags),
+                          std::end(ElfMipsSectionFlags));
+      break;
+    case EM_X86_64:
+      SectionFlags.insert(SectionFlags.end(), std::begin(ElfX86_64SectionFlags),
+                          std::end(ElfX86_64SectionFlags));
+      break;
+    default:
+      // Nothing to do.
+      break;
+    }
+    W.printFlags("Flags", Sec.sh_flags, makeArrayRef(SectionFlags));
     W.printHex("Address", Sec.sh_addr);
     W.printHex("Offset", Sec.sh_offset);
     W.printNumber("Size", Sec.sh_size);
@@ -1158,31 +1225,22 @@ void ELFDumper<ELFT>::printRelocations() {
   }
 }
 
-template<class ELFT>
-void ELFDumper<ELFT>::printDynamicRelocations() {
+template <class ELFT> void ELFDumper<ELFT>::printDynamicRelocations() {
+  if (DynRelRegion.Size && DynRelaRegion.Size)
+    report_fatal_error("There are both REL and RELA dynamic relocations");
   W.startLine() << "Dynamic Relocations {\n";
   W.indent();
-  for (const Elf_Rela &Rel : dyn_relas()) {
-    SmallString<32> RelocName;
-    Obj->getRelocationTypeName(Rel.getType(Obj->isMips64EL()), RelocName);
-    StringRef SymbolName;
-    uint32_t SymIndex = Rel.getSymbol(Obj->isMips64EL());
-    const Elf_Sym *Sym = DynSymStart + SymIndex;
-    SymbolName = errorOrDefault(Sym->getName(DynamicStringTable));
-    if (opts::ExpandRelocs) {
-      DictScope Group(W, "Relocation");
-      W.printHex("Offset", Rel.r_offset);
-      W.printNumber("Type", RelocName, (int)Rel.getType(Obj->isMips64EL()));
-      W.printString("Symbol", SymbolName.size() > 0 ? SymbolName : "-");
-      W.printHex("Addend", Rel.r_addend);
+  if (DynRelaRegion.Size > 0)
+    for (const Elf_Rela &Rela : dyn_relas())
+      printDynamicRelocation(Rela);
+  else
+    for (const Elf_Rel &Rel : dyn_rels()) {
+      Elf_Rela Rela;
+      Rela.r_offset = Rel.r_offset;
+      Rela.r_info = Rel.r_info;
+      Rela.r_addend = 0;
+      printDynamicRelocation(Rela);
     }
-    else {
-      raw_ostream& OS = W.startLine();
-      OS << W.hex(Rel.r_offset) << " " << RelocName << " "
-         << (SymbolName.size() > 0 ? SymbolName : "-") << " "
-         << W.hex(Rel.r_addend) << "\n";
-    }
-  }
   W.unindent();
   W.startLine() << "}\n";
 }
@@ -1239,6 +1297,28 @@ void ELFDumper<ELFT>::printRelocation(Elf_Rela Rel, const Elf_Shdr *SymTab) {
     raw_ostream& OS = W.startLine();
     OS << W.hex(Rel.r_offset) << " " << RelocName << " "
        << (TargetName.size() > 0 ? TargetName : "-") << " "
+       << W.hex(Rel.r_addend) << "\n";
+  }
+}
+
+template <class ELFT>
+void ELFDumper<ELFT>::printDynamicRelocation(Elf_Rela Rel) {
+  SmallString<32> RelocName;
+  Obj->getRelocationTypeName(Rel.getType(Obj->isMips64EL()), RelocName);
+  StringRef SymbolName;
+  uint32_t SymIndex = Rel.getSymbol(Obj->isMips64EL());
+  const Elf_Sym *Sym = DynSymStart + SymIndex;
+  SymbolName = errorOrDefault(Sym->getName(DynamicStringTable));
+  if (opts::ExpandRelocs) {
+    DictScope Group(W, "Relocation");
+    W.printHex("Offset", Rel.r_offset);
+    W.printNumber("Type", RelocName, (int)Rel.getType(Obj->isMips64EL()));
+    W.printString("Symbol", SymbolName.size() > 0 ? SymbolName : "-");
+    W.printHex("Addend", Rel.r_addend);
+  } else {
+    raw_ostream &OS = W.startLine();
+    OS << W.hex(Rel.r_offset) << " " << RelocName << " "
+       << (SymbolName.size() > 0 ? SymbolName : "-") << " "
        << W.hex(Rel.r_addend) << "\n";
   }
 }
@@ -1336,8 +1416,11 @@ static const char *getTypeString(uint64_t Type) {
   LLVM_READOBJ_TYPE_CASE(VERNEED);
   LLVM_READOBJ_TYPE_CASE(VERNEEDNUM);
   LLVM_READOBJ_TYPE_CASE(VERSYM);
+  LLVM_READOBJ_TYPE_CASE(RELACOUNT);
   LLVM_READOBJ_TYPE_CASE(RELCOUNT);
   LLVM_READOBJ_TYPE_CASE(GNU_HASH);
+  LLVM_READOBJ_TYPE_CASE(TLSDESC_PLT);
+  LLVM_READOBJ_TYPE_CASE(TLSDESC_GOT);
   LLVM_READOBJ_TYPE_CASE(MIPS_RLD_VERSION);
   LLVM_READOBJ_TYPE_CASE(MIPS_RLD_MAP_REL);
   LLVM_READOBJ_TYPE_CASE(MIPS_FLAGS);
@@ -1480,6 +1563,7 @@ void ELFDumper<ELFT>::printValue(uint64_t Type, uint64_t Value) {
   case DT_MIPS_OPTIONS:
     OS << format("0x%" PRIX64, Value);
     break;
+  case DT_RELACOUNT:
   case DT_RELCOUNT:
   case DT_VERDEFNUM:
   case DT_VERNEEDNUM:

@@ -228,7 +228,7 @@ public:
   /// performing Interprocedural SCCP.
   void TrackValueOfGlobalVariable(GlobalVariable *GV) {
     // We only track the contents of scalar globals.
-    if (GV->getType()->getElementType()->isSingleValueType()) {
+    if (GV->getValueType()->isSingleValueType()) {
       LatticeVal &IV = TrackedGlobals[GV];
       if (!isa<UndefValue>(GV->getInitializer()))
         IV.markConstant(GV->getInitializer());
@@ -1094,7 +1094,7 @@ void SCCPSolver::visitLoadInst(LoadInst &I) {
   }
 
   // Transform load from a constant into a constant if possible.
-  if (Constant *C = ConstantFoldLoadFromConstPtr(Ptr, DL)) {
+  if (Constant *C = ConstantFoldLoadFromConstPtr(Ptr, I.getType(), DL)) {
     if (isa<UndefValue>(C))
       return;
     return markConstant(IV, &I, C);

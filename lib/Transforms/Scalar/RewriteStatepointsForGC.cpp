@@ -83,7 +83,7 @@ static cl::opt<bool>
 /// This is purely to provide a debugging and dianostic hook until the vector
 /// split is replaced with vector relocations.
 static cl::opt<bool> UseVectorSplit("rs4gc-split-vector-values", cl::Hidden,
-                                    cl::init(true));
+                                    cl::init(false));
 
 namespace {
 struct RewriteStatepointsForGC : public ModulePass {
@@ -201,7 +201,8 @@ struct PartiallyConstructedSafepointRecord {
 static ArrayRef<Use> GetDeoptBundleOperands(ImmutableCallSite CS) {
   assert(UseDeoptBundles && "Should not be called otherwise!");
 
-  Optional<OperandBundleUse> DeoptBundle = CS.getOperandBundle("deopt");
+  Optional<OperandBundleUse> DeoptBundle =
+      CS.getOperandBundle(LLVMContext::OB_deopt);
 
   if (!DeoptBundle.hasValue()) {
     assert(AllowStatepointWithNoDeoptInfo &&
@@ -1404,8 +1405,11 @@ makeStatepointExplicitImpl(const CallSite CS, /* to replace */
   if (UseDeoptBundles) {
     CallArgs = {CS.arg_begin(), CS.arg_end()};
     DeoptArgs = GetDeoptBundleOperands(CS);
-    // TODO: we don't fill in TransitionArgs or Flags in this branch, but we
-    // could have an operand bundle for that too.
+    if (auto TransitionBundle =
+            CS.getOperandBundle(LLVMContext::OB_gc_transition)) {
+      Flags |= uint32_t(StatepointFlags::GCTransition);
+      TransitionArgs = TransitionBundle->Inputs;
+    }
     AttributeSet OriginalAttrs = CS.getAttributes();
 
     Attribute AttrID = OriginalAttrs.getAttribute(AttributeSet::FunctionIndex,
@@ -1777,8 +1781,7 @@ static void relocationViaAlloca(
 
       auto InsertClobbersAt = [&](Instruction *IP) {
         for (auto *AI : ToClobber) {
-          auto AIType = cast<PointerType>(AI->getType());
-          auto PT = cast<PointerType>(AIType->getElementType());
+          auto PT = cast<PointerType>(AI->getAllocatedType());
           Constant *CPN = ConstantPointerNull::get(PT);
           StoreInst *Store = new StoreInst(CPN, AI);
           Store->insertBefore(IP);
@@ -2109,7 +2112,7 @@ chainToBasePointerCost(SmallVectorImpl<Instruction*> &Chain,
 
     } else if (GetElementPtrInst *GEP = dyn_cast<GetElementPtrInst>(Instr)) {
       // Cost of the address calculation
-      Type *ValTy = GEP->getPointerOperandType()->getPointerElementType();
+      Type *ValTy = GEP->getSourceElementType();
       Cost += TTI.getAddressComputationCost(ValTy);
 
       // And cost of the GEP itself

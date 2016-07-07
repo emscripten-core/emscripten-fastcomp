@@ -377,6 +377,9 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   bool LastOpcodeHasJMP_c = PredOpcodeHasJMP_c(LastOpcode);
   bool LastOpcodeHasNVJump = isNewValueJump(LastInst);
 
+  if (LastOpcodeHasJMP_c && !LastInst->getOperand(1).isMBB())
+    return true;
+
   // If there is only one terminator instruction, process it.
   if (LastInst && !SecondLastInst) {
     if (LastOpcode == Hexagon::J2_jump) {
@@ -412,6 +415,8 @@ bool HexagonInstrInfo::AnalyzeBranch(MachineBasicBlock &MBB,
   bool SecLastOpcodeHasJMP_c = PredOpcodeHasJMP_c(SecLastOpcode);
   bool SecLastOpcodeHasNVJump = isNewValueJump(SecondLastInst);
   if (SecLastOpcodeHasJMP_c && (LastOpcode == Hexagon::J2_jump)) {
+    if (!SecondLastInst->getOperand(1).isMBB())
+      return true;
     TBB =  SecondLastInst->getOperand(1).getMBB();
     Cond.push_back(MachineOperand::CreateImm(SecondLastInst->getOpcode()));
     Cond.push_back(SecondLastInst->getOperand(0));
@@ -723,8 +728,12 @@ void HexagonInstrInfo::storeRegToStackSlot(MachineBasicBlock &MBB,
           .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
   } else if (Hexagon::PredRegsRegClass.hasSubClassEq(RC)) {
     BuildMI(MBB, I, DL, get(Hexagon::STriw_pred))
-          .addFrameIndex(FI).addImm(0)
-          .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
+      .addFrameIndex(FI).addImm(0)
+      .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
+  } else if (Hexagon::ModRegsRegClass.hasSubClassEq(RC)) {
+    BuildMI(MBB, I, DL, get(Hexagon::STriw_mod))
+      .addFrameIndex(FI).addImm(0)
+      .addReg(SrcReg, getKillRegState(isKill)).addMemOperand(MMO);
   } else {
     llvm_unreachable("Unimplemented");
   }
@@ -742,15 +751,18 @@ void HexagonInstrInfo::loadRegFromStackSlot(MachineBasicBlock &MBB,
   MachineMemOperand *MMO = MF.getMachineMemOperand(
       MachinePointerInfo::getFixedStack(MF, FI), MachineMemOperand::MOLoad,
       MFI.getObjectSize(FI), Align);
-  if (RC == &Hexagon::IntRegsRegClass) {
+  if (Hexagon::IntRegsRegClass.hasSubClassEq(RC)) {
     BuildMI(MBB, I, DL, get(Hexagon::L2_loadri_io), DestReg)
           .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
-  } else if (RC == &Hexagon::DoubleRegsRegClass) {
+  } else if (Hexagon::DoubleRegsRegClass.hasSubClassEq(RC)) {
     BuildMI(MBB, I, DL, get(Hexagon::L2_loadrd_io), DestReg)
           .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
-  } else if (RC == &Hexagon::PredRegsRegClass) {
+  } else if (Hexagon::PredRegsRegClass.hasSubClassEq(RC)) {
     BuildMI(MBB, I, DL, get(Hexagon::LDriw_pred), DestReg)
-          .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
+      .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
+  } else if (Hexagon::ModRegsRegClass.hasSubClassEq(RC)) {
+    BuildMI(MBB, I, DL, get(Hexagon::LDriw_mod), DestReg)
+      .addFrameIndex(FI).addImm(0).addMemOperand(MMO);
   } else {
     llvm_unreachable("Can't store this register to stack slot");
   }
@@ -950,6 +962,36 @@ bool HexagonInstrInfo::expandPostRAPseudo(MachineBasicBlock::iterator MI)
       MRI.clearKillFlags(Src2SubLo);
       MRI.clearKillFlags(Src3SubHi);
       MRI.clearKillFlags(Src3SubLo);
+      return true;
+    }
+    case Hexagon::Insert4: {
+      unsigned DstReg = MI->getOperand(0).getReg();
+      unsigned Src1Reg = MI->getOperand(1).getReg();
+      unsigned Src2Reg = MI->getOperand(2).getReg();
+      unsigned Src3Reg = MI->getOperand(3).getReg();
+      unsigned Src4Reg = MI->getOperand(4).getReg();
+      unsigned Src1RegIsKill = getKillRegState(MI->getOperand(1).isKill());
+      unsigned Src2RegIsKill = getKillRegState(MI->getOperand(2).isKill());
+      unsigned Src3RegIsKill = getKillRegState(MI->getOperand(3).isKill());
+      unsigned Src4RegIsKill = getKillRegState(MI->getOperand(4).isKill());
+      unsigned DstSubHi = HRI.getSubReg(DstReg, Hexagon::subreg_hireg);
+      unsigned DstSubLo = HRI.getSubReg(DstReg, Hexagon::subreg_loreg);
+      BuildMI(MBB, MI, MI->getDebugLoc(), get(Hexagon::S2_insert),
+              HRI.getSubReg(DstReg, Hexagon::subreg_loreg)).addReg(DstSubLo)
+          .addReg(Src1Reg, Src1RegIsKill).addImm(16).addImm(0);
+      BuildMI(MBB, MI, MI->getDebugLoc(), get(Hexagon::S2_insert),
+              HRI.getSubReg(DstReg, Hexagon::subreg_loreg)).addReg(DstSubLo)
+          .addReg(Src2Reg, Src2RegIsKill).addImm(16).addImm(16);
+      BuildMI(MBB, MI, MI->getDebugLoc(), get(Hexagon::S2_insert),
+              HRI.getSubReg(DstReg, Hexagon::subreg_hireg)).addReg(DstSubHi)
+          .addReg(Src3Reg, Src3RegIsKill).addImm(16).addImm(0);
+      BuildMI(MBB, MI, MI->getDebugLoc(), get(Hexagon::S2_insert),
+              HRI.getSubReg(DstReg, Hexagon::subreg_hireg)).addReg(DstSubHi)
+          .addReg(Src4Reg, Src4RegIsKill).addImm(16).addImm(16);
+      MBB.erase(MI);
+      MRI.clearKillFlags(DstReg);
+      MRI.clearKillFlags(DstSubHi);
+      MRI.clearKillFlags(DstSubLo);
       return true;
     }
     case Hexagon::MUX64_rr: {
@@ -2426,6 +2468,8 @@ bool HexagonInstrInfo::isValidOffset(unsigned Opcode, int Offset,
   // any size. Later pass knows how to handle it.
   case Hexagon::STriw_pred:
   case Hexagon::LDriw_pred:
+  case Hexagon::STriw_mod:
+  case Hexagon::LDriw_mod:
     return true;
 
   case Hexagon::TFR_FI:

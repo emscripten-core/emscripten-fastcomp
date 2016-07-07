@@ -21,10 +21,15 @@
 
 namespace fuzzer {
 
-void Print(const Unit &v, const char *PrintAfter) {
-  for (auto x : v)
-    Printf("0x%x,", (unsigned) x);
+void PrintHexArray(const uint8_t *Data, size_t Size,
+                   const char *PrintAfter) {
+  for (size_t i = 0; i < Size; i++)
+    Printf("0x%x,", (unsigned)Data[i]);
   Printf("%s", PrintAfter);
+}
+
+void Print(const Unit &v, const char *PrintAfter) {
+  PrintHexArray(v.data(), v.size(), PrintAfter);
 }
 
 void PrintASCIIByte(uint8_t Byte) {
@@ -44,10 +49,12 @@ void PrintASCII(const uint8_t *Data, size_t Size, const char *PrintAfter) {
   Printf("%s", PrintAfter);
 }
 
+void PrintASCII(const Word &W, const char *PrintAfter) {
+  PrintASCII(W.data(), W.size(), PrintAfter);
+}
+
 void PrintASCII(const Unit &U, const char *PrintAfter) {
-  for (auto X : U)
-    PrintASCIIByte(X);
-  Printf("%s", PrintAfter);
+  PrintASCII(U.data(), U.size(), PrintAfter);
 }
 
 std::string Hash(const Unit &U) {

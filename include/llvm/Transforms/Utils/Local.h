@@ -316,7 +316,7 @@ void combineMetadata(Instruction *K, const Instruction *J, ArrayRef<unsigned> Kn
 unsigned replaceDominatedUsesWith(Value *From, Value *To, DominatorTree &DT,
                                   const BasicBlockEdge &Edge);
 /// \brief Replace each use of 'From' with 'To' if that use is dominated by
-/// the given BasicBlock. Returns the number of replacements made.
+/// the end of the given BasicBlock. Returns the number of replacements made.
 unsigned replaceDominatedUsesWith(Value *From, Value *To, DominatorTree &DT,
                                   const BasicBlock *BB);
 
@@ -330,6 +330,25 @@ unsigned replaceDominatedUsesWith(Value *From, Value *To, DominatorTree &DT,
 /// Most passes can and should ignore this information, and it is only used
 /// during lowering by the GC infrastructure.
 bool callsGCLeafFunction(ImmutableCallSite CS);
+
+//===----------------------------------------------------------------------===//
+//  Intrinsic pattern matching
+//
+
+/// Try and match a bitreverse or bswap idiom.
+///
+/// If an idiom is matched, an intrinsic call is inserted before \c I. Any added
+/// instructions are returned in \c InsertedInsts. They will all have been added
+/// to a basic block.
+///
+/// A bitreverse idiom normally requires around 2*BW nodes to be searched (where
+/// BW is the bitwidth of the integer type). A bswap idiom requires anywhere up
+/// to BW / 4 nodes to be searched, so is significantly faster.
+///
+/// This function returns true on a successful match or false otherwise.
+bool recognizeBitReverseOrBSwapIdiom(
+    Instruction *I, bool MatchBSwaps, bool MatchBitReversals,
+    SmallVectorImpl<Instruction *> &InsertedInsts);
 
 } // End llvm namespace
 

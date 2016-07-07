@@ -20,7 +20,6 @@
 #include <algorithm>
 
 using namespace llvm;
-using namespace llvm::support;
 
 namespace llvm {
 
@@ -225,6 +224,11 @@ public:
     startLine() << Label << ": " << Str << " (" << hex(Value) << ")\n";
   }
 
+  template <typename T>
+  void printSymbolOffset(StringRef Label, StringRef Symbol, T Value) {
+    startLine() << Label << ": " << Symbol << '+' << hex(Value) << '\n';
+  }
+
   void printString(StringRef Label, StringRef Value) {
     startLine() << Label << ": " << Value << "\n";
   }
@@ -293,8 +297,9 @@ private:
 };
 
 template <>
-inline void StreamWriter::printHex<ulittle16_t>(StringRef Label,
-                                                ulittle16_t Value) {
+inline void
+StreamWriter::printHex<support::ulittle16_t>(StringRef Label,
+                                             support::ulittle16_t Value) {
   startLine() << Label << ": " << hex(Value) << "\n";
 }
 

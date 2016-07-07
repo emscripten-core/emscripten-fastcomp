@@ -62,14 +62,17 @@ static bool AreEquivalentAddressValues(const Value *A, const Value *B) {
 ///
 /// This uses the pointee type to determine how many bytes need to be safe to
 /// load from the pointer.
-bool llvm::isSafeToLoadUnconditionally(Value *V, Instruction *ScanFrom,
-                                       unsigned Align) {
+bool llvm::isSafeToLoadUnconditionally(Value *V, unsigned Align,
+                                       Instruction *ScanFrom) {
   const DataLayout &DL = ScanFrom->getModule()->getDataLayout();
 
   // Zero alignment means that the load has the ABI alignment for the target
   if (Align == 0)
     Align = DL.getABITypeAlignment(V->getType()->getPointerElementType());
   assert(isPowerOf2_32(Align));
+
+  if (isDereferenceableAndAlignedPointer(V, Align, DL))
+    return true;
 
   int64_t ByteOffset = 0;
   Value *Base = V;
@@ -193,14 +196,15 @@ llvm::DefMaxInstsToScan("available-load-scan-limit", cl::init(6), cl::Hidden,
 /// If \c AATags is non-null and a load or store is found, the AA tags from the
 /// load or store are recorded there. If there are no AA tags or if no access is
 /// found, it is left unmodified.
-Value *llvm::FindAvailableLoadedValue(Value *Ptr, BasicBlock *ScanBB,
+Value *llvm::FindAvailableLoadedValue(LoadInst *Load, BasicBlock *ScanBB,
                                       BasicBlock::iterator &ScanFrom,
                                       unsigned MaxInstsToScan,
                                       AliasAnalysis *AA, AAMDNodes *AATags) {
   if (MaxInstsToScan == 0)
     MaxInstsToScan = ~0U;
 
-  Type *AccessTy = cast<PointerType>(Ptr->getType())->getElementType();
+  Value *Ptr = Load->getPointerOperand();
+  Type *AccessTy = Load->getType();
 
   const DataLayout &DL = ScanBB->getModule()->getDataLayout();
 

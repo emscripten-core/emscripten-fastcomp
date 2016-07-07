@@ -24,6 +24,9 @@
 namespace llvm {
 
 /// Writer for instrumentation based profile data.
+class ProfOStream;
+class InstrProfRecordWriterTrait;
+
 class InstrProfWriter {
 public:
   typedef SmallDenseMap<uint64_t, InstrProfRecord, 1> ProfilingData;
@@ -31,9 +34,12 @@ public:
 private:
   StringMap<ProfilingData> FunctionData;
   uint64_t MaxFunctionCount;
+  // Use raw pointer here for the incomplete type object.
+  InstrProfRecordWriterTrait *InfoObj;
 
 public:
-  InstrProfWriter() : MaxFunctionCount(0) {}
+  InstrProfWriter();
+  ~InstrProfWriter();
 
   /// Add function counts for the given function. If there are already counts
   /// for this function and the hash and number of counts match, each counter is
@@ -53,7 +59,7 @@ public:
   void setValueProfDataEndianness(support::endianness Endianness);
 
 private:
-  std::pair<uint64_t, uint64_t> writeImpl(raw_ostream &OS);
+  void writeImpl(ProfOStream &OS);
 };
 
 } // end namespace llvm

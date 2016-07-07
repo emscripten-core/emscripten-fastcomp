@@ -91,7 +91,8 @@ bool X86FrameLowering::hasFP(const MachineFunction &MF) const {
           MFI->isFrameAddressTaken() || MFI->hasOpaqueSPAdjustment() ||
           MF.getInfo<X86MachineFunctionInfo>()->getForceFramePointer() ||
           MMI.callsUnwindInit() || MMI.hasEHFunclets() || MMI.callsEHReturn() ||
-          MFI->hasStackMap() || MFI->hasPatchPoint());
+          MFI->hasStackMap() || MFI->hasPatchPoint() ||
+          MFI->hasCopyImplyingStackAdjustment());
 }
 
 static unsigned getSUBriOpcode(unsigned IsLP64, int64_t Imm) {
@@ -943,11 +944,11 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
   // push and pop from the stack.
   if (Is64Bit && !Fn->hasFnAttribute(Attribute::NoRedZone) &&
       !TRI->needsStackRealignment(MF) &&
-      !MFI->hasVarSizedObjects() &&    // No dynamic alloca.
-      !MFI->adjustsStack() &&          // No calls.
-      !IsWin64CC &&                    // Win64 has no Red Zone
-      !MFI->hasOpaqueSPAdjustment() && // Don't push and pop.
-      !MF.shouldSplitStack()) {        // Regular stack
+      !MFI->hasVarSizedObjects() &&             // No dynamic alloca.
+      !MFI->adjustsStack() &&                   // No calls.
+      !IsWin64CC &&                             // Win64 has no Red Zone
+      !MFI->hasCopyImplyingStackAdjustment() && // Don't push and pop.
+      !MF.shouldSplitStack()) {                 // Regular stack
     uint64_t MinSize = X86FI->getCalleeSavedFrameSize();
     if (HasFP) MinSize += SlotSize;
     StackSize = std::max(MinSize, StackSize > 128 ? StackSize - 128 : 0);
@@ -1009,7 +1010,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
 
     // Callee-saved registers are pushed on stack before the stack is realigned.
     if (TRI->needsStackRealignment(MF) && !IsWin64Prologue)
-      NumBytes = RoundUpToAlignment(NumBytes, MaxAlign);
+      NumBytes = alignTo(NumBytes, MaxAlign);
 
     // Get the offset of the stack slot for the EBP register, which is
     // guaranteed to be the last slot by processFunctionBeforeFrameFinalized.
@@ -1130,7 +1131,7 @@ void X86FrameLowering::emitPrologue(MachineFunction &MF,
   // virtual memory manager are allocated in correct sequence.
   uint64_t AlignedNumBytes = NumBytes;
   if (IsWin64Prologue && !IsFunclet && TRI->needsStackRealignment(MF))
-    AlignedNumBytes = RoundUpToAlignment(AlignedNumBytes, MaxAlign);
+    AlignedNumBytes = alignTo(AlignedNumBytes, MaxAlign);
   if (AlignedNumBytes >= StackProbeSize && UseStackProbe) {
     // Check whether EAX is livein for this function.
     bool isEAXAlive = isEAXLiveIn(MF);
@@ -1429,8 +1430,7 @@ X86FrameLowering::getWinEHFuncletFrameSize(const MachineFunction &MF) const {
   // RBP is not included in the callee saved register block. After pushing RBP,
   // everything is 16 byte aligned. Everything we allocate before an outgoing
   // call must also be 16 byte aligned.
-  unsigned FrameSizeMinusRBP =
-      RoundUpToAlignment(CSSize + UsedSize, getStackAlignment());
+  unsigned FrameSizeMinusRBP = alignTo(CSSize + UsedSize, getStackAlignment());
   // Subtract out the size of the callee saved registers. This is how much stack
   // each funclet will allocate.
   return FrameSizeMinusRBP - CSSize;
@@ -1490,7 +1490,7 @@ void X86FrameLowering::emitEpilogue(MachineFunction &MF,
     // Callee-saved registers were pushed on stack before the stack was
     // realigned.
     if (TRI->needsStackRealignment(MF) && !IsWin64Prologue)
-      NumBytes = RoundUpToAlignment(FrameSize, MaxAlign);
+      NumBytes = alignTo(FrameSize, MaxAlign);
 
     // Pop EBP.
     BuildMI(MBB, MBBI, DL,
@@ -2030,6 +2030,10 @@ void X86FrameLowering::adjustForSegmentedStacks(
   unsigned TlsReg, TlsOffset;
   DebugLoc DL;
 
+  // To support shrink-wrapping we would need to insert the new blocks
+  // at the right place and update the branches to PrologueMBB.
+  assert(&(*MF.begin()) == &PrologueMBB && "Shrink-wrapping not supported yet");
+
   unsigned ScratchReg = GetScratchRegister(Is64Bit, IsLP64, MF, true);
   assert(!MF.getRegInfo().isLiveIn(ScratchReg) &&
          "Scratch register is live-in");
@@ -2270,6 +2274,11 @@ void X86FrameLowering::adjustForHiPEPrologue(
     MachineFunction &MF, MachineBasicBlock &PrologueMBB) const {
   MachineFrameInfo *MFI = MF.getFrameInfo();
   DebugLoc DL;
+
+  // To support shrink-wrapping we would need to insert the new blocks
+  // at the right place and update the branches to PrologueMBB.
+  assert(&(*MF.begin()) == &PrologueMBB && "Shrink-wrapping not supported yet");
+
   // HiPE-specific values
   const unsigned HipeLeafWords = 24;
   const unsigned CCRegisteredArgs = Is64Bit ? 6 : 5;
@@ -2479,7 +2488,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
     // amount of space needed for the outgoing arguments up to the next
     // alignment boundary.
     unsigned StackAlign = getStackAlignment();
-    Amount = RoundUpToAlignment(Amount, StackAlign);
+    Amount = alignTo(Amount, StackAlign);
 
     MachineModuleInfo &MMI = MF.getMMI();
     const Function *Fn = MF.getFunction();
@@ -2583,7 +2592,14 @@ bool X86FrameLowering::canUseAsEpilogue(const MachineBasicBlock &MBB) const {
 bool X86FrameLowering::enableShrinkWrapping(const MachineFunction &MF) const {
   // If we may need to emit frameless compact unwind information, give
   // up as this is currently broken: PR25614.
-  return MF.getFunction()->hasFnAttribute(Attribute::NoUnwind) || hasFP(MF);
+  return (MF.getFunction()->hasFnAttribute(Attribute::NoUnwind) || hasFP(MF)) &&
+         // The lowering of segmented stack and HiPE only support entry blocks
+         // as prologue blocks: PR26107.
+         // This limitation may be lifted if we fix:
+         // - adjustForSegmentedStacks
+         // - adjustForHiPEPrologue
+         MF.getFunction()->getCallingConv() != CallingConv::HiPE &&
+         !MF.shouldSplitStack();
 }
 
 MachineBasicBlock::iterator X86FrameLowering::restoreWin32EHStackPointers(

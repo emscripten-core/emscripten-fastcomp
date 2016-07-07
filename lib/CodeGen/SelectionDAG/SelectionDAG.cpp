@@ -377,22 +377,6 @@ static void AddNodeIDOperands(FoldingSetNodeID &ID,
   }
 }
 
-/// Add logical or fast math flag values to FoldingSetNodeID value.
-static void AddNodeIDFlags(FoldingSetNodeID &ID, unsigned Opcode,
-                           const SDNodeFlags *Flags) {
-  if (!isBinOpWithFlags(Opcode))
-    return;
-
-  unsigned RawFlags = 0;
-  if (Flags)
-    RawFlags = Flags->getRawFlags();
-  ID.AddInteger(RawFlags);
-}
-
-static void AddNodeIDFlags(FoldingSetNodeID &ID, const SDNode *N) {
-  AddNodeIDFlags(ID, N->getOpcode(), N->getFlags());
-}
-
 static void AddNodeIDNode(FoldingSetNodeID &ID, unsigned short OpC,
                           SDVTList VTList, ArrayRef<SDValue> OpList) {
   AddNodeIDOpcode(ID, OpC);
@@ -527,8 +511,6 @@ static void AddNodeIDCustom(FoldingSetNodeID &ID, const SDNode *N) {
     break;
   }
   } // end switch (N->getOpcode())
-
-  AddNodeIDFlags(ID, N);
 
   // Target specific memory nodes could also have address spaces to check.
   if (N->isTargetMemoryOpcode())
@@ -851,6 +833,9 @@ SDNode *SelectionDAG::FindModifiedNodeSlot(SDNode *N, SDValue Op,
   AddNodeIDNode(ID, N->getOpcode(), N->getVTList(), Ops);
   AddNodeIDCustom(ID, N);
   SDNode *Node = FindNodeOrInsertPos(ID, N->getDebugLoc(), InsertPos);
+  if (Node)
+    if (const SDNodeFlags *Flags = N->getFlags())
+      Node->intersectFlagsWith(Flags);
   return Node;
 }
 
@@ -869,6 +854,9 @@ SDNode *SelectionDAG::FindModifiedNodeSlot(SDNode *N,
   AddNodeIDNode(ID, N->getOpcode(), N->getVTList(), Ops);
   AddNodeIDCustom(ID, N);
   SDNode *Node = FindNodeOrInsertPos(ID, N->getDebugLoc(), InsertPos);
+  if (Node)
+    if (const SDNodeFlags *Flags = N->getFlags())
+      Node->intersectFlagsWith(Flags);
   return Node;
 }
 
@@ -886,6 +874,9 @@ SDNode *SelectionDAG::FindModifiedNodeSlot(SDNode *N, ArrayRef<SDValue> Ops,
   AddNodeIDNode(ID, N->getOpcode(), N->getVTList(), Ops);
   AddNodeIDCustom(ID, N);
   SDNode *Node = FindNodeOrInsertPos(ID, N->getDebugLoc(), InsertPos);
+  if (Node)
+    if (const SDNodeFlags *Flags = N->getFlags())
+      Node->intersectFlagsWith(Flags);
   return Node;
 }
 
@@ -3272,6 +3263,26 @@ SDValue SelectionDAG::FoldConstantArithmetic(unsigned Opcode, SDLoc DL, EVT VT,
   return getConstant(Folded.first, DL, VT);
 }
 
+SDValue SelectionDAG::FoldSymbolOffset(unsigned Opcode, EVT VT,
+                                       const GlobalAddressSDNode *GA,
+                                       const SDNode *N2) {
+  if (GA->getOpcode() != ISD::GlobalAddress)
+    return SDValue();
+  if (!TLI->isOffsetFoldingLegal(GA))
+    return SDValue();
+  const ConstantSDNode *Cst2 = dyn_cast<ConstantSDNode>(N2);
+  if (!Cst2)
+    return SDValue();
+  int64_t Offset = Cst2->getSExtValue();
+  switch (Opcode) {
+  case ISD::ADD: break;
+  case ISD::SUB: Offset = -uint64_t(Offset); break;
+  default: return SDValue();
+  }
+  return getGlobalAddress(GA->getGlobal(), SDLoc(Cst2), VT,
+                          GA->getOffset() + uint64_t(Offset));
+}
+
 SDValue SelectionDAG::FoldConstantArithmetic(unsigned Opcode, SDLoc DL, EVT VT,
                                              SDNode *Cst1, SDNode *Cst2) {
   // If the opcode is a target-specific ISD node, there's nothing we can
@@ -3297,6 +3308,13 @@ SDValue SelectionDAG::FoldConstantArithmetic(unsigned Opcode, SDLoc DL, EVT VT,
       }
     }
   }
+
+  // fold (add Sym, c) -> Sym+c
+  if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(Cst1))
+    return FoldSymbolOffset(Opcode, VT, GA, Cst2);
+  if (isCommutativeBinOp(Opcode))
+    if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(Cst2))
+      return FoldSymbolOffset(Opcode, VT, GA, Cst1);
 
   // For vectors extract each constant element into Inputs so we can constant
   // fold them individually.
@@ -3892,10 +3910,12 @@ SDValue SelectionDAG::getNode(unsigned Opcode, SDLoc DL, EVT VT, SDValue N1,
     SDValue Ops[] = {N1, N2};
     FoldingSetNodeID ID;
     AddNodeIDNode(ID, Opcode, VTs, Ops);
-    AddNodeIDFlags(ID, Opcode, Flags);
     void *IP = nullptr;
-    if (SDNode *E = FindNodeOrInsertPos(ID, DL.getDebugLoc(), IP))
+    if (SDNode *E = FindNodeOrInsertPos(ID, DL.getDebugLoc(), IP)) {
+      if (Flags)
+        E->intersectFlagsWith(Flags);
       return SDValue(E, 0);
+    }
 
     N = GetBinarySDNode(Opcode, DL, VTs, N1, N2, Flags);
 
@@ -4143,7 +4163,7 @@ static SDValue getMemBasePlusOffset(SDValue Base, unsigned Offset, SDLoc dl,
 /// isMemSrcFromString - Returns true if memcpy source is a string constant.
 ///
 static bool isMemSrcFromString(SDValue Src, StringRef &Str) {
-  unsigned SrcDelta = 0;
+  uint64_t SrcDelta = 0;
   GlobalAddressSDNode *G = nullptr;
   if (Src.getOpcode() == ISD::GlobalAddress)
     G = cast<GlobalAddressSDNode>(Src);
@@ -4156,7 +4176,8 @@ static bool isMemSrcFromString(SDValue Src, StringRef &Str) {
   if (!G)
     return false;
 
-  return getConstantStringInfo(G->getGlobal(), Str, SrcDelta, false);
+  return getConstantStringInfo(G->getGlobal(), Str,
+                               SrcDelta + G->getOffset(), false);
 }
 
 /// Determines the optimal series of memory ops to replace the memset / memcpy.
@@ -6249,10 +6270,12 @@ SDNode *SelectionDAG::getNodeIfExists(unsigned Opcode, SDVTList VTList,
   if (VTList.VTs[VTList.NumVTs - 1] != MVT::Glue) {
     FoldingSetNodeID ID;
     AddNodeIDNode(ID, Opcode, VTList, Ops);
-    AddNodeIDFlags(ID, Opcode, Flags);
     void *IP = nullptr;
-    if (SDNode *E = FindNodeOrInsertPos(ID, DebugLoc(), IP))
+    if (SDNode *E = FindNodeOrInsertPos(ID, DebugLoc(), IP)) {
+      if (Flags)
+        E->intersectFlagsWith(Flags);
       return E;
+    }
   }
   return nullptr;
 }
@@ -6948,6 +6971,11 @@ const SDNodeFlags *SDNode::getFlags() const {
   return nullptr;
 }
 
+void SDNode::intersectFlagsWith(const SDNodeFlags *Flags) {
+  if (auto *FlagsNode = dyn_cast<BinaryWithFlagsSDNode>(this))
+    FlagsNode->Flags.intersectWith(Flags);
+}
+
 SDValue SelectionDAG::UnrollVectorOp(SDNode *N, unsigned ResNE) {
   assert(N->getNumValues() == 1 &&
          "Can't unroll a vector with multiple results!");
@@ -7320,6 +7348,22 @@ bool ShuffleVectorSDNode::isSplatMask(const int *Mask, EVT VT) {
     if (Mask[i] >= 0 && Mask[i] != Idx)
       return false;
   return true;
+}
+
+// \brief Returns the SDNode if it is a constant integer BuildVector
+// or constant integer.
+SDNode *SelectionDAG::isConstantIntBuildVectorOrConstantInt(SDValue N) {
+  if (isa<ConstantSDNode>(N))
+    return N.getNode();
+  if (ISD::isBuildVectorOfConstantSDNodes(N.getNode()))
+    return N.getNode();
+  // Treat a GlobalAddress supporting constant offset folding as a
+  // constant integer.
+  if (GlobalAddressSDNode *GA = dyn_cast<GlobalAddressSDNode>(N))
+    if (GA->getOpcode() == ISD::GlobalAddress &&
+        TLI->isOffsetFoldingLegal(GA))
+      return GA;
+  return nullptr;
 }
 
 #ifndef NDEBUG

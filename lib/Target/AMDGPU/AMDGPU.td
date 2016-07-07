@@ -59,6 +59,12 @@ def FeatureFastFMAF32 : SubtargetFeature<"fast-fmaf",
         "Assuming f32 fma is at least as fast as mul + add",
         []>;
 
+def HalfRate64Ops : SubtargetFeature<"half-rate-64-ops",
+        "HalfRate64Ops",
+        "true",
+        "Most fp64 instructions are half rate instead of quarter",
+        []>;
+
 // Some instructions do not support denormals despite this flag. Using
 // fp32 denormals also causes instructions to run at the double
 // precision rate for the device.
@@ -137,6 +143,11 @@ def FeatureEnableHugeScratchBuffer : SubtargetFeature<"huge-scratch-buffer",
         "EnableHugeScratchBuffer",
         "true",
         "Enable scratch buffer sizes greater than 128 GB">;
+
+def FeatureEnableSIScheduler : SubtargetFeature<"si-scheduler",
+        "EnableSIScheduler",
+        "true",
+        "Enable SI Machine Scheduler">;
 
 class SubtargetFeatureFetchLimit <string Value> :
                           SubtargetFeature <"fetch"#Value,

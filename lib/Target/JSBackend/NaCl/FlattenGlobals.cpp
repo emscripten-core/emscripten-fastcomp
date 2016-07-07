@@ -353,9 +353,10 @@ static void ExpandConstant(const DataLayout *DL, Constant *Val,
   } else if (ConstantExpr *CE = dyn_cast<ConstantExpr>(Val)) {
     ExpandConstant(DL, CE->getOperand(0), ResultGlobal, ResultOffset);
     if (CE->getOpcode() == Instruction::GetElementPtr) {
+      auto *Ptr = cast<GlobalValue>(CE->getOperand(0)->stripPointerCasts());
       SmallVector<Value *, 8> Indexes(CE->op_begin() + 1, CE->op_end());
-      *ResultOffset += DL->getIndexedOffset(CE->getOperand(0)->getType(),
-                                            Indexes);
+      *ResultOffset += DL->getIndexedOffsetInType(Ptr->getValueType(),
+                                                  Indexes);
     } else if (CE->getOpcode() == Instruction::BitCast ||
                CE->getOpcode() == Instruction::IntToPtr) {
       // Nothing more to do.

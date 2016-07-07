@@ -6,7 +6,7 @@ using namespace fuzzer;
 
 // For now, have LLVMFuzzerTestOneInput just to make it link.
 // Later we may want to make unittests that actually call LLVMFuzzerTestOneInput.
-extern "C" void LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
+extern "C" int LLVMFuzzerTestOneInput(const uint8_t *Data, size_t Size) {
   abort();
 }
 
@@ -247,8 +247,8 @@ void TestAddWordFromDictionary(Mutator M, int NumIter) {
   MutationDispatcher MD(Rand);
   uint8_t Word1[4] = {0xAA, 0xBB, 0xCC, 0xDD};
   uint8_t Word2[3] = {0xFF, 0xEE, 0xEF};
-  MD.AddWordToManualDictionary(Unit(Word1, Word1 + sizeof(Word1)));
-  MD.AddWordToManualDictionary(Unit(Word2, Word2 + sizeof(Word2)));
+  MD.AddWordToManualDictionary(Word(Word1, sizeof(Word1)));
+  MD.AddWordToManualDictionary(Word(Word2, sizeof(Word2)));
   int FoundMask = 0;
   uint8_t CH0[7] = {0x00, 0x11, 0x22, 0xAA, 0xBB, 0xCC, 0xDD};
   uint8_t CH1[7] = {0x00, 0x11, 0xAA, 0xBB, 0xCC, 0xDD, 0x22};
@@ -285,16 +285,16 @@ TEST(FuzzerMutate, AddWordFromDictionary2) {
 void TestAddWordFromDictionaryWithHint(Mutator M, int NumIter) {
   FuzzerRandomLibc Rand(0);
   MutationDispatcher MD(Rand);
-  uint8_t Word[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xFF, 0xEE, 0xEF};
+  uint8_t W[] = {0xAA, 0xBB, 0xCC, 0xDD, 0xFF, 0xEE, 0xEF};
   size_t PosHint = 7777;
-  MD.AddWordToAutoDictionary(Unit(Word, Word + sizeof(Word)), PosHint);
+  MD.AddWordToAutoDictionary(Word(W, sizeof(W)), PosHint);
   int FoundMask = 0;
   for (int i = 0; i < NumIter; i++) {
     uint8_t T[10000];
     memset(T, 0, sizeof(T));
     size_t NewSize = (MD.*M)(T, 9000, 10000);
-    if (NewSize >= PosHint + sizeof(Word) &&
-        !memcmp(Word, T + PosHint, sizeof(Word)))
+    if (NewSize >= PosHint + sizeof(W) &&
+        !memcmp(W, T + PosHint, sizeof(W)))
       FoundMask = 1;
   }
   EXPECT_EQ(FoundMask, 1);
@@ -302,7 +302,7 @@ void TestAddWordFromDictionaryWithHint(Mutator M, int NumIter) {
 
 TEST(FuzzerMutate, AddWordFromDictionaryWithHint1) {
   TestAddWordFromDictionaryWithHint(
-      &MutationDispatcher::Mutate_AddWordFromAutoDictionary, 1 << 5);
+      &MutationDispatcher::Mutate_AddWordFromTemporaryAutoDictionary, 1 << 5);
 }
 
 TEST(FuzzerMutate, AddWordFromDictionaryWithHint2) {
@@ -399,4 +399,24 @@ TEST(FuzzerUtil, Base64) {
   EXPECT_EQ("YWJjeA==", Base64({'a', 'b', 'c', 'x'}));
   EXPECT_EQ("YWJjeHk=", Base64({'a', 'b', 'c', 'x', 'y'}));
   EXPECT_EQ("YWJjeHl6", Base64({'a', 'b', 'c', 'x', 'y', 'z'}));
+}
+
+TEST(Corpus, Distribution) {
+  FuzzerRandomLibc Rand(0);
+  SimpleUserSuppliedFuzzer USF(&Rand, LLVMFuzzerTestOneInput);
+  Fuzzer::FuzzingOptions Options;
+  Fuzzer Fuzz(USF, Options);
+  size_t N = 10;
+  size_t TriesPerUnit = 1<<20;
+  for (size_t i = 0; i < N; i++) {
+    Fuzz.AddToCorpus(Unit{ static_cast<uint8_t>(i) });
+  }
+  std::vector<size_t> Hist(N);
+  for (size_t i = 0; i < N * TriesPerUnit; i++) {
+    Hist[Fuzz.ChooseUnitIdxToMutate()]++;
+  }
+  for (size_t i = 0; i < N; i++) {
+    // A weak sanity check that every unit gets invoked.
+    EXPECT_GT(Hist[i], TriesPerUnit / N / 3);
+  }
 }

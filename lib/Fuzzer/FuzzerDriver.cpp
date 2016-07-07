@@ -23,6 +23,10 @@
 #include <algorithm>
 #include <iterator>
 
+// This function should be present in the libFuzzer so that the client
+// binary can test for its existence.
+extern "C" __attribute__((used)) void __libfuzzer_is_present() {}
+
 namespace fuzzer {
 
 // Program arguments.
@@ -93,6 +97,23 @@ static const char *FlagValue(const char *Param, const char *Name) {
   return nullptr;
 }
 
+// Avoid calling stol as it triggers a bug in clang/glibc build.
+static long MyStol(const char *Str) {
+  long Res = 0;
+  long Sign = 1;
+  if (*Str == '-') {
+    Str++;
+    Sign = -1;
+  }
+  for (size_t i = 0; Str[i]; i++) {
+    char Ch = Str[i];
+    if (Ch < '0' || Ch > '9')
+      return Res;
+    Res = Res * 10 + (Ch - '0');
+  }
+  return Res * Sign;
+}
+
 static bool ParseOneFlag(const char *Param) {
   if (Param[0] != '-') return false;
   if (Param[1] == '-') {
@@ -108,7 +129,7 @@ static bool ParseOneFlag(const char *Param) {
     const char *Str = FlagValue(Param, Name);
     if (Str)  {
       if (FlagDescriptions[F].IntFlag) {
-        int Val = std::stol(Str);
+        int Val = MyStol(Str);
         *FlagDescriptions[F].IntFlag = Val;
         if (Flags.verbosity >= 2)
           Printf("Flag: %s %d\n", Name, Val);;
@@ -207,7 +228,7 @@ int RunOneTest(Fuzzer *F, const char *InputFilePath) {
 }
 
 int FuzzerDriver(int argc, char **argv, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
+  FuzzerRandom_mt19937 Rand(0);
   SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
   return FuzzerDriver(argc, argv, SUSF);
 }
@@ -218,7 +239,7 @@ int FuzzerDriver(int argc, char **argv, UserSuppliedFuzzer &USF) {
 }
 
 int FuzzerDriver(const std::vector<std::string> &Args, UserCallback Callback) {
-  FuzzerRandomLibc Rand(0);
+  FuzzerRandom_mt19937 Rand(0);
   SimpleUserSuppliedFuzzer SUSF(&Rand, Callback);
   return FuzzerDriver(Args, SUSF);
 }
@@ -254,6 +275,7 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Options.UseCounters = Flags.use_counters;
   Options.UseIndirCalls = Flags.use_indir_calls;
   Options.UseTraces = Flags.use_traces;
+  Options.UseMemcmp = Flags.use_memcmp;
   Options.ShuffleAtStartUp = Flags.shuffle;
   Options.PreferSmallDuringInitialShuffle =
       Flags.prefer_small_during_initial_shuffle;
@@ -284,7 +306,8 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   Fuzzer F(USF, Options);
 
   for (auto &U: Dictionary)
-    USF.GetMD().AddWordToManualDictionary(U);
+    if (U.size() <= Word::GetMaxSize())
+      USF.GetMD().AddWordToManualDictionary(Word(U.data(), U.size()));
 
   // Timer
   if (Flags.timeout > 0)
@@ -308,7 +331,8 @@ int FuzzerDriver(const std::vector<std::string> &Args,
   unsigned Seed = Flags.seed;
   // Initialize Seed.
   if (Seed == 0)
-    Seed = time(0) * 10000 + getpid();
+    Seed = (std::chrono::system_clock::now().time_since_epoch().count() << 10) +
+           getpid();
   if (Flags.verbosity)
     Printf("Seed: %u\n", Seed);
   USF.GetRand().ResetSeed(Seed);
