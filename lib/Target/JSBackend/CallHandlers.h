@@ -737,6 +737,7 @@ DEF_CALL_HANDLER(name, { \
 #define DEF_MAYBE_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   if (!WebAssembly) return CH___default__(CI, #to); \
+  Declares.insert(#name); \
   return CH___default__(CI, "_" #name); \
 })
 
