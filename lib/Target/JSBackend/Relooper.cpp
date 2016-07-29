@@ -154,7 +154,6 @@ Block::~Block() {
   for (BlockBranchMap::iterator iter = ProcessedBranchesOut.begin(); iter != ProcessedBranchesOut.end(); iter++) {
     delete iter->second;
   }
-  // XXX If not reachable, expected to have branches here. But need to clean them up to prevent leaks!
 }
 
 void Block::AddBranchTo(Block *Target, const char *Condition, const char *Code) {
@@ -498,6 +497,7 @@ void Relooper::Calculate(Block *Entry) {
           Split->BranchesIn.insert(Prior);
           Branch *Details = Prior->BranchesOut[Original];
           Prior->BranchesOut[Split] = new Branch(Details->Condition, Details->Code);
+          delete Details;
           Prior->BranchesOut.erase(Original);
           for (BlockBranchMap::iterator iter = Original->BranchesOut.begin(); iter != Original->BranchesOut.end(); iter++) {
             Block *Post = iter->first;
