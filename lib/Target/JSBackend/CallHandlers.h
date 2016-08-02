@@ -581,6 +581,14 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
+DEF_CALL_HANDLER(llvm_maxnum_f32, {
+  return CH___default__(CI, "Math_max", 2);
+})
+
+DEF_CALL_HANDLER(llvm_maxnum_f64, {
+  return CH___default__(CI, "Math_max", 2);
+})
+
 // EM_ASM support
 
 std::string handleAsmConst(const Instruction *CI) {
@@ -1506,6 +1514,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(llvm_ctlz_i32);
   SETUP_CALL_HANDLER(llvm_cttz_i32);
+  SETUP_CALL_HANDLER(llvm_maxnum_f32);
+  SETUP_CALL_HANDLER(llvm_maxnum_f64);
 
   // SIMD.js Float64x2
   SETUP_CALL_HANDLER(emscripten_float64x2_set);
