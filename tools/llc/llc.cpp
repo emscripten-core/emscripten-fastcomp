@@ -73,6 +73,11 @@ static cl::opt<bool>
 NoIntegratedAssembler("no-integrated-as", cl::Hidden,
                       cl::desc("Disable integrated assembler"));
 
+static cl::opt<bool>
+    PreserveComments("preserve-as-comments", cl::Hidden,
+                     cl::desc("Preserve Comments in outputted assembly"),
+                     cl::init(true));
+
 // Determine optimization level.
 static cl::opt<char>
 OptLevel("O",
@@ -241,7 +246,7 @@ int main(int argc, char **argv) {
   initializeCodeGen(*Registry);
   initializeLoopStrengthReducePass(*Registry);
   initializeLowerIntrinsicsPass(*Registry);
-  initializeUnreachableBlockElimPass(*Registry);
+  initializeUnreachableBlockElimLegacyPassPass(*Registry);
 
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
@@ -260,6 +265,34 @@ int main(int argc, char **argv) {
     if (int RetVal = compileModule(argv, Context))
       return RetVal;
   return 0;
+}
+
+static bool addPass(PassManagerBase &PM, const char *argv0,
+                    StringRef PassName, TargetPassConfig &TPC) {
+  if (PassName == "none")
+    return false;
+
+  const PassRegistry *PR = PassRegistry::getPassRegistry();
+  const PassInfo *PI = PR->getPassInfo(PassName);
+  if (!PI) {
+    errs() << argv0 << ": run-pass " << PassName << " is not registered.\n";
+    return true;
+  }
+
+  Pass *P;
+  if (PI->getTargetMachineCtor())
+    P = PI->getTargetMachineCtor()(&TPC.getTM<TargetMachine>());
+  else if (PI->getNormalCtor())
+    P = PI->getNormalCtor()();
+  else {
+    errs() << argv0 << ": cannot create pass: " << PI->getPassName() << "\n";
+    return true;
+  }
+  std::string Banner = std::string("After ") + std::string(P->getPassName());
+  PM.add(P);
+  TPC.printAndVerify(Banner);
+
+  return false;
 }
 
 static int compileModule(char **argv, LLVMContext &Context) {
@@ -332,6 +365,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   Options.MCOptions.ShowMCEncoding = ShowMCEncoding;
   Options.MCOptions.MCUseDwarfDirectory = EnableDwarfDirectory;
   Options.MCOptions.AsmVerbose = AsmVerbose;
+  Options.MCOptions.PreserveAsmComments = PreserveComments;
 
   std::unique_ptr<TargetMachine> Target(
       TheTarget->createTargetMachine(TheTriple.getTriple(), CPUStr, FeaturesStr,
@@ -406,35 +440,17 @@ static int compileModule(char **argv, LLVMContext &Context) {
         return 1;
       }
       LLVMTargetMachine &LLVMTM = static_cast<LLVMTargetMachine&>(*Target);
-      TargetPassConfig *TPC = LLVMTM.createPassConfig(PM);
-      PM.add(TPC);
+      TargetPassConfig &TPC = *LLVMTM.createPassConfig(PM);
+      PM.add(&TPC);
       LLVMTM.addMachineModuleInfo(PM);
       LLVMTM.addMachineFunctionAnalysis(PM, MIR.get());
-      TPC->printAndVerify("");
+      TPC.printAndVerify("");
 
-      for (std::string &RunPassName : *RunPassNames) {
-        const PassInfo *PI = PR->getPassInfo(RunPassName);
-        if (!PI) {
-          errs() << argv[0] << ": run-pass " << RunPassName << " is not registered.\n";
+      for (const std::string &RunPassName : *RunPassNames) {
+        if (addPass(PM, argv[0], RunPassName, TPC))
           return 1;
-        }
-
-        Pass *P;
-        if (PI->getTargetMachineCtor())
-          P = PI->getTargetMachineCtor()(Target.get());
-        else if (PI->getNormalCtor())
-          P = PI->getNormalCtor()();
-        else {
-          errs() << argv[0] << ": cannot create pass: "
-                 << PI->getPassName() << "\n";
-          return 1;
-        }
-        std::string Banner
-          = std::string("After ") + std::string(P->getPassName());
-        PM.add(P);
-        TPC->printAndVerify(Banner);
       }
-      PM.add(createPrintMIRPass(errs()));
+      PM.add(createPrintMIRPass(*OS));
     } else {
       if (!StartAfter.empty()) {
         const PassInfo *PI = PR->getPassInfo(StartAfter);

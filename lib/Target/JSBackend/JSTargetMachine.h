@@ -40,7 +40,7 @@ public:
   }
 };
 
-class JSTargetMachine : public TargetMachine {
+class JSTargetMachine : public LLVMTargetMachine {
   const JSSubtarget ST;
 
 public:

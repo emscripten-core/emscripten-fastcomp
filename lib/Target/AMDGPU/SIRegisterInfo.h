@@ -57,6 +57,7 @@ public:
 
   bool requiresFrameIndexScavenging(const MachineFunction &MF) const override;
   bool requiresVirtualBaseRegisters(const MachineFunction &Fn) const override;
+  bool trackLivenessAfterRegAlloc(const MachineFunction &MF) const override;
 
   int64_t getFrameIndexInstrOffset(const MachineInstr *MI,
                                    int Idx) const override;
@@ -184,7 +185,8 @@ public:
   unsigned getNumSGPRsAllowed(const SISubtarget &ST, unsigned WaveCount) const;
 
   unsigned findUnusedRegister(const MachineRegisterInfo &MRI,
-                              const TargetRegisterClass *RC) const;
+                              const TargetRegisterClass *RC,
+                              const MachineFunction &MF) const;
 
   unsigned getSGPR32PressureSet() const { return SGPR32SetID; };
   unsigned getVGPR32PressureSet() const { return VGPR32SetID; };

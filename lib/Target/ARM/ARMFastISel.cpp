@@ -22,7 +22,6 @@
 #include "ARMSubtarget.h"
 #include "MCTargetDesc/ARMAddressingModes.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/FastISel.h"
 #include "llvm/CodeGen/FunctionLoweringInfo.h"
 #include "llvm/CodeGen/MachineConstantPool.h"
@@ -210,7 +209,7 @@ class ARMFastISel final : public FastISel {
     const MachineInstrBuilder &AddOptionalDefs(const MachineInstrBuilder &MIB);
     void AddLoadStoreOperands(MVT VT, Address &Addr,
                               const MachineInstrBuilder &MIB,
-                              unsigned Flags, bool useAM3);
+                              MachineMemOperand::Flags Flags, bool useAM3);
 };
 
 } // end anonymous namespace
@@ -874,7 +873,8 @@ void ARMFastISel::ARMSimplifyAddress(Address &Addr, MVT VT, bool useAM3) {
 
 void ARMFastISel::AddLoadStoreOperands(MVT VT, Address &Addr,
                                        const MachineInstrBuilder &MIB,
-                                       unsigned Flags, bool useAM3) {
+                                       MachineMemOperand::Flags Flags,
+                                       bool useAM3) {
   // addrmode5 output depends on the selection dag addressing dividing the
   // offset by 4 that it then later multiplies. Do this here as well.
   if (VT.SimpleTy == MVT::f32 || VT.SimpleTy == MVT::f64)
@@ -1717,6 +1717,13 @@ bool ARMFastISel::SelectRem(const Instruction *I, bool isSigned) {
   Type *Ty = I->getType();
   if (!isTypeLegal(Ty, VT))
     return false;
+
+  // Many ABIs do not provide a libcall for standalone remainder, so we need to
+  // use divrem (see the RTABI 4.3.1). Since FastISel can't handle non-double
+  // multi-reg returns, we'll have to bail out.
+  if (!TLI.hasStandaloneRem(VT)) {
+    return false;
+  }
 
   RTLIB::Libcall LC = RTLIB::UNKNOWN_LIBCALL;
   if (VT == MVT::i8)

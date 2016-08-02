@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <unordered_map>
+#include "ErrorChecking.h"
 
 #include "llvm/DebugInfo/CodeView/ByteStream.h"
 #include "llvm/DebugInfo/CodeView/StreamReader.h"
@@ -19,27 +19,13 @@
 #include "llvm/DebugInfo/PDB/Raw/MappedBlockStream.h"
 #include "gtest/gtest.h"
 
+#include <unordered_map>
+
 using namespace llvm;
 using namespace llvm::codeview;
 using namespace llvm::pdb;
 
 namespace {
-
-#define EXPECT_NO_ERROR(Err)                                                   \
-  {                                                                            \
-    auto E = Err;                                                              \
-    EXPECT_FALSE(static_cast<bool>(E));                                        \
-    if (E)                                                                     \
-      consumeError(std::move(E));                                              \
-  }
-
-#define EXPECT_ERROR(Err)                                                      \
-  {                                                                            \
-    auto E = Err;                                                              \
-    EXPECT_TRUE(static_cast<bool>(E));                                         \
-    if (E)                                                                     \
-      consumeError(std::move(E));                                              \
-  }
 
 static const uint32_t BlocksAry[] = {0, 1, 2, 5, 4, 3, 6, 7, 8, 9};
 static uint8_t DataAry[] = {'A', 'B', 'C', 'F', 'E', 'D', 'G', 'H', 'I', 'J'};
@@ -61,8 +47,8 @@ public:
       return ArrayRef<support::ulittle32_t>();
     return Blocks;
   }
-  ArrayRef<uint8_t> getBlockData(uint32_t BlockIndex,
-                                 uint32_t NumBytes) const override {
+  Expected<ArrayRef<uint8_t>> getBlockData(uint32_t BlockIndex,
+                                           uint32_t NumBytes) const override {
     return ArrayRef<uint8_t>(&Data[BlockIndex], NumBytes);
   }
 
@@ -317,7 +303,9 @@ TEST(MappedBlockStreamTest, TestWriteThenRead) {
   StringRef FStr[] = {"Fixed Str", ""};
   uint8_t byteArray0[] = {'1', '2'};
   uint8_t byteArray1[] = {'0', '0'};
-  ArrayRef<uint8_t> byteArray[] = {byteArray0, byteArray1};
+  ArrayRef<uint8_t> byteArrayRef0(byteArray0);
+  ArrayRef<uint8_t> byteArrayRef1(byteArray1);
+  ArrayRef<uint8_t> byteArray[] = { byteArrayRef0, byteArrayRef1 };
   ArrayRef<uint32_t> intArray[] = {{890723408, 29082234}, {0, 0}};
 
   StreamReader Reader(S);

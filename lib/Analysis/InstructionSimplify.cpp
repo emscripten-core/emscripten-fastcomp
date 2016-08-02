@@ -621,6 +621,11 @@ static Constant *stripAndComputeConstantOffsets(const DataLayout &DL, Value *&V,
         break;
       V = GA->getAliasee();
     } else {
+      if (auto CS = CallSite(V))
+        if (Value *RV = CS.getReturnedArgOperand()) {
+          V = RV;
+          continue;
+        }
       break;
     }
     assert(V->getType()->getScalarType()->isPointerTy() &&
@@ -1975,7 +1980,7 @@ computePointerICmp(const DataLayout &DL, const TargetLibraryInfo *TLI,
   RHS = RHS->stripPointerCasts();
 
   // A non-null pointer is not equal to a null pointer.
-  if (llvm::isKnownNonNull(LHS, TLI) && isa<ConstantPointerNull>(RHS) &&
+  if (llvm::isKnownNonNull(LHS) && isa<ConstantPointerNull>(RHS) &&
       (Pred == CmpInst::ICMP_EQ || Pred == CmpInst::ICMP_NE))
     return ConstantInt::get(GetCompareTy(LHS),
                             !CmpInst::isTrueWhenEqual(Pred));
@@ -2130,10 +2135,9 @@ computePointerICmp(const DataLayout &DL, const TargetLibraryInfo *TLI,
     // cannot be elided. We cannot fold malloc comparison to null. Also, the
     // dynamic allocation call could be either of the operands.
     Value *MI = nullptr;
-    if (isAllocLikeFn(LHS, TLI) && llvm::isKnownNonNullAt(RHS, CxtI, DT, TLI))
+    if (isAllocLikeFn(LHS, TLI) && llvm::isKnownNonNullAt(RHS, CxtI, DT))
       MI = LHS;
-    else if (isAllocLikeFn(RHS, TLI) &&
-             llvm::isKnownNonNullAt(LHS, CxtI, DT, TLI))
+    else if (isAllocLikeFn(RHS, TLI) && llvm::isKnownNonNullAt(LHS, CxtI, DT))
       MI = RHS;
     // FIXME: We should also fold the compare when the pointer escapes, but the
     // compare dominates the pointer escape
@@ -3396,7 +3400,10 @@ static Value *SimplifySelectInst(Value *CondVal, Value *TrueVal,
     return TrueVal;
 
   if (const auto *ICI = dyn_cast<ICmpInst>(CondVal)) {
-    unsigned BitWidth = Q.DL.getTypeSizeInBits(TrueVal->getType());
+    // FIXME: This code is nearly duplicated in InstCombine. Using/refactoring
+    // decomposeBitTestICmp() might help.
+    unsigned BitWidth =
+        Q.DL.getTypeSizeInBits(TrueVal->getType()->getScalarType());
     ICmpInst::Predicate Pred = ICI->getPredicate();
     Value *CmpLHS = ICI->getOperand(0);
     Value *CmpRHS = ICI->getOperand(1);
@@ -3940,6 +3947,22 @@ static Value *SimplifyRelativeLoad(Constant *Ptr, Constant *Offset,
   return ConstantExpr::getBitCast(LoadedLHSPtr, Int8PtrTy);
 }
 
+static bool maskIsAllZeroOrUndef(Value *Mask) {
+  auto *ConstMask = dyn_cast<Constant>(Mask);
+  if (!ConstMask)
+    return false;
+  if (ConstMask->isNullValue() || isa<UndefValue>(ConstMask))
+    return true;
+  for (unsigned I = 0, E = ConstMask->getType()->getVectorNumElements(); I != E;
+       ++I) {
+    if (auto *MaskElt = ConstMask->getAggregateElement(I))
+      if (MaskElt->isNullValue() || isa<UndefValue>(MaskElt))
+        continue;
+    return false;
+  }
+  return true;
+}
+
 template <typename IterTy>
 static Value *SimplifyIntrinsic(Function *F, IterTy ArgBegin, IterTy ArgEnd,
                                 const Query &Q, unsigned MaxRecurse) {
@@ -3985,6 +4008,15 @@ static Value *SimplifyIntrinsic(Function *F, IterTy ArgBegin, IterTy ArgEnd,
         isa<Constant>(RHS))
       return SimplifyRelativeLoad(cast<Constant>(LHS), cast<Constant>(RHS),
                                   Q.DL);
+  }
+
+  // Simplify calls to llvm.masked.load.*
+  if (IID == Intrinsic::masked_load) {
+    Value *MaskArg = ArgBegin[2];
+    Value *PassthruArg = ArgBegin[3];
+    // If the mask is all zeros or undef, the "passthru" argument is the result.
+    if (maskIsAllZeroOrUndef(MaskArg))
+      return PassthruArg;
   }
 
   // Perform idempotent optimizations

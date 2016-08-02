@@ -236,13 +236,11 @@ CoverageMapping::load(CoverageMappingReader &CoverageReader,
 Expected<std::unique_ptr<CoverageMapping>>
 CoverageMapping::load(StringRef ObjectFilename, StringRef ProfileFilename,
                       StringRef Arch) {
-  auto CounterMappingBufOrErr = MemoryBuffer::getFileOrSTDIN(ObjectFilename);
-  if (std::error_code EC = CounterMappingBufOrErr.getError())
+  auto CounterMappingBuff = MemoryBuffer::getFileOrSTDIN(ObjectFilename);
+  if (std::error_code EC = CounterMappingBuff.getError())
     return errorCodeToError(EC);
-  std::unique_ptr<MemoryBuffer> ObjectBuffer =
-      std::move(CounterMappingBufOrErr.get());
   auto CoverageReaderOrErr =
-      BinaryCoverageReader::create(*ObjectBuffer.get(), Arch);
+      BinaryCoverageReader::create(CounterMappingBuff.get(), Arch);
   if (Error E = CoverageReaderOrErr.takeError())
     return std::move(E);
   auto CoverageReader = std::move(CoverageReaderOrErr.get());
@@ -458,7 +456,7 @@ static bool isExpansion(const CountedRegion &R, unsigned FileID) {
   return R.Kind == CounterMappingRegion::ExpansionRegion && R.FileID == FileID;
 }
 
-CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) {
+CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) const {
   CoverageData FileCoverage(Filename);
   std::vector<coverage::CountedRegion> Regions;
 
@@ -480,7 +478,7 @@ CoverageData CoverageMapping::getCoverageForFile(StringRef Filename) {
 }
 
 std::vector<const FunctionRecord *>
-CoverageMapping::getInstantiations(StringRef Filename) {
+CoverageMapping::getInstantiations(StringRef Filename) const {
   FunctionInstantiationSetCollector InstantiationSetCollector;
   for (const auto &Function : Functions) {
     auto MainFileID = findMainViewFileID(Filename, Function);
@@ -500,7 +498,7 @@ CoverageMapping::getInstantiations(StringRef Filename) {
 }
 
 CoverageData
-CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) {
+CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) const {
   auto MainFileID = findMainViewFileID(Function);
   if (!MainFileID)
     return CoverageData();
@@ -520,8 +518,8 @@ CoverageMapping::getCoverageForFunction(const FunctionRecord &Function) {
   return FunctionCoverage;
 }
 
-CoverageData
-CoverageMapping::getCoverageForExpansion(const ExpansionRecord &Expansion) {
+CoverageData CoverageMapping::getCoverageForExpansion(
+    const ExpansionRecord &Expansion) const {
   CoverageData ExpansionCoverage(
       Expansion.Function.Filenames[Expansion.FileID]);
   std::vector<coverage::CountedRegion> Regions;

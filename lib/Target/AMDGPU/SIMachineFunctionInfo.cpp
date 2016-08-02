@@ -63,6 +63,8 @@ SIMachineFunctionInfo::SIMachineFunctionInfo(const MachineFunction &MF)
     HasSpilledVGPRs(false),
     HasNonSpillStackObjects(false),
     HasFlatInstructions(false),
+    NumSpilledSGPRs(0),
+    NumSpilledVGPRs(0),
     PrivateSegmentBuffer(false),
     DispatchPtr(false),
     QueuePtr(false),
@@ -201,7 +203,8 @@ SIMachineFunctionInfo::SpilledReg SIMachineFunctionInfo::getSpilledReg (
   Spill.Lane = Lane;
 
   if (!LaneVGPRs.count(LaneVGPRIdx)) {
-    unsigned LaneVGPR = TRI->findUnusedRegister(MRI, &AMDGPU::VGPR_32RegClass);
+    unsigned LaneVGPR = TRI->findUnusedRegister(MRI, &AMDGPU::VGPR_32RegClass,
+                                                *MF);
 
     if (LaneVGPR == AMDGPU::NoRegister)
       // We have no VGPRs left for spilling SGPRs.

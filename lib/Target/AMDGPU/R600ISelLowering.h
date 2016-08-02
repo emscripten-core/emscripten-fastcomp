@@ -28,8 +28,9 @@ public:
 
   const R600Subtarget *getSubtarget() const;
 
-  MachineBasicBlock * EmitInstrWithCustomInserter(MachineInstr *MI,
-      MachineBasicBlock * BB) const override;
+  MachineBasicBlock *
+  EmitInstrWithCustomInserter(MachineInstr &MI,
+                              MachineBasicBlock *BB) const override;
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   SDValue PerformDAGCombine(SDNode *N, DAGCombinerInfo &DCI) const override;
   void ReplaceNodeResults(SDNode * N,
@@ -71,7 +72,8 @@ private:
 
   SDValue lowerPrivateTruncStore(StoreSDNode *Store, SelectionDAG &DAG) const;
   SDValue LowerSTORE(SDValue Op, SelectionDAG &DAG) const;
-  SDValue LowerFPTOUINT(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerFP_TO_UINT(SDValue Op, SelectionDAG &DAG) const;
+  SDValue lowerFP_TO_SINT(SDValue Op, SelectionDAG &DAG) const;
 
   SDValue lowerPrivateExtLoad(SDValue Op, SelectionDAG &DAG) const;
   SDValue LowerLOAD(SDValue Op, SelectionDAG &DAG) const;

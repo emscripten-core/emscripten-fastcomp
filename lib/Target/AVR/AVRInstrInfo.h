@@ -84,13 +84,13 @@ public:
                             MachineBasicBlock::iterator MI, unsigned DestReg,
                             int FrameIndex, const TargetRegisterClass *RC,
                             const TargetRegisterInfo *TRI) const override;
-  unsigned isLoadFromStackSlot(const MachineInstr *MI,
+  unsigned isLoadFromStackSlot(const MachineInstr &MI,
                                int &FrameIndex) const override;
-  unsigned isStoreToStackSlot(const MachineInstr *MI,
+  unsigned isStoreToStackSlot(const MachineInstr &MI,
                               int &FrameIndex) const override;
 
   // Branch analysis.
-  bool AnalyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
+  bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
                      bool AllowModify = false) const override;

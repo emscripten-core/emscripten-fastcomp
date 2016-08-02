@@ -216,6 +216,11 @@ static cl::opt<bool> DiscardValueNames(
     cl::desc("Discard names from Value (other than GlobalValue)."),
     cl::init(false), cl::Hidden);
 
+static cl::opt<bool> PassRemarksWithHotness(
+    "pass-remarks-with-hotness",
+    cl::desc("With PGO, include profile count in optimization remarks"),
+    cl::Hidden);
+
 static inline void addPass(legacy::PassManagerBase &PM, Pass *P) {
   // Add the pass to the pass manager...
   PM.add(P);
@@ -365,6 +370,7 @@ int main(int argc, char **argv) {
   initializePreISelIntrinsicLoweringLegacyPassPass(Registry);
   initializeGlobalMergePass(Registry);
   initializeInterleavedAccessPass(Registry);
+  initializeUnreachableBlockElimLegacyPassPass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -383,6 +389,9 @@ int main(int argc, char **argv) {
   Context.setDiscardValueNames(DiscardValueNames);
   if (!DisableDITypeMap)
     Context.enableDebugTypeODRUniquing();
+
+  if (PassRemarksWithHotness)
+    Context.setDiagnosticHotnessRequested(true);
 
   // Load the input module...
   std::unique_ptr<Module> M;

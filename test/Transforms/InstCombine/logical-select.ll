@@ -262,15 +262,35 @@ define <2 x i64> @bitcast_select_swap7(<4 x i1> %cmp, <2 x double> %a, <2 x doub
   ret <2 x i64> %or
 }
 
-; FIXME: Missed conversions to select below here.
+define <2 x i64> @bitcast_select_multi_uses(<4 x i1> %cmp, <2 x i64> %a, <2 x i64> %b) {
+; CHECK-LABEL: @bitcast_select_multi_uses(
+; CHECK-NEXT:    [[SEXT:%.*]] = sext <4 x i1> %cmp to <4 x i32>
+; CHECK-NEXT:    [[BC1:%.*]] = bitcast <4 x i32> [[SEXT]] to <2 x i64>
+; CHECK-NEXT:    [[AND1:%.*]] = and <2 x i64> [[BC1]], %a
+; CHECK-NEXT:    [[NEG:%.*]] = xor <4 x i32> [[SEXT]], <i32 -1, i32 -1, i32 -1, i32 -1>
+; CHECK-NEXT:    [[BC2:%.*]] = bitcast <4 x i32> [[NEG]] to <2 x i64>
+; CHECK-NEXT:    [[AND2:%.*]] = and <2 x i64> [[BC2]], %b
+; CHECK-NEXT:    [[OR:%.*]] = or <2 x i64> [[AND2]], [[AND1]]
+; CHECK-NEXT:    [[ADD:%.*]] = add <2 x i64> [[AND2]], [[BC2]]
+; CHECK-NEXT:    [[SUB:%.*]] = sub <2 x i64> [[OR]], [[ADD]]
+; CHECK-NEXT:    ret <2 x i64> [[SUB]]
+;
+  %sext = sext <4 x i1> %cmp to <4 x i32>
+  %bc1 = bitcast <4 x i32> %sext to <2 x i64>
+  %and1 = and <2 x i64> %a, %bc1
+  %neg = xor <4 x i32> %sext, <i32 -1, i32 -1, i32 -1, i32 -1>
+  %bc2 = bitcast <4 x i32> %neg to <2 x i64>
+  %and2 = and <2 x i64> %b, %bc2
+  %or = or <2 x i64> %and2, %and1
+  %add = add <2 x i64> %and2, %bc2
+  %sub = sub <2 x i64> %or, %add
+  ret <2 x i64> %sub
+}
 
 define i1 @bools(i1 %a, i1 %b, i1 %c) {
 ; CHECK-LABEL: @bools(
-; CHECK-NEXT:    [[NOT:%.*]] = xor i1 %c, true
-; CHECK-NEXT:    [[AND1:%.*]] = and i1 [[NOT]], %a
-; CHECK-NEXT:    [[AND2:%.*]] = and i1 %c, %b
-; CHECK-NEXT:    [[OR:%.*]] = or i1 [[AND1]], [[AND2]]
-; CHECK-NEXT:    ret i1 [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = select i1 %c, i1 %b, i1 %a
+; CHECK-NEXT:    ret i1 [[TMP1]]
 ;
   %not = xor i1 %c, -1
   %and1 = and i1 %not, %a
@@ -279,13 +299,48 @@ define i1 @bools(i1 %a, i1 %b, i1 %c) {
   ret i1 %or
 }
 
+; Form a select if we know we can get replace 2 simple logic ops.
+
+define i1 @bools_multi_uses1(i1 %a, i1 %b, i1 %c) {
+; CHECK-LABEL: @bools_multi_uses1(
+; CHECK-NEXT:    [[NOT:%.*]] = xor i1 %c, true
+; CHECK-NEXT:    [[AND1:%.*]] = and i1 [[NOT]], %a
+; CHECK-NEXT:    [[TMP1:%.*]] = select i1 %c, i1 %b, i1 %a
+; CHECK-NEXT:    [[XOR:%.*]] = xor i1 [[TMP1]], [[AND1]]
+; CHECK-NEXT:    ret i1 [[XOR]]
+;
+  %not = xor i1 %c, -1
+  %and1 = and i1 %not, %a
+  %and2 = and i1 %c, %b
+  %or = or i1 %and1, %and2
+  %xor = xor i1 %or, %and1
+  ret i1 %xor
+}
+
+; Don't replace a cheap logic op with a potentially expensive select
+; unless we can also eliminate one of the other original ops.
+
+define i1 @bools_multi_uses2(i1 %a, i1 %b, i1 %c) {
+; CHECK-LABEL: @bools_multi_uses2(
+; CHECK-NEXT:    [[NOT:%.*]] = xor i1 %c, true
+; CHECK-NEXT:    [[AND1:%.*]] = and i1 [[NOT]], %a
+; CHECK-NEXT:    [[AND2:%.*]] = and i1 %c, %b
+; CHECK-NEXT:    [[ADD:%.*]] = xor i1 [[AND1]], [[AND2]]
+; CHECK-NEXT:    ret i1 [[ADD]]
+;
+  %not = xor i1 %c, -1
+  %and1 = and i1 %not, %a
+  %and2 = and i1 %c, %b
+  %or = or i1 %and1, %and2
+  %add = add i1 %and1, %and2
+  %and3 = and i1 %or, %add
+  ret i1 %and3
+}
+
 define <4 x i1> @vec_of_bools(<4 x i1> %a, <4 x i1> %b, <4 x i1> %c) {
 ; CHECK-LABEL: @vec_of_bools(
-; CHECK-NEXT:    [[NOT:%.*]] = xor <4 x i1> %c, <i1 true, i1 true, i1 true, i1 true>
-; CHECK-NEXT:    [[AND1:%.*]] = and <4 x i1> [[NOT]], %a
-; CHECK-NEXT:    [[AND2:%.*]] = and <4 x i1> %b, %c
-; CHECK-NEXT:    [[OR:%.*]] = or <4 x i1> [[AND2]], [[AND1]]
-; CHECK-NEXT:    ret <4 x i1> [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = select <4 x i1> %c, <4 x i1> %b, <4 x i1> %a
+; CHECK-NEXT:    ret <4 x i1> [[TMP1]]
 ;
   %not = xor <4 x i1> %c, <i1 true, i1 true, i1 true, i1 true>
   %and1 = and <4 x i1> %not, %a
@@ -296,13 +351,11 @@ define <4 x i1> @vec_of_bools(<4 x i1> %a, <4 x i1> %b, <4 x i1> %c) {
 
 define i4 @vec_of_casted_bools(i4 %a, i4 %b, <4 x i1> %c) {
 ; CHECK-LABEL: @vec_of_casted_bools(
-; CHECK-NEXT:    [[NOT:%.*]] = xor <4 x i1> %c, <i1 true, i1 true, i1 true, i1 true>
-; CHECK-NEXT:    [[BC1:%.*]] = bitcast <4 x i1> [[NOT]] to i4
-; CHECK-NEXT:    [[BC2:%.*]] = bitcast <4 x i1> %c to i4
-; CHECK-NEXT:    [[AND1:%.*]] = and i4 [[BC1]], %a
-; CHECK-NEXT:    [[AND2:%.*]] = and i4 [[BC2]], %b
-; CHECK-NEXT:    [[OR:%.*]] = or i4 [[AND1]], [[AND2]]
-; CHECK-NEXT:    ret i4 [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = bitcast i4 %a to <4 x i1>
+; CHECK-NEXT:    [[TMP2:%.*]] = bitcast i4 %b to <4 x i1>
+; CHECK-NEXT:    [[TMP3:%.*]] = select <4 x i1> %c, <4 x i1> [[TMP2]], <4 x i1> [[TMP1]]
+; CHECK-NEXT:    [[TMP4:%.*]] = bitcast <4 x i1> [[TMP3]] to i4
+; CHECK-NEXT:    ret i4 [[TMP4]]
 ;
   %not = xor <4 x i1> %c, <i1 true, i1 true, i1 true, i1 true>
   %bc1 = bitcast <4 x i1> %not to i4
@@ -317,10 +370,8 @@ define i4 @vec_of_casted_bools(i4 %a, i4 %b, <4 x i1> %c) {
 
 define <4 x i32> @vec_sel_consts(<4 x i32> %a, <4 x i32> %b) {
 ; CHECK-LABEL: @vec_sel_consts(
-; CHECK-NEXT:    [[AND1:%.*]] = and <4 x i32> %a, <i32 -1, i32 0, i32 0, i32 -1>
-; CHECK-NEXT:    [[AND2:%.*]] = and <4 x i32> %b, <i32 0, i32 -1, i32 -1, i32 0>
-; CHECK-NEXT:    [[OR:%.*]] = or <4 x i32> [[AND1]], [[AND2]]
-; CHECK-NEXT:    ret <4 x i32> [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = select <4 x i1> <i1 true, i1 false, i1 false, i1 true>, <4 x i32> %a, <4 x i32> %b
+; CHECK-NEXT:    ret <4 x i32> [[TMP1]]
 ;
   %and1 = and <4 x i32> %a, <i32 -1, i32 0, i32 0, i32 -1>
   %and2 = and <4 x i32> %b, <i32 0, i32 -1, i32 -1, i32 0>
@@ -332,10 +383,8 @@ define <4 x i32> @vec_sel_consts(<4 x i32> %a, <4 x i32> %b) {
 
 define <3 x i129> @vec_sel_consts_weird(<3 x i129> %a, <3 x i129> %b) {
 ; CHECK-LABEL: @vec_sel_consts_weird(
-; CHECK-NEXT:    [[AND1:%.*]] = and <3 x i129> %a, <i129 -1, i129 0, i129 -1>
-; CHECK-NEXT:    [[AND2:%.*]] = and <3 x i129> %b, <i129 0, i129 -1, i129 0>
-; CHECK-NEXT:    [[OR:%.*]] = or <3 x i129> [[AND2]], [[AND1]]
-; CHECK-NEXT:    ret <3 x i129> [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = select <3 x i1> <i1 false, i1 true, i1 false>, <3 x i129> %b, <3 x i129> %a
+; CHECK-NEXT:    ret <3 x i129> [[TMP1]]
 ;
   %and1 = and <3 x i129> %a, <i129 -1, i129 0, i129 -1>
   %and2 = and <3 x i129> %b, <i129 0, i129 -1, i129 0>
@@ -362,13 +411,9 @@ define <4 x i32> @vec_not_sel_consts(<4 x i32> %a, <4 x i32> %b) {
 
 define <4 x i32> @vec_sel_xor(<4 x i32> %a, <4 x i32> %b, <4 x i1> %c) {
 ; CHECK-LABEL: @vec_sel_xor(
-; CHECK-NEXT:    [[MASK:%.*]] = sext <4 x i1> %c to <4 x i32>
-; CHECK-NEXT:    [[MASK_FLIP1:%.*]] = xor <4 x i32> [[MASK]], <i32 -1, i32 0, i32 0, i32 0>
-; CHECK-NEXT:    [[NOT_MASK_FLIP1:%.*]] = xor <4 x i32> [[MASK]], <i32 0, i32 -1, i32 -1, i32 -1>
-; CHECK-NEXT:    [[AND1:%.*]] = and <4 x i32> [[NOT_MASK_FLIP1]], %a
-; CHECK-NEXT:    [[AND2:%.*]] = and <4 x i32> [[MASK_FLIP1]], %b
-; CHECK-NEXT:    [[OR:%.*]] = or <4 x i32> [[AND1]], [[AND2]]
-; CHECK-NEXT:    ret <4 x i32> [[OR]]
+; CHECK-NEXT:    [[TMP1:%.*]] = xor <4 x i1> %c, <i1 false, i1 true, i1 true, i1 true>
+; CHECK-NEXT:    [[TMP2:%.*]] = select <4 x i1> [[TMP1]], <4 x i32> %a, <4 x i32> %b
+; CHECK-NEXT:    ret <4 x i32> [[TMP2]]
 ;
   %mask = sext <4 x i1> %c to <4 x i32>
   %mask_flip1 = xor <4 x i32> %mask, <i32 -1, i32 0, i32 0, i32 0>
@@ -377,5 +422,27 @@ define <4 x i32> @vec_sel_xor(<4 x i32> %a, <4 x i32> %b, <4 x i1> %c) {
   %and2 = and <4 x i32> %mask_flip1, %b
   %or = or <4 x i32> %and1, %and2
   ret <4 x i32> %or
+}
+
+; Allow the transform even if the mask values have multiple uses because
+; there's still a net reduction of instructions from removing the and/and/or.
+
+define <4 x i32> @vec_sel_xor_multi_use(<4 x i32> %a, <4 x i32> %b, <4 x i1> %c) {
+; CHECK-LABEL: @vec_sel_xor_multi_use(
+; CHECK-NEXT:    [[MASK:%.*]] = sext <4 x i1> %c to <4 x i32>
+; CHECK-NEXT:    [[MASK_FLIP1:%.*]] = xor <4 x i32> [[MASK]], <i32 -1, i32 0, i32 0, i32 0>
+; CHECK-NEXT:    [[TMP1:%.*]] = xor <4 x i1> %c, <i1 false, i1 true, i1 true, i1 true>
+; CHECK-NEXT:    [[TMP2:%.*]] = select <4 x i1> [[TMP1]], <4 x i32> %a, <4 x i32> %b
+; CHECK-NEXT:    [[ADD:%.*]] = add <4 x i32> [[TMP2]], [[MASK_FLIP1]]
+; CHECK-NEXT:    ret <4 x i32> [[ADD]]
+;
+  %mask = sext <4 x i1> %c to <4 x i32>
+  %mask_flip1 = xor <4 x i32> %mask, <i32 -1, i32 0, i32 0, i32 0>
+  %not_mask_flip1 = xor <4 x i32> %mask, <i32 0, i32 -1, i32 -1, i32 -1>
+  %and1 = and <4 x i32> %not_mask_flip1, %a
+  %and2 = and <4 x i32> %mask_flip1, %b
+  %or = or <4 x i32> %and1, %and2
+  %add = add <4 x i32> %or, %mask_flip1
+  ret <4 x i32> %add
 }
 

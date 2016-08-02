@@ -161,8 +161,9 @@
 ; CHECK:   Union (0x100B) {
 ; CHECK:     TypeLeafKind: LF_UNION (0x1506)
 ; CHECK:     MemberCount: 2
-; CHECK:     Properties [ (0x200)
+; CHECK:     Properties [ (0x600)
 ; CHECK:       HasUniqueName (0x200)
+; CHECK:       Sealed (0x400)
 ; CHECK:     ]
 ; CHECK:     FieldList: <field list> (0x100A)
 ; CHECK:     SizeOf: 4
@@ -337,9 +338,10 @@
 ; CHECK:   Struct (0x1019) {
 ; CHECK:     TypeLeafKind: LF_STRUCTURE (0x1505)
 ; CHECK:     MemberCount: 0
-; CHECK:     Properties [ (0x280)
+; CHECK:     Properties [ (0x288)
 ; CHECK:       ForwardReference (0x80)
 ; CHECK:       HasUniqueName (0x200)
+; CHECK:       Nested (0x8)
 ; CHECK:     ]
 ; CHECK:     FieldList: 0x0
 ; CHECK:     DerivedFrom: 0x0
@@ -360,8 +362,9 @@
 ; CHECK:   Struct (0x101B) {
 ; CHECK:     TypeLeafKind: LF_STRUCTURE (0x1505)
 ; CHECK:     MemberCount: 1
-; CHECK:     Properties [ (0x200)
+; CHECK:     Properties [ (0x208)
 ; CHECK:       HasUniqueName (0x200)
+; CHECK:       Nested (0x8)
 ; CHECK:     ]
 ; CHECK:     FieldList: <field list> (0x101A)
 ; CHECK:     DerivedFrom: 0x0

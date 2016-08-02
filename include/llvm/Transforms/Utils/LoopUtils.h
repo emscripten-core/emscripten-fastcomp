@@ -323,13 +323,19 @@ private:
 BasicBlock *InsertPreheaderForLoop(Loop *L, DominatorTree *DT, LoopInfo *LI,
                                    bool PreserveLCSSA);
 
-/// \brief Simplify each loop in a loop nest recursively.
+/// Ensures LCSSA form for every instruction from the Worklist in the scope of
+/// innermost containing loop.
 ///
-/// This takes a potentially un-simplified loop L (and its children) and turns
-/// it into a simplified loop nest with preheaders and single backedges. It will
-/// update \c AliasAnalysis and \c ScalarEvolution analyses if they're non-null.
-bool simplifyLoop(Loop *L, DominatorTree *DT, LoopInfo *LI, ScalarEvolution *SE,
-                  AssumptionCache *AC, bool PreserveLCSSA);
+/// For the given instruction which have uses outside of the loop, an LCSSA PHI
+/// node is inserted and the uses outside the loop are rewritten to use this
+/// node.
+///
+/// LoopInfo and DominatorTree are required and, since the routine makes no
+/// changes to CFG, preserved.
+///
+/// Returns true if any modifications are made.
+bool formLCSSAForInstructions(SmallVectorImpl<Instruction *> &Worklist,
+                              DominatorTree &DT, LoopInfo &LI);
 
 /// \brief Put loop into LCSSA form.
 ///

@@ -9,7 +9,6 @@
 
 #include "SystemZSubtarget.h"
 #include "MCTargetDesc/SystemZMCTargetDesc.h"
-#include "llvm/CodeGen/Analysis.h"
 #include "llvm/IR/GlobalValue.h"
 
 using namespace llvm;
@@ -41,7 +40,7 @@ SystemZSubtarget::SystemZSubtarget(const Triple &TT, const std::string &CPU,
       HasPopulationCount(false), HasFastSerialization(false),
       HasInterlockedAccess1(false), HasMiscellaneousExtensions(false),
       HasTransactionalExecution(false), HasProcessorAssist(false),
-      HasVector(false), TargetTriple(TT),
+      HasVector(false), HasLoadStoreOnCond2(false), TargetTriple(TT),
       InstrInfo(initializeSubtargetDependencies(CPU, FS)), TLInfo(TM, *this),
       TSInfo(), FrameLowering() {}
 

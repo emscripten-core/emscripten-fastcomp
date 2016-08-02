@@ -313,6 +313,10 @@ public:
   /// Cheap mechanism to just extract the identification block out of bitcode.
   ErrorOr<std::string> parseIdentificationBlock();
 
+  /// Peak at the module content and return true if any ObjC category or class
+  /// is found.
+  ErrorOr<bool> hasObjCCategory();
+
   static uint64_t decodeSignRotatedValue(uint64_t V);
 
   /// Materialize any deferred Metadata block.
@@ -450,6 +454,7 @@ private:
                               ArrayRef<uint64_t> Record);
   std::error_code parseMetadataAttachment(Function &F);
   ErrorOr<std::string> parseModuleTriple();
+  ErrorOr<bool> hasObjCCategoryInModule();
   std::error_code parseUseLists();
   std::error_code initStream(std::unique_ptr<DataStreamer> Streamer);
   std::error_code initStreamFromBuffer();
@@ -1464,6 +1469,8 @@ static Attribute::AttrKind getAttrFromCode(uint64_t Code) {
     return Attribute::SwiftSelf;
   case bitc::ATTR_KIND_UW_TABLE:
     return Attribute::UWTable;
+  case bitc::ATTR_KIND_WRITEONLY:
+    return Attribute::WriteOnly;
   case bitc::ATTR_KIND_Z_EXT:
     return Attribute::ZExt;
   }
@@ -2466,7 +2473,7 @@ std::error_code BitcodeReader::parseMetadata(bool ModuleLevel) {
       break;
     }
     case bitc::METADATA_SUBPROGRAM: {
-      if (Record.size() != 18 && Record.size() != 19)
+      if (Record.size() < 18 || Record.size() > 20)
         return error("Invalid record");
 
       IsDistinct =
@@ -2474,21 +2481,36 @@ std::error_code BitcodeReader::parseMetadata(bool ModuleLevel) {
       // Version 1 has a Function as Record[15].
       // Version 2 has removed Record[15].
       // Version 3 has the Unit as Record[15].
+      // Version 4 added thisAdjustment.
       bool HasUnit = Record[0] >= 2;
-      if (HasUnit && Record.size() != 19)
+      if (HasUnit && Record.size() < 19)
         return error("Invalid record");
       Metadata *CUorFn = getMDOrNull(Record[15]);
-      unsigned Offset = Record.size() == 19 ? 1 : 0;
+      unsigned Offset = Record.size() >= 19 ? 1 : 0;
       bool HasFn = Offset && !HasUnit;
+      bool HasThisAdj = Record.size() >= 20;
       DISubprogram *SP = GET_OR_DISTINCT(
-          DISubprogram,
-          (Context, getDITypeRefOrNull(Record[1]), getMDString(Record[2]),
-           getMDString(Record[3]), getMDOrNull(Record[4]), Record[5],
-           getMDOrNull(Record[6]), Record[7], Record[8], Record[9],
-           getDITypeRefOrNull(Record[10]), Record[11], Record[12], Record[13],
-           Record[14], HasUnit ? CUorFn : nullptr,
-           getMDOrNull(Record[15 + Offset]), getMDOrNull(Record[16 + Offset]),
-           getMDOrNull(Record[17 + Offset])));
+          DISubprogram, (Context,
+                         getDITypeRefOrNull(Record[1]),    // scope
+                         getMDString(Record[2]),           // name
+                         getMDString(Record[3]),           // linkageName
+                         getMDOrNull(Record[4]),           // file
+                         Record[5],                        // line
+                         getMDOrNull(Record[6]),           // type
+                         Record[7],                        // isLocal
+                         Record[8],                        // isDefinition
+                         Record[9],                        // scopeLine
+                         getDITypeRefOrNull(Record[10]),   // containingType
+                         Record[11],                       // virtuality
+                         Record[12],                       // virtualIndex
+                         HasThisAdj ? Record[19] : 0,      // thisAdjustment
+                         Record[13],                       // flags
+                         Record[14],                       // isOptimized
+                         HasUnit ? CUorFn : nullptr,       // unit
+                         getMDOrNull(Record[15 + Offset]), // templateParams
+                         getMDOrNull(Record[16 + Offset]), // declaration
+                         getMDOrNull(Record[17 + Offset])  // variables
+                         ));
       MetadataList.assignValue(SP, NextMetadataNo++);
 
       // Upgrade sp->function mapping to function->sp mapping.
@@ -4176,6 +4198,81 @@ std::error_code BitcodeReader::parseGlobalObjectAttachment(
     GO.addMetadata(K->second, *MD);
   }
   return std::error_code();
+}
+
+ErrorOr<bool> BitcodeReader::hasObjCCategory() {
+  if (std::error_code EC = initStream(nullptr))
+    return EC;
+
+  // Sniff for the signature.
+  if (!hasValidBitcodeHeader(Stream))
+    return error("Invalid bitcode signature");
+
+  // We expect a number of well-defined blocks, though we don't necessarily
+  // need to understand them all.
+  while (1) {
+    BitstreamEntry Entry = Stream.advance();
+
+    switch (Entry.Kind) {
+    case BitstreamEntry::Error:
+      return error("Malformed block");
+    case BitstreamEntry::EndBlock:
+      return std::error_code();
+
+    case BitstreamEntry::SubBlock:
+      if (Entry.ID == bitc::MODULE_BLOCK_ID)
+        return hasObjCCategoryInModule();
+
+      // Ignore other sub-blocks.
+      if (Stream.SkipBlock())
+        return error("Malformed block");
+      continue;
+
+    case BitstreamEntry::Record:
+      Stream.skipRecord(Entry.ID);
+      continue;
+    }
+  }
+}
+
+ErrorOr<bool> BitcodeReader::hasObjCCategoryInModule() {
+  if (Stream.EnterSubBlock(bitc::MODULE_BLOCK_ID))
+    return error("Invalid record");
+
+  SmallVector<uint64_t, 64> Record;
+  // Read all the records for this module.
+  while (1) {
+    BitstreamEntry Entry = Stream.advanceSkippingSubblocks();
+
+    switch (Entry.Kind) {
+    case BitstreamEntry::SubBlock: // Handled for us already.
+    case BitstreamEntry::Error:
+      return error("Malformed block");
+    case BitstreamEntry::EndBlock:
+      return false;
+    case BitstreamEntry::Record:
+      // The interesting case.
+      break;
+    }
+
+    // Read a record.
+    switch (Stream.readRecord(Entry.ID, Record)) {
+    default:
+      break; // Default behavior, ignore unknown content.
+    case bitc::MODULE_CODE_SECTIONNAME: { // SECTIONNAME: [strchr x N]
+      std::string S;
+      if (convertToString(Record, 0, S))
+        return error("Invalid record");
+      // Check for the i386 and other (x86_64, ARM) conventions
+      if (S.find("__DATA, __objc_catlist") != std::string::npos ||
+          S.find("__OBJC,__category") != std::string::npos)
+        return true;
+      break;
+    }
+    }
+    Record.clear();
+  }
+  llvm_unreachable("Exit infinite loop");
 }
 
 /// Parse metadata attachments.
@@ -6529,6 +6626,16 @@ std::string llvm::getBitcodeTargetTriple(MemoryBufferRef Buffer,
   if (Triple.getError())
     return "";
   return Triple.get();
+}
+
+bool llvm::isBitcodeContainingObjCCategory(MemoryBufferRef Buffer,
+                                           LLVMContext &Context) {
+  std::unique_ptr<MemoryBuffer> Buf = MemoryBuffer::getMemBuffer(Buffer, false);
+  auto R = llvm::make_unique<BitcodeReader>(Buf.release(), Context);
+  ErrorOr<bool> hasObjCCategory = R->hasObjCCategory();
+  if (hasObjCCategory.getError())
+    return false;
+  return hasObjCCategory.get();
 }
 
 std::string llvm::getBitcodeProducerString(MemoryBufferRef Buffer,

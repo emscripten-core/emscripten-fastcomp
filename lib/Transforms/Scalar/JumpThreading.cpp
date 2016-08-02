@@ -148,12 +148,16 @@ PreservedAnalyses JumpThreadingPass::run(Function &F,
   }
   bool Changed =
       runImpl(F, &TLI, &LVI, HasProfileData, std::move(BFI), std::move(BPI));
+
+  // FIXME: We need to invalidate LVI to avoid PR28400. Is there a better
+  // solution?
+  AM.invalidate<LazyValueAnalysis>(F);
+
   if (!Changed)
     return PreservedAnalyses::all();
   PreservedAnalyses PA;
-  PA.preserve<LazyValueAnalysis>();
   PA.preserve<GlobalsAA>();
-  return PreservedAnalyses::none();
+  return PA;
 }
 
 bool JumpThreadingPass::runImpl(Function &F, TargetLibraryInfo *TLI_,
@@ -754,7 +758,8 @@ bool JumpThreadingPass::ProcessBlock(BasicBlock *BB) {
         ConstantFoldInstruction(I, BB->getModule()->getDataLayout(), TLI);
     if (SimpleVal) {
       I->replaceAllUsesWith(SimpleVal);
-      I->eraseFromParent();
+      if (isInstructionTriviallyDead(I, TLI))
+        I->eraseFromParent();
       Condition = SimpleVal;
     }
   }
@@ -920,8 +925,8 @@ bool JumpThreadingPass::ProcessImpliedCondition(BasicBlock *BB) {
 /// important optimization that encourages jump threading, and needs to be run
 /// interlaced with other jump threading tasks.
 bool JumpThreadingPass::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
-  // Don't hack volatile/atomic loads.
-  if (!LI->isSimple()) return false;
+  // Don't hack volatile and ordered loads.
+  if (!LI->isUnordered()) return false;
 
   // If the load is defined in a block with exactly one predecessor, it can't be
   // partially redundant.
@@ -951,7 +956,6 @@ bool JumpThreadingPass::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
         FindAvailableLoadedValue(LI, LoadBB, BBIt, DefMaxInstsToScan)) {
     // If the value of the load is locally available within the block, just use
     // it.  This frequently occurs for reg2mem'd allocas.
-    //cerr << "LOAD ELIMINATED:\n" << *BBIt << *LI << "\n";
 
     // If the returned value is the load itself, replace with an undef. This can
     // only happen in dead loops.
@@ -1052,9 +1056,10 @@ bool JumpThreadingPass::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
   if (UnavailablePred) {
     assert(UnavailablePred->getTerminator()->getNumSuccessors() == 1 &&
            "Can't handle critical edge here!");
-    LoadInst *NewVal = new LoadInst(LoadedPtr, LI->getName()+".pr", false,
-                                 LI->getAlignment(),
-                                 UnavailablePred->getTerminator());
+    LoadInst *NewVal =
+        new LoadInst(LoadedPtr, LI->getName() + ".pr", false,
+                     LI->getAlignment(), LI->getOrdering(), LI->getSynchScope(),
+                     UnavailablePred->getTerminator());
     NewVal->setDebugLoc(LI->getDebugLoc());
     if (AATags)
       NewVal->setAAMetadata(AATags);
@@ -1095,8 +1100,6 @@ bool JumpThreadingPass::SimplifyPartiallyRedundantLoad(LoadInst *LI) {
 
     PN->addIncoming(PredV, I->first);
   }
-
-  //cerr << "PRE: " << *LI << *PN << "\n";
 
   LI->replaceAllUsesWith(PN);
   LI->eraseFromParent();

@@ -1,11 +1,6 @@
 Overview
 ========
 
-.. warning::
-
-   If you are using a released version of LLVM, see `the download page
-   <http://llvm.org/releases/>`_ to find your documentation.
-
 The LLVM compiler infrastructure supports a wide range of projects, from
 industrial strength compilers to specialized JIT applications to small
 research projects.
@@ -87,7 +82,9 @@ representation.
    GetElementPtr
    Frontend/PerformanceTips
    MCJITDesignAndImplementation
+   CodeOfConduct
    CompileCudaWithLLVM
+   ReportingGuide
 
 :doc:`GettingStarted`
    Discusses how to get up and running quickly with the LLVM infrastructure.

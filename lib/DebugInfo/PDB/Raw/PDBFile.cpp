@@ -13,6 +13,7 @@
 #include "llvm/DebugInfo/CodeView/StreamArray.h"
 #include "llvm/DebugInfo/CodeView/StreamInterface.h"
 #include "llvm/DebugInfo/CodeView/StreamReader.h"
+#include "llvm/DebugInfo/CodeView/StreamWriter.h"
 #include "llvm/DebugInfo/PDB/Raw/DbiStream.h"
 #include "llvm/DebugInfo/PDB/Raw/DirectoryStreamData.h"
 #include "llvm/DebugInfo/PDB/Raw/IndexedStreamData.h"
@@ -41,7 +42,7 @@ PDBFile::~PDBFile() {}
 
 uint32_t PDBFile::getBlockSize() const { return SB->BlockSize; }
 
-uint32_t PDBFile::getUnknown0() const { return SB->Unknown0; }
+uint32_t PDBFile::getFreeBlockMapBlock() const { return SB->FreeBlockMapBlock; }
 
 uint32_t PDBFile::getBlockCount() const { return SB->NumBlocks; }
 
@@ -52,7 +53,7 @@ uint32_t PDBFile::getBlockMapIndex() const { return SB->BlockMapAddr; }
 uint32_t PDBFile::getUnknown1() const { return SB->Unknown1; }
 
 uint32_t PDBFile::getNumDirectoryBlocks() const {
-  return bytesToBlocks(SB->NumDirectoryBytes, SB->BlockSize);
+  return msf::bytesToBlocks(SB->NumDirectoryBytes, SB->BlockSize);
 }
 
 uint64_t PDBFile::getBlockMapOffset() const {
@@ -70,15 +71,15 @@ PDBFile::getStreamBlockList(uint32_t StreamIndex) const {
   return StreamMap[StreamIndex];
 }
 
-size_t PDBFile::getFileSize() const { return Buffer->getLength(); }
+uint32_t PDBFile::getFileSize() const { return Buffer->getLength(); }
 
-ArrayRef<uint8_t> PDBFile::getBlockData(uint32_t BlockIndex,
-                                        uint32_t NumBytes) const {
-  uint64_t StreamBlockOffset = blockToOffset(BlockIndex, getBlockSize());
+Expected<ArrayRef<uint8_t>> PDBFile::getBlockData(uint32_t BlockIndex,
+                                                  uint32_t NumBytes) const {
+  uint64_t StreamBlockOffset = msf::blockToOffset(BlockIndex, getBlockSize());
 
   ArrayRef<uint8_t> Result;
   if (auto EC = Buffer->readBytes(StreamBlockOffset, NumBytes, Result))
-    consumeError(std::move(EC));
+    return std::move(EC);
   return Result;
 }
 
@@ -88,12 +89,12 @@ Error PDBFile::setBlockData(uint32_t BlockIndex, uint32_t Offset,
     return make_error<RawError>(
         raw_error_code::invalid_block_address,
         "setBlockData attempted to write out of block bounds.");
-  if (Data.size() >= getBlockSize() - Offset)
+  if (Data.size() > getBlockSize() - Offset)
     return make_error<RawError>(
         raw_error_code::invalid_block_address,
         "setBlockData attempted to write out of block bounds.");
 
-  uint64_t StreamBlockOffset = blockToOffset(BlockIndex, getBlockSize());
+  uint64_t StreamBlockOffset = msf::blockToOffset(BlockIndex, getBlockSize());
   StreamBlockOffset += Offset;
   return Buffer->writeBytes(StreamBlockOffset, Data);
 }
@@ -107,44 +108,12 @@ Error PDBFile::parseFileHeaders() {
                                 "Does not contain superblock");
   }
 
-  // Check the magic bytes.
-  if (memcmp(SB->MagicBytes, MsfMagic, sizeof(MsfMagic)) != 0)
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "MSF magic header doesn't match");
+  if (auto EC = setSuperBlock(SB))
+    return EC;
 
-  // We don't support blocksizes which aren't a multiple of four bytes.
-  if (SB->BlockSize % sizeof(support::ulittle32_t) != 0)
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "Block size is not multiple of 4.");
-
-  switch (SB->BlockSize) {
-  case 512: case 1024: case 2048: case 4096:
-    break;
-  default:
-    // An invalid block size suggests a corrupt PDB file.
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "Unsupported block size.");
-  }
-
-  if (Buffer->getLength() % SB->BlockSize != 0)
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "File size is not a multiple of block size");
-
-  // We don't support directories whose sizes aren't a multiple of four bytes.
-  if (SB->NumDirectoryBytes % sizeof(support::ulittle32_t) != 0)
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "Directory size is not multiple of 4.");
-
-  // The number of blocks which comprise the directory is a simple function of
-  // the number of bytes it contains.
-  uint64_t NumDirectoryBlocks = getNumDirectoryBlocks();
-
-  // The directory, as we understand it, is a block which consists of a list of
-  // block numbers.  It is unclear what would happen if the number of blocks
-  // couldn't fit on a single block.
-  if (NumDirectoryBlocks > SB->BlockSize / sizeof(support::ulittle32_t))
-    return make_error<RawError>(raw_error_code::corrupt_file,
-                                "Too many directory blocks.");
+  Reader.setOffset(getBlockMapOffset());
+  if (auto EC = Reader.readArray(DirectoryBlocks, getNumDirectoryBlocks()))
+    return EC;
 
   return Error::success();
 }
@@ -174,7 +143,8 @@ Error PDBFile::parseStreamData() {
     uint32_t StreamSize = getStreamByteSize(I);
     // FIXME: What does StreamSize ~0U mean?
     uint64_t NumExpectedStreamBlocks =
-        StreamSize == UINT32_MAX ? 0 : bytesToBlocks(StreamSize, SB->BlockSize);
+        StreamSize == UINT32_MAX ? 0 : msf::bytesToBlocks(StreamSize,
+                                                          SB->BlockSize);
 
     // For convenience, we store the block array contiguously.  This is because
     // if someone calls setStreamMap(), it is more convenient to be able to call
@@ -185,6 +155,12 @@ Error PDBFile::parseStreamData() {
     ArrayRef<support::ulittle32_t> Blocks;
     if (auto EC = Reader.readArray(Blocks, NumExpectedStreamBlocks))
       return EC;
+    for (uint32_t Block : Blocks) {
+      uint64_t BlockEndOffset = (uint64_t)(Block + 1) * SB->BlockSize;
+      if (BlockEndOffset > getFileSize())
+        return make_error<RawError>(raw_error_code::corrupt_file,
+                                    "Stream block map is corrupt.");
+    }
     StreamMap.push_back(Blocks);
   }
 
@@ -195,12 +171,7 @@ Error PDBFile::parseStreamData() {
 }
 
 llvm::ArrayRef<support::ulittle32_t> PDBFile::getDirectoryBlockArray() const {
-  StreamReader Reader(*Buffer);
-  Reader.setOffset(getBlockMapOffset());
-  llvm::ArrayRef<support::ulittle32_t> Result;
-  if (auto EC = Reader.readArray(Result, getNumDirectoryBlocks()))
-    consumeError(std::move(EC));
-  return Result;
+  return DirectoryBlocks;
 }
 
 Expected<InfoStream &> PDBFile::getPDBInfoStream() {
@@ -323,14 +294,72 @@ Expected<NameHashTable &> PDBFile::getStringTable() {
   return *StringTable;
 }
 
-void PDBFile::setSuperBlock(const SuperBlock *Block) { SB = Block; }
+Error PDBFile::setSuperBlock(const msf::SuperBlock *Block) {
+  if (auto EC = msf::validateSuperBlock(*Block))
+    return EC;
 
-void PDBFile::setStreamSizes(ArrayRef<support::ulittle32_t> Sizes) {
-  StreamSizes = Sizes;
+  if (Buffer->getLength() % SB->BlockSize != 0)
+    return make_error<RawError>(raw_error_code::corrupt_file,
+                                "File size is not a multiple of block size");
+
+  SB = Block;
+  return Error::success();
 }
 
-void PDBFile::setStreamMap(ArrayRef<ArrayRef<support::ulittle32_t>> Blocks) {
-  StreamMap = Blocks;
-}
+Error PDBFile::commit() {
+  StreamWriter Writer(*Buffer);
 
-void PDBFile::commit() {}
+  if (auto EC = Writer.writeObject(*SB))
+    return EC;
+  Writer.setOffset(getBlockMapOffset());
+  if (auto EC = Writer.writeArray(DirectoryBlocks))
+    return EC;
+
+  auto DS = MappedBlockStream::createDirectoryStream(*this);
+  if (!DS)
+    return DS.takeError();
+  auto DirStream = std::move(*DS);
+  StreamWriter DW(*DirStream);
+  if (auto EC = DW.writeInteger(this->getNumStreams()))
+    return EC;
+
+  if (auto EC = DW.writeArray(StreamSizes))
+    return EC;
+
+  for (const auto &Blocks : StreamMap) {
+    if (auto EC = DW.writeArray(Blocks))
+      return EC;
+  }
+
+  if (Info) {
+    if (auto EC = Info->commit())
+      return EC;
+  }
+
+  if (Dbi) {
+    if (auto EC = Dbi->commit())
+      return EC;
+  }
+
+  if (Symbols) {
+    if (auto EC = Symbols->commit())
+      return EC;
+  }
+
+  if (Publics) {
+    if (auto EC = Publics->commit())
+      return EC;
+  }
+
+  if (Tpi) {
+    if (auto EC = Tpi->commit())
+      return EC;
+  }
+
+  if (Ipi) {
+    if (auto EC = Ipi->commit())
+      return EC;
+  }
+
+  return Buffer->commit();
+}

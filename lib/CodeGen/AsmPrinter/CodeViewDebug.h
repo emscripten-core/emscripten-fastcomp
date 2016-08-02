@@ -78,6 +78,9 @@ class LLVM_LIBRARY_VISIBILITY CodeViewDebug : public DebugHandlerBase {
     SmallVector<LocalVariable, 1> InlinedLocals;
     SmallVector<const DILocation *, 1> ChildSites;
     const DISubprogram *Inlinee = nullptr;
+
+    /// The ID of the inline site or function used with .cv_loc. Not a type
+    /// index.
     unsigned SiteFuncId = 0;
   };
 
@@ -275,7 +278,7 @@ class LLVM_LIBRARY_VISIBILITY CodeViewDebug : public DebugHandlerBase {
   /// Common record member lowering functionality for record types, which are
   /// structs, classes, and unions. Returns the field list index and the member
   /// count.
-  std::tuple<codeview::TypeIndex, codeview::TypeIndex, unsigned>
+  std::tuple<codeview::TypeIndex, codeview::TypeIndex, unsigned, bool>
   lowerRecordFieldList(const DICompositeType *Ty);
 
   /// Inserts {{Node, ClassTy}, TI} into TypeIndices and checks for duplicates.

@@ -55,11 +55,10 @@ EVT AMDGPUTargetLowering::getEquivalentMemType(LLVMContext &Ctx, EVT VT) {
   return EVT::getVectorVT(Ctx, MVT::i32, StoreSize / 32);
 }
 
-// Type for a vector that will be loaded to.
-EVT AMDGPUTargetLowering::getEquivalentLoadRegType(LLVMContext &Ctx, EVT VT) {
+EVT AMDGPUTargetLowering::getEquivalentBitType(LLVMContext &Ctx, EVT VT) {
   unsigned StoreSize = VT.getStoreSizeInBits();
   if (StoreSize <= 32)
-    return EVT::getIntegerVT(Ctx, 32);
+    return EVT::getIntegerVT(Ctx, StoreSize);
 
   return EVT::getVectorVT(Ctx, MVT::i32, StoreSize / 32);
 }
@@ -535,15 +534,17 @@ bool AMDGPUTargetLowering::shouldReduceLoadWidth(SDNode *N,
 
 bool AMDGPUTargetLowering::isLoadBitCastBeneficial(EVT LoadTy,
                                                    EVT CastTy) const {
-  if (LoadTy.getSizeInBits() != CastTy.getSizeInBits())
-    return true;
 
-  unsigned LScalarSize = LoadTy.getScalarType().getSizeInBits();
-  unsigned CastScalarSize = CastTy.getScalarType().getSizeInBits();
+  assert(LoadTy.getSizeInBits() == CastTy.getSizeInBits());
 
-  return ((LScalarSize <= CastScalarSize) ||
-          (CastScalarSize >= 32) ||
-          (LScalarSize < 32));
+  if (LoadTy.getScalarType() == MVT::i32)
+    return false;
+
+  unsigned LScalarSize = LoadTy.getScalarSizeInBits();
+  unsigned CastScalarSize = CastTy.getScalarSizeInBits();
+
+  return (LScalarSize < CastScalarSize) ||
+         (CastScalarSize >= 32);
 }
 
 // SI+ has instructions for cttz / ctlz for 32-bit values. This is probably also
@@ -767,16 +768,16 @@ SDValue AMDGPUTargetLowering::LowerConstantInitializer(const Constant* Init,
     EVT VT = EVT::getEVT(InitTy);
     PointerType *PtrTy = PointerType::get(InitTy, AMDGPUAS::PRIVATE_ADDRESS);
     return DAG.getStore(Chain, DL, DAG.getConstant(*CI, DL, VT), InitPtr,
-                        MachinePointerInfo(UndefValue::get(PtrTy)), false,
-                        false, TD.getPrefTypeAlignment(InitTy));
+                        MachinePointerInfo(UndefValue::get(PtrTy)),
+                        TD.getPrefTypeAlignment(InitTy));
   }
 
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(Init)) {
     EVT VT = EVT::getEVT(CFP->getType());
     PointerType *PtrTy = PointerType::get(CFP->getType(), 0);
     return DAG.getStore(Chain, DL, DAG.getConstantFP(*CFP, DL, VT), InitPtr,
-                        MachinePointerInfo(UndefValue::get(PtrTy)), false,
-                        false, TD.getPrefTypeAlignment(CFP->getType()));
+                        MachinePointerInfo(UndefValue::get(PtrTy)),
+                        TD.getPrefTypeAlignment(CFP->getType()));
   }
 
   if (StructType *ST = dyn_cast<StructType>(InitTy)) {
@@ -824,8 +825,8 @@ SDValue AMDGPUTargetLowering::LowerConstantInitializer(const Constant* Init,
     EVT VT = EVT::getEVT(InitTy);
     PointerType *PtrTy = PointerType::get(InitTy, AMDGPUAS::PRIVATE_ADDRESS);
     return DAG.getStore(Chain, DL, DAG.getUNDEF(VT), InitPtr,
-                        MachinePointerInfo(UndefValue::get(PtrTy)), false,
-                        false, TD.getPrefTypeAlignment(InitTy));
+                        MachinePointerInfo(UndefValue::get(PtrTy)),
+                        TD.getPrefTypeAlignment(InitTy));
   }
 
   Init->dump();
@@ -921,14 +922,9 @@ SDValue AMDGPUTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
 
   switch (IntrinsicID) {
     default: return Op;
-    case AMDGPUIntrinsic::AMDGPU_clamp:
-    case AMDGPUIntrinsic::AMDIL_clamp: // Legacy name.
+    case AMDGPUIntrinsic::AMDGPU_clamp: // Legacy name.
       return DAG.getNode(AMDGPUISD::CLAMP, DL, VT,
                          Op.getOperand(1), Op.getOperand(2), Op.getOperand(3));
-
-    case Intrinsic::AMDGPU_ldexp: // Legacy name
-      return DAG.getNode(AMDGPUISD::LDEXP, DL, VT, Op.getOperand(1),
-                                                   Op.getOperand(2));
 
     case AMDGPUIntrinsic::AMDGPU_bfe_i32:
       return DAG.getNode(AMDGPUISD::BFE_I32, DL, VT,
@@ -941,12 +937,6 @@ SDValue AMDGPUTargetLowering::LowerINTRINSIC_WO_CHAIN(SDValue Op,
                          Op.getOperand(1),
                          Op.getOperand(2),
                          Op.getOperand(3));
-
-    case AMDGPUIntrinsic::AMDIL_exp: // Legacy name.
-      return DAG.getNode(ISD::FEXP2, DL, VT, Op.getOperand(1));
-
-    case AMDGPUIntrinsic::AMDGPU_brev: // Legacy name
-      return DAG.getNode(ISD::BITREVERSE, DL, VT, Op.getOperand(1));
   }
 }
 
@@ -1088,22 +1078,15 @@ SDValue AMDGPUTargetLowering::SplitVectorLoad(const SDValue Op,
   unsigned BaseAlign = Load->getAlignment();
   unsigned HiAlign = MinAlign(BaseAlign, Size);
 
-  SDValue LoLoad
-    = DAG.getExtLoad(Load->getExtensionType(), SL, LoVT,
-                     Load->getChain(), BasePtr,
-                     SrcValue,
-                     LoMemVT, Load->isVolatile(), Load->isNonTemporal(),
-                     Load->isInvariant(), BaseAlign);
-
+  SDValue LoLoad = DAG.getExtLoad(Load->getExtensionType(), SL, LoVT,
+                                  Load->getChain(), BasePtr, SrcValue, LoMemVT,
+                                  BaseAlign, Load->getMemOperand()->getFlags());
   SDValue HiPtr = DAG.getNode(ISD::ADD, SL, PtrVT, BasePtr,
                               DAG.getConstant(Size, SL, PtrVT));
-
-  SDValue HiLoad
-    = DAG.getExtLoad(Load->getExtensionType(), SL, HiVT,
-                     Load->getChain(), HiPtr,
-                     SrcValue.getWithOffset(LoMemVT.getStoreSize()),
-                     HiMemVT, Load->isVolatile(), Load->isNonTemporal(),
-                     Load->isInvariant(), HiAlign);
+  SDValue HiLoad =
+      DAG.getExtLoad(Load->getExtensionType(), SL, HiVT, Load->getChain(),
+                     HiPtr, SrcValue.getWithOffset(LoMemVT.getStoreSize()),
+                     HiMemVT, HiAlign, Load->getMemOperand()->getFlags());
 
   SDValue Ops[] = {
     DAG.getNode(ISD::CONCAT_VECTORS, SL, VT, LoLoad, HiLoad),
@@ -1162,16 +1145,15 @@ SDValue AMDGPUTargetLowering::MergeVectorStore(const SDValue &Op,
   if (PackedSize < 32) {
     EVT PackedVT = EVT::getIntegerVT(*DAG.getContext(), PackedSize);
     return DAG.getTruncStore(Store->getChain(), DL, PackedValue, Ptr,
-                             Store->getMemOperand()->getPointerInfo(),
-                             PackedVT,
-                             Store->isNonTemporal(), Store->isVolatile(),
-                             Store->getAlignment());
+                             Store->getMemOperand()->getPointerInfo(), PackedVT,
+                             Store->getAlignment(),
+                             Store->getMemOperand()->getFlags());
   }
 
   return DAG.getStore(Store->getChain(), DL, PackedValue, Ptr,
                       Store->getMemOperand()->getPointerInfo(),
-                      Store->isVolatile(),  Store->isNonTemporal(),
-                      Store->getAlignment());
+                      Store->getAlignment(),
+                      Store->getMemOperand()->getFlags());
 }
 
 SDValue AMDGPUTargetLowering::SplitVectorStore(SDValue Op,
@@ -1208,22 +1190,12 @@ SDValue AMDGPUTargetLowering::SplitVectorStore(SDValue Op,
   unsigned Size = LoMemVT.getStoreSize();
   unsigned HiAlign = MinAlign(BaseAlign, Size);
 
-  SDValue LoStore
-    = DAG.getTruncStore(Chain, SL, Lo,
-                        BasePtr,
-                        SrcValue,
-                        LoMemVT,
-                        Store->isNonTemporal(),
-                        Store->isVolatile(),
-                        BaseAlign);
-  SDValue HiStore
-    = DAG.getTruncStore(Chain, SL, Hi,
-                        HiPtr,
-                        SrcValue.getWithOffset(Size),
-                        HiMemVT,
-                        Store->isNonTemporal(),
-                        Store->isVolatile(),
-                        HiAlign);
+  SDValue LoStore =
+      DAG.getTruncStore(Chain, SL, Lo, BasePtr, SrcValue, LoMemVT, BaseAlign,
+                        Store->getMemOperand()->getFlags());
+  SDValue HiStore =
+      DAG.getTruncStore(Chain, SL, Hi, HiPtr, SrcValue.getWithOffset(Size),
+                        HiMemVT, HiAlign, Store->getMemOperand()->getFlags());
 
   return DAG.getNode(ISD::TokenFactor, SL, MVT::Other, LoStore, HiStore);
 }
@@ -2161,56 +2133,132 @@ static SDValue constantFoldBFE(SelectionDAG &DAG, IntTy Src0, uint32_t Offset,
   return DAG.getConstant(Src0 >> Offset, DL, MVT::i32);
 }
 
-static bool usesAllNormalStores(SDNode *LoadVal) {
-  for (SDNode::use_iterator I = LoadVal->use_begin(); !I.atEnd(); ++I) {
-    if (!ISD::isNormalStore(*I))
-      return false;
+static bool hasVolatileUser(SDNode *Val) {
+  for (SDNode *U : Val->uses()) {
+    if (MemSDNode *M = dyn_cast<MemSDNode>(U)) {
+      if (M->isVolatile())
+        return true;
+    }
   }
+
+  return false;
+}
+
+bool AMDGPUTargetLowering::shouldCombineMemoryType(EVT VT) const {
+  // i32 vectors are the canonical memory type.
+  if (VT.getScalarType() == MVT::i32 || isTypeLegal(VT))
+    return false;
+
+  if (!VT.isByteSized())
+    return false;
+
+  unsigned Size = VT.getStoreSize();
+
+  if ((Size == 1 || Size == 2 || Size == 4) && !VT.isVector())
+    return false;
+
+  if (Size == 3 || (Size > 4 && (Size % 4 != 0)))
+    return false;
 
   return true;
 }
 
-// If we have a copy of an illegal type, replace it with a load / store of an
-// equivalently sized legal type. This avoids intermediate bit pack / unpack
-// instructions emitted when handling extloads and truncstores. Ideally we could
-// recognize the pack / unpack pattern to eliminate it.
+// Replace load of an illegal type with a store of a bitcast to a friendlier
+// type.
+SDValue AMDGPUTargetLowering::performLoadCombine(SDNode *N,
+                                                 DAGCombinerInfo &DCI) const {
+  if (!DCI.isBeforeLegalize())
+    return SDValue();
+
+  LoadSDNode *LN = cast<LoadSDNode>(N);
+  if (LN->isVolatile() || !ISD::isNormalLoad(LN) || hasVolatileUser(LN))
+    return SDValue();
+
+  SDLoc SL(N);
+  SelectionDAG &DAG = DCI.DAG;
+  EVT VT = LN->getMemoryVT();
+
+  unsigned Size = VT.getStoreSize();
+  unsigned Align = LN->getAlignment();
+  if (Align < Size && isTypeLegal(VT)) {
+    bool IsFast;
+    unsigned AS = LN->getAddressSpace();
+
+    // Expand unaligned loads earlier than legalization. Due to visitation order
+    // problems during legalization, the emitted instructions to pack and unpack
+    // the bytes again are not eliminated in the case of an unaligned copy.
+    if (!allowsMisalignedMemoryAccesses(VT, AS, Align, &IsFast)) {
+      SDValue Ops[2];
+      std::tie(Ops[0], Ops[1]) = expandUnalignedLoad(LN, DAG);
+      return DAG.getMergeValues(Ops, SDLoc(N));
+    }
+
+    if (!IsFast)
+      return SDValue();
+  }
+
+  if (!shouldCombineMemoryType(VT))
+    return SDValue();
+
+  EVT NewVT = getEquivalentMemType(*DAG.getContext(), VT);
+
+  SDValue NewLoad
+    = DAG.getLoad(NewVT, SL, LN->getChain(),
+                  LN->getBasePtr(), LN->getMemOperand());
+
+  SDValue BC = DAG.getNode(ISD::BITCAST, SL, VT, NewLoad);
+  DCI.CombineTo(N, BC, NewLoad.getValue(1));
+  return SDValue(N, 0);
+}
+
+// Replace store of an illegal type with a store of a bitcast to a friendlier
+// type.
 SDValue AMDGPUTargetLowering::performStoreCombine(SDNode *N,
                                                   DAGCombinerInfo &DCI) const {
   if (!DCI.isBeforeLegalize())
     return SDValue();
 
   StoreSDNode *SN = cast<StoreSDNode>(N);
-  SDValue Value = SN->getValue();
-  EVT VT = Value.getValueType();
-
-  if (isTypeLegal(VT) || SN->isVolatile() ||
-      !ISD::isNormalLoad(Value.getNode()) || VT.getSizeInBits() < 8)
+  if (SN->isVolatile() || !ISD::isNormalStore(SN))
     return SDValue();
 
-  LoadSDNode *LoadVal = cast<LoadSDNode>(Value);
-  if (LoadVal->isVolatile() || !usesAllNormalStores(LoadVal))
-    return SDValue();
-
-  EVT MemVT = LoadVal->getMemoryVT();
-  if (!MemVT.isRound())
-    return SDValue();
+  EVT VT = SN->getMemoryVT();
+  unsigned Size = VT.getStoreSize();
 
   SDLoc SL(N);
   SelectionDAG &DAG = DCI.DAG;
-  EVT LoadVT = getEquivalentMemType(*DAG.getContext(), MemVT);
+  unsigned Align = SN->getAlignment();
+  if (Align < Size && isTypeLegal(VT)) {
+    bool IsFast;
+    unsigned AS = SN->getAddressSpace();
 
-  SDValue NewLoad = DAG.getLoad(ISD::UNINDEXED, ISD::NON_EXTLOAD,
-                                LoadVT, SL,
-                                LoadVal->getChain(),
-                                LoadVal->getBasePtr(),
-                                LoadVal->getOffset(),
-                                LoadVT,
-                                LoadVal->getMemOperand());
+    // Expand unaligned stores earlier than legalization. Due to visitation
+    // order problems during legalization, the emitted instructions to pack and
+    // unpack the bytes again are not eliminated in the case of an unaligned
+    // copy.
+    if (!allowsMisalignedMemoryAccesses(VT, AS, Align, &IsFast))
+      return expandUnalignedStore(SN, DAG);
 
-  SDValue CastLoad = DAG.getNode(ISD::BITCAST, SL, VT, NewLoad.getValue(0));
-  DCI.CombineTo(LoadVal, CastLoad, NewLoad.getValue(1), false);
+    if (!IsFast)
+      return SDValue();
+  }
 
-  return DAG.getStore(SN->getChain(), SL, NewLoad,
+  if (!shouldCombineMemoryType(VT))
+    return SDValue();
+
+  EVT NewVT = getEquivalentMemType(*DAG.getContext(), VT);
+  SDValue Val = SN->getValue();
+
+  //DCI.AddToWorklist(Val.getNode());
+
+  bool OtherUses = !Val.hasOneUse();
+  SDValue CastVal = DAG.getNode(ISD::BITCAST, SL, NewVT, Val);
+  if (OtherUses) {
+    SDValue CastBack = DAG.getNode(ISD::BITCAST, SL, VT, CastVal);
+    DAG.ReplaceAllUsesOfValueWith(Val, CastBack);
+  }
+
+  return DAG.getStore(SN->getChain(), SL, CastVal,
                       SN->getBasePtr(), SN->getMemOperand());
 }
 
@@ -2645,7 +2693,8 @@ SDValue AMDGPUTargetLowering::PerformDAGCombine(SDNode *N,
 
     break;
   }
-
+  case ISD::LOAD:
+    return performLoadCombine(N, DCI);
   case ISD::STORE:
     return performStoreCombine(N, DCI);
   }

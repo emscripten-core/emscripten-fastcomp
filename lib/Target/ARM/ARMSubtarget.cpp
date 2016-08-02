@@ -22,7 +22,6 @@
 #include "Thumb1FrameLowering.h"
 #include "Thumb1InstrInfo.h"
 #include "Thumb2InstrInfo.h"
-#include "llvm/CodeGen/Analysis.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
@@ -220,6 +219,7 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
   case CortexA15:
     MaxInterleaveFactor = 2;
     PreISelOperandLatencyAdjustment = 1;
+    PartialUpdateClearance = 12;
     break;
   case CortexA17:
   case CortexA32:
@@ -242,6 +242,7 @@ void ARMSubtarget::initSubtargetFeatures(StringRef CPU, StringRef FS) {
     MaxInterleaveFactor = 2;
     LdStMultipleTiming = SingleIssuePlusExtras;
     PreISelOperandLatencyAdjustment = 1;
+    PartialUpdateClearance = 12;
     break;
   }
 }

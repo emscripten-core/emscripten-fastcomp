@@ -410,7 +410,7 @@ void MachineBasicBlock::updateTerminator() {
   MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   SmallVector<MachineOperand, 4> Cond;
   DebugLoc DL;  // FIXME: this is nowhere
-  bool B = TII->AnalyzeBranch(*this, TBB, FBB, Cond);
+  bool B = TII->analyzeBranch(*this, TBB, FBB, Cond);
   (void) B;
   assert(!B && "UpdateTerminators requires analyzable predecessors!");
   if (Cond.empty()) {
@@ -470,17 +470,27 @@ void MachineBasicBlock::updateTerminator() {
     FallthroughBB = *SI;
   }
 
-  if (!FallthroughBB && canFallThrough()) {
-    // We fallthrough to the same basic block as the conditional jump targets.
-    // Remove the conditional jump, leaving unconditional fallthrough.
-    // FIXME: This does not seem like a reasonable pattern to support, but it
-    // has been seen in the wild coming out of degenerate ARM test cases.
-    TII->RemoveBranch(*this);
+  if (!FallthroughBB) {
+    if (canFallThrough()) {
+      // We fallthrough to the same basic block as the conditional jump targets.
+      // Remove the conditional jump, leaving unconditional fallthrough.
+      // FIXME: This does not seem like a reasonable pattern to support, but it
+      // has been seen in the wild coming out of degenerate ARM test cases.
+      TII->RemoveBranch(*this);
+  
+      // Finally update the unconditional successor to be reached via a branch if
+      // it would not be reached by fallthrough.
+      if (!isLayoutSuccessor(TBB))
+        TII->InsertBranch(*this, TBB, nullptr, Cond, DL);
+      return;
+    }
 
-    // Finally update the unconditional successor to be reached via a branch if
-    // it would not be reached by fallthrough.
-    if (!isLayoutSuccessor(TBB))
-      TII->InsertBranch(*this, TBB, nullptr, Cond, DL);
+    // We enter here iff exactly one successor is TBB which cannot fallthrough
+    // and the rest successors if any are EHPads.  In this case, we need to
+    // change the conditional branch into unconditional branch.
+    TII->RemoveBranch(*this);
+    Cond.clear();
+    TII->InsertBranch(*this, TBB, nullptr, Cond, DL);
     return;
   }
 
@@ -678,7 +688,7 @@ bool MachineBasicBlock::canFallThrough() {
   MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   SmallVector<MachineOperand, 4> Cond;
   const TargetInstrInfo *TII = getParent()->getSubtarget().getInstrInfo();
-  if (TII->AnalyzeBranch(*this, TBB, FBB, Cond)) {
+  if (TII->analyzeBranch(*this, TBB, FBB, Cond)) {
     // If we couldn't analyze the branch, examine the last instruction.
     // If the block doesn't end in a known control barrier, assume fallthrough
     // is possible. The isPredicated check is needed because this code can be
@@ -745,7 +755,7 @@ MachineBasicBlock *MachineBasicBlock::SplitCriticalEdge(MachineBasicBlock *Succ,
           continue;
         unsigned Reg = OI->getReg();
         if (TargetRegisterInfo::isPhysicalRegister(Reg) ||
-            LV->getVarInfo(Reg).removeKill(MI)) {
+            LV->getVarInfo(Reg).removeKill(*MI)) {
           KilledRegs.push_back(Reg);
           DEBUG(dbgs() << "Removing terminator kill: " << *MI);
           OI->setIsKill(false);
@@ -963,7 +973,7 @@ bool MachineBasicBlock::canSplitCriticalEdge(
   MachineBasicBlock *TBB = nullptr, *FBB = nullptr;
   SmallVector<MachineOperand, 4> Cond;
   // AnalyzeBanch should modify this, since we did not allow modification.
-  if (TII->AnalyzeBranch(*const_cast<MachineBasicBlock *>(this), TBB, FBB, Cond,
+  if (TII->analyzeBranch(*const_cast<MachineBasicBlock *>(this), TBB, FBB, Cond,
                          /*AllowModify*/ false))
     return false;
 

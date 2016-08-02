@@ -16,7 +16,8 @@
 #include "llvm-c/Transforms/PassManagerBuilder.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Analysis/BasicAliasAnalysis.h"
-#include "llvm/Analysis/CFLAliasAnalysis.h"
+#include "llvm/Analysis/CFLAndersAliasAnalysis.h"
+#include "llvm/Analysis/CFLSteensAliasAnalysis.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/Passes.h"
 #include "llvm/Analysis/ScopedNoAliasAA.h"
@@ -79,9 +80,19 @@ RunSLPAfterLoopVectorization("run-slp-after-loop-vectorization",
   cl::desc("Run the SLP vectorizer (and BB vectorizer) after the Loop "
            "vectorizer instead of before"));
 
-static cl::opt<bool> UseCFLAA("use-cfl-aa",
-  cl::init(false), cl::Hidden,
-  cl::desc("Enable the new, experimental CFL alias analysis"));
+// Experimental option to use CFL-AA
+enum class CFLAAType { None, Steensgaard, Andersen, Both };
+static cl::opt<CFLAAType>
+    UseCFLAA("use-cfl-aa", cl::init(CFLAAType::None), cl::Hidden,
+             cl::desc("Enable the new, experimental CFL alias analysis"),
+             cl::values(clEnumValN(CFLAAType::None, "none", "Disable CFL-AA"),
+                        clEnumValN(CFLAAType::Steensgaard, "steens",
+                                   "Enable unification-based CFL-AA"),
+                        clEnumValN(CFLAAType::Andersen, "anders",
+                                   "Enable inclusion-based CFL-AA"),
+                        clEnumValN(CFLAAType::Both, "both",
+                                   "Enable both variants of CFL-aa"),
+                        clEnumValEnd));
 
 static cl::opt<bool>
 EnableMLSM("mlsm", cl::init(true), cl::Hidden,
@@ -113,6 +124,19 @@ static cl::opt<std::string> RunPGOInstrUse(
 static cl::opt<bool> UseLoopVersioningLICM(
     "enable-loop-versioning-licm", cl::init(false), cl::Hidden,
     cl::desc("Enable the experimental Loop Versioning LICM pass"));
+
+static cl::opt<bool>
+    DisablePreInliner("disable-preinline", cl::init(false), cl::Hidden,
+                      cl::desc("Disable pre-instrumentation inliner"));
+
+static cl::opt<int> PreInlineThreshold(
+    "preinline-threshold", cl::Hidden, cl::init(75), cl::ZeroOrMore,
+    cl::desc("Control the amount of inlining in pre-instrumentation inliner "
+             "(default = 75)"));
+
+static cl::opt<bool> EnableGVNHoist(
+    "enable-gvn-hoist", cl::init(false), cl::Hidden,
+    cl::desc("Enable the experimental GVN Hoisting pass"));
 
 PassManagerBuilder::PassManagerBuilder() {
     OptLevel = 2;
@@ -169,11 +193,24 @@ void PassManagerBuilder::addExtensionsToPM(ExtensionPointTy ETy,
 
 void PassManagerBuilder::addInitialAliasAnalysisPasses(
     legacy::PassManagerBase &PM) const {
+  switch (UseCFLAA) {
+  case CFLAAType::Steensgaard:
+    PM.add(createCFLSteensAAWrapperPass());
+    break;
+  case CFLAAType::Andersen:
+    PM.add(createCFLAndersAAWrapperPass());
+    break;
+  case CFLAAType::Both:
+    PM.add(createCFLSteensAAWrapperPass());
+    PM.add(createCFLAndersAAWrapperPass());
+    break;
+  default:
+    break;
+  }
+
   // Add TypeBasedAliasAnalysis before BasicAliasAnalysis so that
   // BasicAliasAnalysis wins if they disagree. This is intended to help
   // support "obvious" type-punning idioms.
-  if (UseCFLAA)
-    PM.add(createCFLAAWrapperPass());
   PM.add(createTypeBasedAAWrapperPass());
   PM.add(createScopedNoAliasAAWrapperPass());
 }
@@ -199,11 +236,26 @@ void PassManagerBuilder::populateFunctionPassManager(
   FPM.add(createCFGSimplificationPass());
   FPM.add(createSROAPass());
   FPM.add(createEarlyCSEPass());
+  if(EnableGVNHoist)
+    FPM.add(createGVNHoistPass());
   FPM.add(createLowerExpectIntrinsicPass());
 }
 
 // Do PGO instrumentation generation or use pass as the option specified.
 void PassManagerBuilder::addPGOInstrPasses(legacy::PassManagerBase &MPM) {
+  if (PGOInstrGen.empty() && PGOInstrUse.empty())
+    return;
+  // Perform the preinline and cleanup passes for O1 and above.
+  // And avoid doing them if optimizing for size.
+  if (OptLevel > 0 && SizeLevel == 0 && !DisablePreInliner) {
+    // Create preinline pass.
+    MPM.add(createFunctionInliningPass(PreInlineThreshold));
+    MPM.add(createSROAPass());
+    MPM.add(createEarlyCSEPass());             // Catch trivial redundancies
+    MPM.add(createCFGSimplificationPass());    // Merge & remove BBs
+    MPM.add(createInstructionCombiningPass()); // Combine silly seq's
+    addExtensionsToPM(EP_Peephole, MPM);
+  }
   if (!PGOInstrGen.empty()) {
     MPM.add(createPGOInstrumentationGenLegacyPass());
     // Add the profile lowering pass.
@@ -360,9 +412,10 @@ void PassManagerBuilder::populateModulePassManager(
     /// PGO instrumentation is added during the compile phase for ThinLTO, do
     /// not run it a second time
     addPGOInstrPasses(MPM);
-    // Indirect call promotion that promotes intra-module targets only.
-    MPM.add(createPGOIndirectCallPromotionLegacyPass());
   }
+
+  // Indirect call promotion that promotes intra-module targets only.
+  MPM.add(createPGOIndirectCallPromotionLegacyPass());
 
   if (EnableNonLTOGlobalsModRef)
     // We add a module alias analysis pass here. In part due to bugs in the

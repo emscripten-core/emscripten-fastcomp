@@ -67,10 +67,6 @@ void TailDuplicator::initMF(MachineFunction &MF, const MachineModuleInfo *MMIin,
   assert(MBPI != nullptr && "Machine Branch Probability Info required");
 
   PreRegAlloc = MRI->isSSA();
-  RS.reset();
-
-  if (MRI->tracksLiveness() && TRI->trackLivenessAfterRegAlloc(MF))
-    RS.reset(new RegScavenger());
 }
 
 static void VerifyPHIs(MachineFunction &MF, bool CheckExtra) {
@@ -341,7 +337,7 @@ void TailDuplicator::duplicateInstruction(
     MachineFunction &MF,
     DenseMap<unsigned, RegSubRegPair> &LocalVRMap,
     const DenseSet<unsigned> &UsedByPhi) {
-  MachineInstr *NewMI = TII->duplicate(MI, MF);
+  MachineInstr *NewMI = TII->duplicate(*MI, MF);
   if (PreRegAlloc) {
     for (unsigned i = 0, e = NewMI->getNumOperands(); i != e; ++i) {
       MachineOperand &MO = NewMI->getOperand(i);
@@ -635,7 +631,7 @@ bool TailDuplicator::canCompletelyDuplicateBB(MachineBasicBlock &BB) {
 
     MachineBasicBlock *PredTBB = nullptr, *PredFBB = nullptr;
     SmallVector<MachineOperand, 4> PredCond;
-    if (TII->AnalyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
+    if (TII->analyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
       return false;
 
     if (!PredCond.empty())
@@ -666,7 +662,7 @@ bool TailDuplicator::duplicateSimpleBB(
 
     MachineBasicBlock *PredTBB = nullptr, *PredFBB = nullptr;
     SmallVector<MachineOperand, 4> PredCond;
-    if (TII->AnalyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
+    if (TII->analyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
       continue;
 
     Changed = true;
@@ -754,7 +750,7 @@ bool TailDuplicator::tailDuplicate(MachineFunction &MF, bool IsSimple,
 
     MachineBasicBlock *PredTBB, *PredFBB;
     SmallVector<MachineOperand, 4> PredCond;
-    if (TII->AnalyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
+    if (TII->analyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true))
       continue;
     if (!PredCond.empty())
       continue;
@@ -769,20 +765,6 @@ bool TailDuplicator::tailDuplicate(MachineFunction &MF, bool IsSimple,
 
     // Remove PredBB's unconditional branch.
     TII->RemoveBranch(*PredBB);
-
-    if (RS && !TailBB->livein_empty()) {
-      // Update PredBB livein.
-      RS->enterBasicBlock(*PredBB);
-      if (!PredBB->empty())
-        RS->forward(std::prev(PredBB->end()));
-      for (const auto &LI : TailBB->liveins()) {
-        if (!RS->isRegUsed(LI.PhysReg, false))
-          // If a register is previously livein to the tail but it's not live
-          // at the end of predecessor BB, then it should be added to its
-          // livein list.
-          PredBB->addLiveIn(LI);
-      }
-    }
 
     // Clone the contents of TailBB into PredBB.
     DenseMap<unsigned, RegSubRegPair> LocalVRMap;
@@ -806,7 +788,7 @@ bool TailDuplicator::tailDuplicate(MachineFunction &MF, bool IsSimple,
     appendCopies(PredBB, CopyInfos, Copies);
 
     // Simplify
-    TII->AnalyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true);
+    TII->analyzeBranch(*PredBB, PredTBB, PredFBB, PredCond, true);
 
     NumTailDupAdded += TailBB->size() - 1; // subtract one for removed branch
 
@@ -832,7 +814,7 @@ bool TailDuplicator::tailDuplicate(MachineFunction &MF, bool IsSimple,
   // This has to check PrevBB->succ_size() because EH edges are ignored by
   // AnalyzeBranch.
   if (PrevBB->succ_size() == 1 &&
-      !TII->AnalyzeBranch(*PrevBB, PriorTBB, PriorFBB, PriorCond, true) &&
+      !TII->analyzeBranch(*PrevBB, PriorTBB, PriorFBB, PriorCond, true) &&
       PriorCond.empty() && !PriorTBB && TailBB->pred_size() == 1 &&
       !TailBB->hasAddressTaken()) {
     DEBUG(dbgs() << "\nMerging into block: " << *PrevBB

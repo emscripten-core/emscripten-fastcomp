@@ -39,6 +39,13 @@ using namespace llvm;
 AMDGPUMCInstLower::AMDGPUMCInstLower(MCContext &ctx, const AMDGPUSubtarget &st):
   Ctx(ctx), ST(st) { }
 
+static MCSymbolRefExpr::VariantKind getVariantKind(unsigned MOFlags) {
+  switch (MOFlags) {
+  default: return MCSymbolRefExpr::VK_None;
+  case SIInstrInfo::MO_GOTPCREL: return MCSymbolRefExpr::VK_GOTPCREL;
+  }
+}
+
 void AMDGPUMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
 
   int MCOpcode = ST.getInstrInfo()->pseudoToMCOpcode(MI->getOpcode());
@@ -69,7 +76,8 @@ void AMDGPUMCInstLower::lower(const MachineInstr *MI, MCInst &OutMI) const {
     case MachineOperand::MO_GlobalAddress: {
       const GlobalValue *GV = MO.getGlobal();
       MCSymbol *Sym = Ctx.getOrCreateSymbol(StringRef(GV->getName()));
-      const MCExpr *SymExpr = MCSymbolRefExpr::create(Sym, Ctx);
+      const MCExpr *SymExpr =
+          MCSymbolRefExpr::create(Sym, getVariantKind(MO.getTargetFlags()),Ctx);
       const MCExpr *Expr = MCBinaryExpr::createAdd(SymExpr,
           MCConstantExpr::create(MO.getOffset(), Ctx), Ctx);
       MCOp = MCOperand::createExpr(Expr);
@@ -92,7 +100,7 @@ void AMDGPUAsmPrinter::EmitInstruction(const MachineInstr *MI) {
   AMDGPUMCInstLower MCInstLowering(OutContext, STI);
 
   StringRef Err;
-  if (!STI.getInstrInfo()->verifyInstruction(MI, Err)) {
+  if (!STI.getInstrInfo()->verifyInstruction(*MI, Err)) {
     LLVMContext &C = MI->getParent()->getParent()->getFunction()->getContext();
     C.emitError("Illegal instruction detected: " + Err);
     MI->dump();
@@ -113,7 +121,7 @@ void AMDGPUAsmPrinter::EmitInstruction(const MachineInstr *MI) {
         SmallVector<char, 16> BBStr;
         raw_svector_ostream Str(BBStr);
 
-        const MachineBasicBlock *MBB = MI->getOperand(1).getMBB();
+        const MachineBasicBlock *MBB = MI->getOperand(0).getMBB();
         const MCSymbolRefExpr *Expr
           = MCSymbolRefExpr::create(MBB->getSymbol(), OutContext);
         Expr->print(Str, MAI);

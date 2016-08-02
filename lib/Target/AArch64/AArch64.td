@@ -132,6 +132,12 @@ include "AArch64InstrInfo.td"
 def AArch64InstrInfo : InstrInfo;
 
 //===----------------------------------------------------------------------===//
+// Named operands for MRS/MSR/TLBI/...
+//===----------------------------------------------------------------------===//
+
+include "AArch64SystemOperands.td"
+
+//===----------------------------------------------------------------------===//
 // AArch64 Processors supported.
 //
 include "AArch64SchedA53.td"
@@ -139,6 +145,7 @@ include "AArch64SchedA57.td"
 include "AArch64SchedCyclone.td"
 include "AArch64SchedM1.td"
 include "AArch64SchedKryo.td"
+include "AArch64SchedVulcan.td"
 
 def ProcA35     : SubtargetFeature<"a35", "ARMProcFamily", "CortexA35",
                                    "Cortex-A35 ARM processors", [
@@ -217,6 +224,7 @@ def ProcExynosM1 : SubtargetFeature<"exynosm1", "ARMProcFamily", "ExynosM1",
                                     FeatureFPARMv8,
                                     FeatureNEON,
                                     FeaturePerfMon,
+                                    FeaturePostRAScheduler,
                                     FeatureUseRSqrt
                                     ]>;
 
@@ -230,15 +238,19 @@ def ProcKryo    : SubtargetFeature<"kryo", "ARMProcFamily", "Kryo",
                                    FeatureNEON,
                                    FeaturePerfMon,
                                    FeaturePostRAScheduler,
-                                   FeaturePredictableSelectIsExpensive
+                                   FeaturePredictableSelectIsExpensive,
+                                   FeatureZCZeroing
                                    ]>;
 
 def ProcVulcan  : SubtargetFeature<"vulcan", "ARMProcFamily", "Vulcan",
                                    "Broadcom Vulcan processors", [
-                                   FeatureFPARMv8,
-                                   FeatureNEON,
-                                   FeatureCrypto,
                                    FeatureCRC,
+                                   FeatureCrypto,
+                                   FeatureFPARMv8,
+                                   FeatureMacroOpFusion,
+                                   FeatureNEON,
+                                   FeaturePostRAScheduler,
+                                   FeaturePredictableSelectIsExpensive,
                                    HasV8_1aOps]>;
 
 def : ProcessorModel<"generic", NoSchedModel, [
@@ -259,7 +271,7 @@ def : ProcessorModel<"cortex-a73", CortexA57Model, [ProcA73]>;
 def : ProcessorModel<"cyclone", CycloneModel, [ProcCyclone]>;
 def : ProcessorModel<"exynos-m1", ExynosM1Model, [ProcExynosM1]>;
 def : ProcessorModel<"kryo", KryoModel, [ProcKryo]>;
-def : ProcessorModel<"vulcan", NoSchedModel, [ProcVulcan]>;
+def : ProcessorModel<"vulcan", VulcanModel, [ProcVulcan]>;
 
 //===----------------------------------------------------------------------===//
 // Assembly parser
