@@ -572,8 +572,8 @@ bool SimplifyStructRegSignatures::runOnModule(Module &M) {
 void
 SimplifyStructRegSignatures::checkNoUnsupportedInstructions(LLVMContext &Ctx,
                                                             Function *Fct) {
-  for (auto &BB : Fct->getBasicBlockList())
-    for (auto &Inst : BB.getInstList())
+  for (auto &BB : Fct->getBasicBlockList()) {
+    for (auto &Inst : BB.getInstList()) {
       if (auto *Landing = dyn_cast<LandingPadInst>(&Inst)) {
         auto *LType = Fct->getPersonalityFn()->getType();
         if (LType != Mapper.getSimpleType(Ctx, LType)) {
@@ -589,6 +589,8 @@ SimplifyStructRegSignatures::checkNoUnsupportedInstructions(LLVMContext &Ctx,
               "Resumes with aggregate register signatures are not supported.");
         }
       }
+    }
+  }
 }
 ModulePass *llvm::createSimplifyStructRegSignaturesPass() {
   return new SimplifyStructRegSignatures();
