@@ -184,16 +184,16 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
 
   if (AO == NaCl::MemoryOrderInvalid) {
     switch (O) {
-    case NotAtomic: llvm_unreachable("unexpected memory order");
+    case AtomicOrdering::NotAtomic: llvm_unreachable("unexpected memory order");
     // Monotonic is a strict superset of Unordered. Both can therefore
     // map to Relaxed ordering, which is in the C11/C++11 standard.
-    case Unordered: AO = NaCl::MemoryOrderRelaxed; break;
-    case Monotonic: AO = NaCl::MemoryOrderRelaxed; break;
+    case AtomicOrdering::Unordered: AO = NaCl::MemoryOrderRelaxed; break;
+    case AtomicOrdering::Monotonic: AO = NaCl::MemoryOrderRelaxed; break;
     // TODO Consume is currently unspecified by LLVM's internal IR.
-    case Acquire: AO = NaCl::MemoryOrderAcquire; break;
-    case Release: AO = NaCl::MemoryOrderRelease; break;
-    case AcquireRelease: AO = NaCl::MemoryOrderAcquireRelease; break;
-    case SequentiallyConsistent:
+    case AtomicOrdering::Acquire: AO = NaCl::MemoryOrderAcquire; break;
+    case AtomicOrdering::Release: AO = NaCl::MemoryOrderRelease; break;
+    case AtomicOrdering::AcquireRelease: AO = NaCl::MemoryOrderAcquireRelease; break;
+    case AtomicOrdering::SequentiallyConsistent:
       AO = NaCl::MemoryOrderSequentiallyConsistent; break;
     }
   }
@@ -208,14 +208,14 @@ ConstantInt *AtomicVisitor::freezeMemoryOrder(const Instruction &I,
 std::pair<ConstantInt *, ConstantInt *>
 AtomicVisitor::freezeMemoryOrder(const AtomicCmpXchgInst &I, AtomicOrdering S,
                                  AtomicOrdering F) const {
-  if (S == Release || (S == AcquireRelease && F != Acquire))
+  if (S == AtomicOrdering::Release || (S == AtomicOrdering::AcquireRelease && F != AtomicOrdering::Acquire))
     // According to C++11's [atomics.types.operations.req], cmpxchg with release
     // success memory ordering must have relaxed failure memory ordering, which
     // PNaCl currently disallows. The next-strongest ordering is acq_rel which
     // is also an invalid failure ordering, we therefore have to change the
     // success ordering to seq_cst, which can then fail as seq_cst.
-    S = F = SequentiallyConsistent;
-  if (F == Unordered || F == Monotonic) // Both are treated as relaxed.
+    S = F = AtomicOrdering::SequentiallyConsistent;
+  if (F == AtomicOrdering::Unordered || F == AtomicOrdering::Monotonic) // Both are treated as relaxed.
     F = AtomicCmpXchgInst::getStrongestFailureOrdering(S);
   return std::make_pair(freezeMemoryOrder(I, S), freezeMemoryOrder(I, F));
 }

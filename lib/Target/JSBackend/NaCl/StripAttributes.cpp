@@ -170,10 +170,10 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
   // __attribute__((visibility("protected"))), strip these attributes.
   GV->setVisibility(GlobalValue::DefaultVisibility);
 
-  GV->setUnnamedAddr(false);
+  GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global);
 
   if (GV->hasSection()) {
-    const char *Section = GV->getSection();
+    const char *Section = GV->getSection().data();
     // check for a few special cases
     if (const char *WarnSection = ShouldWarnAboutSection(Section)) {
       errs() << "Warning: " << GV->getName() <<

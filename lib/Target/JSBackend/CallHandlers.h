@@ -581,6 +581,24 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
+DEF_CALL_HANDLER(llvm_maxnum_f32, {
+  return CH___default__(CI, "Math_max", 2);
+})
+
+DEF_CALL_HANDLER(llvm_maxnum_f64, {
+  return CH___default__(CI, "Math_max", 2);
+})
+
+DEF_CALL_HANDLER(llvm_copysign_f32, {
+  Declares.insert("llvm_copysign_f32");
+  return CH___default__(CI, "_llvm_copysign_f32", 2);
+})
+
+DEF_CALL_HANDLER(llvm_copysign_f64, {
+  Declares.insert("llvm_copysign_f64");
+  return CH___default__(CI, "_llvm_copysign_f64", 2);
+})
+
 // EM_ASM support
 
 std::string handleAsmConst(const Instruction *CI) {
@@ -737,6 +755,7 @@ DEF_CALL_HANDLER(name, { \
 #define DEF_MAYBE_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   if (!WebAssembly) return CH___default__(CI, #to); \
+  Declares.insert(#name); \
   return CH___default__(CI, "_" #name); \
 })
 
@@ -1505,6 +1524,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(llvm_ctlz_i32);
   SETUP_CALL_HANDLER(llvm_cttz_i32);
+  SETUP_CALL_HANDLER(llvm_maxnum_f32);
+  SETUP_CALL_HANDLER(llvm_maxnum_f64);
+  SETUP_CALL_HANDLER(llvm_copysign_f32);
+  SETUP_CALL_HANDLER(llvm_copysign_f64);
 
   // SIMD.js Float64x2
   SETUP_CALL_HANDLER(emscripten_float64x2_set);

@@ -472,7 +472,7 @@ void AllocaManager::computeFrameOffsets() {
   for (SmallVectorImpl<AllocaInfo>::const_iterator I = SortedAllocas.begin(),
        E = SortedAllocas.end(); I != E; ++I) {
     const AllocaInfo &Info = *I;
-    uint64_t NewOffset = RoundUpToAlignment(CurrentOffset, Info.getAlignment());
+    uint64_t NewOffset = alignTo(CurrentOffset, Info.getAlignment());
 
     // For backwards compatibility, align every power-of-two multiple alloca to
     // its greatest power-of-two factor, up to 8 bytes. In particular, cube2hash
@@ -481,7 +481,7 @@ void AllocaManager::computeFrameOffsets() {
     if (uint64_t Size = Info.getSize()) {
       uint64_t P2 = uint64_t(1) << countTrailingZeros(Size);
       unsigned CompatAlign = unsigned(std::min(P2, uint64_t(8)));
-      NewOffset = RoundUpToAlignment(NewOffset, CompatAlign);
+      NewOffset = alignTo(NewOffset, CompatAlign);
     }
 
     const AllocaInst *AI = Info.getInst();
@@ -510,7 +510,7 @@ void AllocaManager::computeFrameOffsets() {
 
   // Record the final frame size. Keep the stack pointer 16-byte aligned.
   FrameSize = CurrentOffset;
-  FrameSize = RoundUpToAlignment(FrameSize, 16);
+  FrameSize = alignTo(FrameSize, 16);
 
   DEBUG(dbgs() << "Allocas: "
                   "Statically allocated frame size is " << FrameSize << "\n");

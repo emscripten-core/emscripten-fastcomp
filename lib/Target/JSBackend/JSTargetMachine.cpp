@@ -33,12 +33,11 @@ JSSubtarget::JSSubtarget(const TargetMachine& TM, const Triple &TT) :
 
 JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
                                  StringRef CPU, StringRef FS, const TargetOptions &Options,
-                                 Reloc::Model RM, CodeModel::Model CM,
+                                 Optional<Reloc::Model>& RM, CodeModel::Model CM,
                                  CodeGenOpt::Level OL)
-    : TargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", TT, CPU,
-                    FS, Options),
+    : LLVMTargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", TT,
+                        CPU, FS, Options, Reloc::Static, CM, OL),
       ST(*this, TT) {
-  CodeGenInfo = T.createMCCodeGenInfo("asmjs", RM, CM, OL);
 }
 
 TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {

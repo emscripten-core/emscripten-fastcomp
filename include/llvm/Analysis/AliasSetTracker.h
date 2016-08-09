@@ -30,6 +30,7 @@ namespace llvm {
 class LoadInst;
 class StoreInst;
 class VAArgInst;
+class MemSetInst;
 class AliasSetTracker;
 class AliasSet;
 
@@ -58,8 +59,12 @@ class AliasSet : public ilist_node<AliasSet> {
       return &NextInList;
     }
 
-    void updateSizeAndAAInfo(uint64_t NewSize, const AAMDNodes &NewAAInfo) {
-      if (NewSize > Size) Size = NewSize;
+    bool updateSizeAndAAInfo(uint64_t NewSize, const AAMDNodes &NewAAInfo) {
+      bool SizeChanged = false;
+      if (NewSize > Size) {
+        Size = NewSize;
+        SizeChanged = true;
+      }
 
       if (AAInfo == DenseMapInfo<AAMDNodes>::getEmptyKey())
         // We don't have a AAInfo yet. Set it to NewAAInfo.
@@ -67,6 +72,8 @@ class AliasSet : public ilist_node<AliasSet> {
       else if (AAInfo != NewAAInfo)
         // NewAAInfo conflicts with AAInfo.
         AAInfo = DenseMapInfo<AAMDNodes>::getTombstoneKey();
+
+      return SizeChanged;
     }
 
     uint64_t getSize() const { return Size; }
@@ -144,7 +151,7 @@ class AliasSet : public ilist_node<AliasSet> {
   unsigned Alias : 1;
 
   /// True if this alias set contains volatile loads or stores.
-  bool Volatile : 1;
+  unsigned Volatile : 1;
 
   void addRef() { ++RefCount; }
   void dropRef(AliasSetTracker &AST) {
@@ -329,6 +336,7 @@ public:
   bool add(LoadInst *LI);
   bool add(StoreInst *SI);
   bool add(VAArgInst *VAAI);
+  bool add(MemSetInst *MSI);
   bool add(Instruction *I);       // Dispatch to one of the other add methods...
   void add(BasicBlock &BB);       // Add all instructions in basic block
   void add(const AliasSetTracker &AST); // Add alias relations from another AST
@@ -341,6 +349,7 @@ public:
   bool remove(LoadInst *LI);
   bool remove(StoreInst *SI);
   bool remove(VAArgInst *VAAI);
+  bool remove(MemSetInst *MSI);
   bool remove(Instruction *I);
   void remove(AliasSet &AS);
   bool removeUnknown(Instruction *I);
@@ -362,7 +371,7 @@ public:
   /// otherwise return null.
   AliasSet *getAliasSetForPointerIfExists(const Value *P, uint64_t Size,
                                           const AAMDNodes &AAInfo) {
-    return findAliasSetForPointer(P, Size, AAInfo);
+    return mergeAliasSetsForPointer(P, Size, AAInfo);
   }
 
   /// Return true if the specified location is represented by this alias set,
@@ -422,8 +431,8 @@ private:
     AS.Access |= E;
     return AS;
   }
-  AliasSet *findAliasSetForPointer(const Value *Ptr, uint64_t Size,
-                                   const AAMDNodes &AAInfo);
+  AliasSet *mergeAliasSetsForPointer(const Value *Ptr, uint64_t Size,
+                                     const AAMDNodes &AAInfo);
 
   AliasSet *findAliasSetForUnknownInst(Instruction *Inst);
 };

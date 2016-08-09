@@ -44,7 +44,7 @@ public:
   virtual bool runOnModule(Module &M);
 
 private:
-  typedef SmallPtrSet<Constant *, 64> Constants;
+  typedef SmallPtrSet<Constant *, 32> Constants;
   typedef std::pair<Function *, Constants> FunctionConstants;
   typedef std::vector<FunctionConstants> FunctionConstantList;
   typedef DenseMap<Constant *, GlobalVariable *> GlobalizedConstants;
@@ -95,7 +95,7 @@ void GlobalizeConstantVectors::createGlobalConstantVectors(
           new GlobalVariable(M, C->getType(), /* isConstant= */ true,
                              GlobalValue::InternalLinkage, C, Name);
       GV->setAlignment(DL->getPrefTypeAlignment(C->getType()));
-      GV->setUnnamedAddr(true); // The content is significant, not the address.
+      GV->setUnnamedAddr(GlobalValue::UnnamedAddr::Global); // The content is significant, not the address.
       GCs[C] = GV;
     }
   }

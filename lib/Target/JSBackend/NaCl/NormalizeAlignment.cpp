@@ -59,8 +59,8 @@ bool NormalizeAlignment::runOnFunction(Function &F) {
   DataLayout DL(F.getParent());
   bool Modified = false;
 
-  for (BasicBlock &BB : F)
-    for (Instruction &I : BB)
+  for (BasicBlock &BB : F) {
+    for (Instruction &I : BB) {
       if (auto *MemOp = dyn_cast<MemIntrinsic>(&I)) {
         Modified = true;
         Type *AlignTy = MemOp->getAlignmentCst()->getType();
@@ -75,6 +75,8 @@ bool NormalizeAlignment::runOnFunction(Function &F) {
             &DL, Store->getAlignment(), Store->getValueOperand()->getType(),
             Store->isAtomic()));
       }
+    }
+  }
 
   return Modified;
 }

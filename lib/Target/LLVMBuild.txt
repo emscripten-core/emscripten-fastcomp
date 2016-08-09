@@ -24,8 +24,8 @@ subdirectories =
  AArch64
  AVR
  BPF
- CppBackend
  JSBackend
+ Lanai
  Hexagon
  MSP430
  NVPTX
