@@ -1445,7 +1445,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     } else {
       // i64 constant. emit as 32 bits, 32 bits, for ease of parsing by a JS-style parser
       auto value = CI->getZExtValue();
-      return "i64_const(" + itostr(value & uint32_t(-1)) + ", " + itostr((value >> 32) & uint32_t(-1)) + ")";
+      return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
     }
   } else if (isa<UndefValue>(CV)) {
     std::string S;
@@ -2325,6 +2325,25 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::AShr:{
     Code << getAssignIfNeeded(I);
     unsigned opcode = Operator::getOpcode(I);
+    if (OnlyWebAssembly && I->getType()->getIntegerBitWidth() == 64) {
+      switch (opcode) {
+        case Instruction::Add:  Code << "i64_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Sub:  Code << "i64_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Mul:  Code << "i64_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::UDiv: Code << "i64_udiv(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::SDiv: Code << "i64_sdiv(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::URem: Code << "i64_urem(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::SRem: Code << "i64_srem(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::And:  Code << "i64_and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Or:   Code << "i64_or(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Xor:  Code << "i64_xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Shl:  Code << "i64_shl(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::AShr: Code << "i64_ashr(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::LShr: Code << "i64_lshr(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        default: error("bad wasm-i64 binary opcode"); break;
+      }
+      break;
+    }
     switch (opcode) {
       case Instruction::Add:  Code << getParenCast(
                                         getValueAsParenStr(I->getOperand(0)) +
