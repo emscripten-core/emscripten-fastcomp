@@ -369,7 +369,11 @@ namespace {
           return 'F';
         }
       } else {
-        return 'i';
+        if (T == i32) {
+          return 'i';
+        } else {
+          return 'j';
+        }
       }
     }
     std::string getFunctionSignature(const FunctionType *F) {
@@ -1436,7 +1440,13 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
       sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
     }
-    return CI->getValue().toString(10, sign != ASM_UNSIGNED);
+    if (!OnlyWebAssembly || CI->getType() == i32) {
+      return CI->getValue().toString(10, sign != ASM_UNSIGNED);
+    } else {
+      // i64 constant. emit as 32 bits, 32 bits, for ease of parsing by a JS-style parser
+      auto value = CI->getZExtValue();
+      return "i64_const(" + itostr(value & uint32_t(-1)) + ", " + itostr((value >> 32) & uint32_t(-1)) + ")";
+    }
   } else if (isa<UndefValue>(CV)) {
     std::string S;
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
