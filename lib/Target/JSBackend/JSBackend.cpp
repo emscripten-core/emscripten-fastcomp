@@ -2471,7 +2471,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       switch (predicate) {
         case ICmpInst::ICMP_EQ:  Code << "i64_eq(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case ICmpInst::ICMP_NE:  Code << "i64_ne(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
-        case ICmpInst::ICMP_ULE: Code << "i64_ule(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;;
+        case ICmpInst::ICMP_ULE: Code << "i64_ule(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case ICmpInst::ICMP_SLE: Code << "i64_sle(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case ICmpInst::ICMP_UGE: Code << "i64_uge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case ICmpInst::ICMP_SGE: Code << "i64_sge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
@@ -2652,6 +2652,39 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::UIToFP:
   case Instruction::SIToFP: {
     Code << getAssignIfNeeded(I);
+    if (OnlyWebAssembly && (I->getOperand(0)->getType()->getIntegerBitWidth() == 64 || I->getOperand(1)->getType()->getIntegerBitWidth() == 64)) {
+      switch (Operator::getOpcode(I)) {
+        case Instruction::Trunc: {
+          //unsigned inBits = V->getType()->getIntegerBitWidth();
+          unsigned outBits = I->getType()->getIntegerBitWidth();
+          Code << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')'; break;
+          if (outBits < 32) {
+            Code << "&" << utostr(LSBMask(outBits));
+          }
+          break;
+        }
+        case Instruction::SExt: {
+          unsigned inBits = I->getOperand(0)->getType()->getIntegerBitWidth();
+          std::string bits = utostr(32 - inBits);
+          Code << "i64_sext(" << getValueAsStr(I->getOperand(0));
+          if (inBits < 32) {
+            Code << " << " << bits << " >> " << bits;
+          }
+          Code << ')';
+          break;
+        }
+        case Instruction::ZExt: {
+          Code << "i64_zext(" << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED) << ')';
+          break;
+        }
+        case Instruction::SIToFP: Code << (I->getType()->isFloatTy() ? "i64_s2f(" : "i64_s2d(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::UIToFP: Code << (I->getType()->isFloatTy() ? "i64_u2f(" : "i64_u2d(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::FPToSI: Code << (I->getType()->isFloatTy() ? "i64_f2s(" : "i64_d2s(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::FPToUI: Code << (I->getType()->isFloatTy() ? "i64_f2u(" : "i64_d2u(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        default: llvm_unreachable("Unreachable-i64");
+      }
+      break;
+    }
     switch (Operator::getOpcode(I)) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
