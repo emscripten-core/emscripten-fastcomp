@@ -1124,6 +1124,9 @@ static const char *heapNameToAtomicTypeName(const char *HeapName)
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
+  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
+    return Assign + "i64_load(" + getValueAsStr(P) + "," + itostr(Alignment) + ")";
+  }
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
@@ -1242,6 +1245,9 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
+  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
+    return "i64_store(" + getValueAsStr(P) + "," + VS + "," + itostr(Alignment) + ")";
+  }
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
