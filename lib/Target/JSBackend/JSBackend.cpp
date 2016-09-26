@@ -2467,6 +2467,22 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     auto predicate = isa<ConstantExpr>(I) ?
                      (CmpInst::Predicate)cast<ConstantExpr>(I)->getPredicate() :
                      cast<ICmpInst>(I)->getPredicate();
+    if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+      switch (predicate) {
+        case ICmpInst::ICMP_EQ:  Code << "i64_eq(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_NE:  Code << "i64_ne(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_ULE: Code << "i64_ule(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;;
+        case ICmpInst::ICMP_SLE: Code << "i64_sle(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_UGE: Code << "i64_uge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SGE: Code << "i64_sge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_ULT: Code << "i64_ult(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SLT: Code << "i64_slt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_UGT: Code << "i64_ugt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SGT: Code << "i64_sgt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        default: llvm_unreachable("Invalid ICmp-64 predicate");
+      }
+      break;
+    }
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
     Code << getAssignIfNeeded(I) << "(" <<
       getValueAsCastStr(I->getOperand(0), sign) <<
