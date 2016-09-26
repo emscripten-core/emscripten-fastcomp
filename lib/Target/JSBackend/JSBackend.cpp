@@ -148,6 +148,11 @@ WebAssembly("emscripten-wasm",
             cl::desc("Generate asm.js which will later be compiled to WebAssembly (see emscripten BINARYEN setting)"),
             cl::init(false));
 
+static cl::opt<bool>
+OnlyWebAssembly("emscripten-only-wasm",
+                cl::desc("Generate code that will only ever be used as WebAssembly, and is not valid JS or asm.js"),
+                cl::init(false));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
@@ -250,6 +255,7 @@ namespace {
     int MaxGlobalAlign;
     int StaticBump;
     const Instruction* CurrInstruction;
+    Type* i32; // the type of i32
 
     #include "CallHandlers.h"
 
@@ -1400,7 +1406,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
         // we access linked externs through calls, which we load at the beginning of basic blocks
         FuncRelocatableExterns.insert(Name);
         Name = "t$" + Name;
-        UsedVars[Name] = Type::getInt32Ty(CV->getContext());
+        UsedVars[Name] = i32;
       }
       return Name;
     }
@@ -2258,7 +2264,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   assert(I == I->stripPointerCasts());
 
   Type *T = I->getType();
-  if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+  if (T->isIntegerTy() && T->getIntegerBitWidth() > 32 && !OnlyWebAssembly) {
     errs() << *I << "\n";
     report_fatal_error("legalization problem");
   }
@@ -2523,7 +2529,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     }
 
     Type *T = V->getType();
-    if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+    if (T->isIntegerTy() && T->getIntegerBitWidth() > 32 && !OnlyWebAssembly) {
       errs() << *I << "\n";
       report_fatal_error("legalization problem");
     }
@@ -2568,7 +2574,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
           ConstantOffset = 0;
 
           // Now add the scaled dynamic index.
-          std::string Mul = getIMul(Index, ConstantInt::get(Type::getInt32Ty(GEP->getContext()), ElementSize));
+          std::string Mul = getIMul(Index, ConstantInt::get(i32, ElementSize));
           text = text.empty() ? Mul : ("(" + text + " + (" + Mul + ")|0)");
         }
       }
@@ -2880,12 +2886,12 @@ void JSWriter::printFunctionBody(const Function *F) {
   R.Render();
 
   // Emit local variables
-  UsedVars["sp"] = Type::getInt32Ty(F->getContext());
+  UsedVars["sp"] = i32;
   unsigned MaxAlignment = Allocas.getMaxAlignment();
   if (MaxAlignment > STACK_ALIGN) {
-    UsedVars["sp_a"] = Type::getInt32Ty(F->getContext());
+    UsedVars["sp_a"] = i32;
   }
-  UsedVars["label"] = Type::getInt32Ty(F->getContext());
+  UsedVars["label"] = i32;
   if (!UsedVars.empty()) {
     unsigned Count = 0;
     for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
@@ -2903,8 +2909,15 @@ void JSWriter::printFunctionBody(const Function *F) {
         default:
           llvm_unreachable("unsupported variable initializer type");
         case Type::PointerTyID:
-        case Type::IntegerTyID:
           Out << "0";
+          break;
+        case Type::IntegerTyID:
+          if (VI->second == i32) {
+            Out << "0";
+          } else {
+            assert(OnlyWebAssembly);
+            Out << "i64()";
+          }
           break;
         case Type::FloatTyID:
           if (PreciseF32) {
@@ -2948,7 +2961,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   }
 
   // Emit stack entry
-  Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
+  Out << " " << getAdHocAssign("sp", i32) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
     if (MaxAlignment > STACK_ALIGN) {
       // We must align this entire stack frame to something higher than the default
@@ -3913,6 +3926,7 @@ void JSWriter::printModule(const std::string& fname,
 bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
   DL = &M.getDataLayout();
+  i32 = Type::getInt32Ty(M.getContext());
 
   // sanity checks on options
   assert(Relocatable ? GlobalBase == 0 : true);
@@ -4072,7 +4086,9 @@ bool JSTargetMachine::addPassesToEmitFile(
   // end PNaCl legalization
 
   PM.add(createExpandInsertExtractElementPass());
-  PM.add(createExpandI64Pass());
+  if (!OnlyWebAssembly) { // if only wasm, then we can emit i64s
+    PM.add(createExpandI64Pass());
+  }
 
   CodeGenOpt::Level OptLevel = getOptLevel();
 
