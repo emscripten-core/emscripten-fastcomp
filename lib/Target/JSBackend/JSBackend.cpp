@@ -2468,6 +2468,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
                      (CmpInst::Predicate)cast<ConstantExpr>(I)->getPredicate() :
                      cast<ICmpInst>(I)->getPredicate();
     if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+      Code << getAssignIfNeeded(I);
       switch (predicate) {
         case ICmpInst::ICMP_EQ:  Code << "i64_eq(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case ICmpInst::ICMP_NE:  Code << "i64_ne(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
