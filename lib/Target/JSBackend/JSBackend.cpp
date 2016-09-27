@@ -1005,6 +1005,7 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
         case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
         case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
         case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
+        case 64: return ("i64(" + s + ")").str();
         default: llvm_unreachable("Unsupported integer cast bitwidth");
       }
     }
