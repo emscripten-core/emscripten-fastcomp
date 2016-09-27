@@ -3005,11 +3005,11 @@ void JSWriter::printFunctionBody(const Function *F) {
           Out << "0";
           break;
         case Type::IntegerTyID:
-          if (VI->second == i32) {
-            Out << "0";
-          } else {
+          if (VI->second->getIntegerBitWidth() == 64) {
             assert(OnlyWebAssembly);
             Out << "i64()";
+          } else {
+            Out << "0";
           }
           break;
         case Type::FloatTyID:
