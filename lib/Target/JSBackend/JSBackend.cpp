@@ -369,10 +369,10 @@ namespace {
           return 'F';
         }
       } else {
-        if (T == i32) {
-          return 'i';
-        } else {
+        if (OnlyWebAssembly && T->getIntegerBitWidth() == 64) {
           return 'j';
+        } else {
+          return 'i';
         }
       }
     }
