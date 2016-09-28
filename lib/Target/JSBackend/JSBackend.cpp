@@ -369,7 +369,7 @@ namespace {
           return 'F';
         }
       } else {
-        if (OnlyWebAssembly && T->getIntegerBitWidth() == 64) {
+        if (OnlyWebAssembly && T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
           return 'j';
         } else {
           return 'i';
@@ -2332,7 +2332,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::AShr:{
     Code << getAssignIfNeeded(I);
     unsigned opcode = Operator::getOpcode(I);
-    if (OnlyWebAssembly && I->getType()->getIntegerBitWidth() == 64) {
+    if (OnlyWebAssembly && I->getType()->isIntegerTy() && I->getType()->getIntegerBitWidth() == 64) {
       switch (opcode) {
         case Instruction::Add:  Code << "i64_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
         case Instruction::Sub:  Code << "i64_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
@@ -2468,7 +2468,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     auto predicate = isa<ConstantExpr>(I) ?
                      (CmpInst::Predicate)cast<ConstantExpr>(I)->getPredicate() :
                      cast<ICmpInst>(I)->getPredicate();
-    if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+    if (OnlyWebAssembly && I->getOperand(0)->getType()->isIntegerTy() && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
       Code << getAssignIfNeeded(I);
       switch (predicate) {
         case ICmpInst::ICMP_EQ:  Code << "i64_eq(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
@@ -2654,7 +2654,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::UIToFP:
   case Instruction::SIToFP: {
     Code << getAssignIfNeeded(I);
-    if (OnlyWebAssembly && (I->getType()->getIntegerBitWidth() == 64 || I->getOperand(0)->getType()->getIntegerBitWidth() == 64)) {
+    if (OnlyWebAssembly &&
+        ((I->getType()->isIntegerTy() && I->getType()->getIntegerBitWidth() == 64) ||
+         (I->getOperand(0)->getType()->isIntegerTy() && I->getOperand(0)->getType()->getIntegerBitWidth() == 64))) {
       switch (Operator::getOpcode(I)) {
         case Instruction::Trunc: {
           //unsigned inBits = V->getType()->getIntegerBitWidth();
