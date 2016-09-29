@@ -2642,6 +2642,11 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   }
   case Instruction::PtrToInt:
   case Instruction::IntToPtr:
+    if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+      // it is valid in LLVM IR to convert an i64 into a 32-bit pointer, it truncates
+      Code << getAssignIfNeeded(I) << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')';
+      break;
+    }
     Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
     break;
   case Instruction::Trunc:
