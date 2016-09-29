@@ -1402,6 +1402,11 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   return std::string(HeapName) + '[' + Index + ']';
 }
 
+static std::string emitI64Const(APInt i) {
+  auto value = i.getZExtValue();
+  return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
+}
+
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
@@ -1451,8 +1456,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else {
       // i64 constant. emit as 32 bits, 32 bits, for ease of parsing by a JS-style parser
-      auto value = CI->getZExtValue();
-      return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
+      return emitI64Const(CI->getValue());
     }
   } else if (isa<UndefValue>(CV)) {
     std::string S;
@@ -2967,7 +2971,13 @@ void JSWriter::printFunctionBody(const Function *F) {
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
-          std::string Curr = i.getCaseValue()->getValue().toString(10, true);
+          APInt CaseValue = i.getCaseValue()->getValue();
+          std::string Curr;
+          if (CaseValue.getBitWidth() == 64) {
+            Curr = emitI64Const(CaseValue);
+          } else {
+            Curr = CaseValue.toString(10, true);
+          }
           std::string Condition;
           if (UseSwitch) {
             Condition = "case " + Curr + ": ";
