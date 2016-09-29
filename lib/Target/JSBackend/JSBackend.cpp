@@ -2281,7 +2281,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   assert(I == I->stripPointerCasts());
 
   Type *T = I->getType();
-  if (T->isIntegerTy() && T->getIntegerBitWidth() > 32 && !OnlyWebAssembly) {
+  if (T->isIntegerTy() && ((!OnlyWebAssembly && T->getIntegerBitWidth() > 32) ||
+                           ( OnlyWebAssembly && T->getIntegerBitWidth() > 64))) {
     errs() << *I << "\n";
     report_fatal_error("legalization problem");
   }
