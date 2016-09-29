@@ -2641,8 +2641,16 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     // handled separately - we push them back into the relooper branchings
     return;
   }
-  case Instruction::PtrToInt:
-  case Instruction::IntToPtr:
+  case Instruction::PtrToInt: {
+    if (OnlyWebAssembly && I->getType()->getIntegerBitWidth() == 64) {
+      // it is valid in LLVM IR to convert a pointer into an i64, it zexts
+      Code << getAssignIfNeeded(I) << "i64_zext(" << getValueAsStr(I->getOperand(0)) << ')';
+      break;
+    }
+    Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
+    break;
+  }
+  case Instruction::IntToPtr: {
     if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
       // it is valid in LLVM IR to convert an i64 into a 32-bit pointer, it truncates
       Code << getAssignIfNeeded(I) << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')';
@@ -2650,6 +2658,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     }
     Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
     break;
+  }
   case Instruction::Trunc:
   case Instruction::ZExt:
   case Instruction::SExt:
