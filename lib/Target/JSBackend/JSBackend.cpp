@@ -2665,9 +2665,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
          (I->getOperand(0)->getType()->isIntegerTy() && I->getOperand(0)->getType()->getIntegerBitWidth() == 64))) {
       switch (Operator::getOpcode(I)) {
         case Instruction::Trunc: {
-          //unsigned inBits = V->getType()->getIntegerBitWidth();
           unsigned outBits = I->getType()->getIntegerBitWidth();
-          Code << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')'; break;
+          Code << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')';
           if (outBits < 32) {
             Code << "&" << utostr(LSBMask(outBits));
           }
