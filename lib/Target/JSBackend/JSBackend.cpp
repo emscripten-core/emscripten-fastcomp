@@ -1452,7 +1452,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
       sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
     }
-    if (!OnlyWebAssembly || CI->getValue().getBitWidth() < 64) {
+    if (!OnlyWebAssembly || CI->getValue().getBitWidth() != 64) {
       return CI->getValue().toString(10, sign != ASM_UNSIGNED);
     } else {
       // i64 constant. emit as 32 bits, 32 bits, for ease of parsing by a JS-style parser
@@ -1464,6 +1464,9 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       checkVectorType(VT);
       S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
     } else {
+      if (OnlyWebAssembly && CV->getType()->isIntegerTy() && CV->getType()->getIntegerBitWidth() == 64) {
+        return "i64(0)"; 
+      }
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
         S = "Math_fround(" + S + ")";
