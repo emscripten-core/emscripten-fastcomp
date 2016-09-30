@@ -4206,8 +4206,13 @@ bool JSTargetMachine::addPassesToEmitFile(
   // end PNaCl legalization
 
   PM.add(createExpandInsertExtractElementPass());
-  if (!OnlyWebAssembly) { // if only wasm, then we can emit i64s
+
+  if (!OnlyWebAssembly) {
+    // if only wasm, then we can emit i64s, otherwise they must be lowered
     PM.add(createExpandI64Pass());
+  } else {
+    // only wasm, and for now no atomics there, so just lower them out
+    PM.add(createLowerAtomicPass());
   }
 
   CodeGenOpt::Level OptLevel = getOptLevel();
