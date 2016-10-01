@@ -24,12 +24,6 @@
 
 namespace llvm {
 
-/*
- * Find cases where an alloca is used only to load and store a single value,
- * even though it is bitcast. Then replace it with a direct alloca of that
- * simple type, and avoid the bitcasts.
- */
-
 struct ExpandBigSwitches : public FunctionPass {
   static char ID; // Pass identification, replacement for typeid
   ExpandBigSwitches() : FunctionPass(ID) {}

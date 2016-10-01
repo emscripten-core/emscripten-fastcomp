@@ -148,6 +148,11 @@ WebAssembly("emscripten-wasm",
             cl::desc("Generate asm.js which will later be compiled to WebAssembly (see emscripten BINARYEN setting)"),
             cl::init(false));
 
+static cl::opt<bool>
+OnlyWebAssembly("emscripten-only-wasm",
+                cl::desc("Generate code that will only ever be used as WebAssembly, and is not valid JS or asm.js"),
+                cl::init(false));
+
 
 extern "C" void LLVMInitializeJSBackendTarget() {
   // Register the target.
@@ -250,6 +255,7 @@ namespace {
     int MaxGlobalAlign;
     int StaticBump;
     const Instruction* CurrInstruction;
+    Type* i32; // the type of i32
 
     #include "CallHandlers.h"
 
@@ -363,7 +369,11 @@ namespace {
           return 'F';
         }
       } else {
-        return 'i';
+        if (OnlyWebAssembly && T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+          return 'j';
+        } else {
+          return 'i';
+        }
       }
     }
     std::string getFunctionSignature(const FunctionType *F) {
@@ -995,6 +1005,7 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
         case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
         case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
         case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
+        case 64: return ("i64(" + s + ")").str();
         default: llvm_unreachable("Unsupported integer cast bitwidth");
       }
     }
@@ -1114,6 +1125,9 @@ static const char *heapNameToAtomicTypeName(const char *HeapName)
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
+  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
+    return Assign + "i64_load(" + getValueAsStr(P) + "," + itostr(Alignment) + ")";
+  }
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
@@ -1232,6 +1246,9 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
+  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
+    return "i64_store(" + getValueAsStr(P) + "," + VS + "," + itostr(Alignment) + ")";
+  }
   std::string text;
   if (Bytes <= Alignment || Alignment == 0) {
     if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
@@ -1385,6 +1402,11 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   return std::string(HeapName) + '[' + Index + ']';
 }
 
+static std::string emitI64Const(APInt i) {
+  auto value = i.getZExtValue();
+  return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
+}
+
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
@@ -1400,7 +1422,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
         // we access linked externs through calls, which we load at the beginning of basic blocks
         FuncRelocatableExterns.insert(Name);
         Name = "t$" + Name;
-        UsedVars[Name] = Type::getInt32Ty(CV->getContext());
+        UsedVars[Name] = i32;
       }
       return Name;
     }
@@ -1430,13 +1452,21 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (sign != ASM_UNSIGNED && CI->getValue().getBitWidth() == 1) {
       sign = ASM_UNSIGNED; // bools must always be unsigned: either 0 or 1
     }
-    return CI->getValue().toString(10, sign != ASM_UNSIGNED);
+    if (!OnlyWebAssembly || CI->getValue().getBitWidth() != 64) {
+      return CI->getValue().toString(10, sign != ASM_UNSIGNED);
+    } else {
+      // i64 constant. emit as 32 bits, 32 bits, for ease of parsing by a JS-style parser
+      return emitI64Const(CI->getValue());
+    }
   } else if (isa<UndefValue>(CV)) {
     std::string S;
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
       S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
     } else {
+      if (OnlyWebAssembly && CV->getType()->isIntegerTy() && CV->getType()->getIntegerBitWidth() == 64) {
+        return "i64(0)"; 
+      }
       S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
         S = "Math_fround(" + S + ")";
@@ -2258,7 +2288,8 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   assert(I == I->stripPointerCasts());
 
   Type *T = I->getType();
-  if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+  if (T->isIntegerTy() && ((!OnlyWebAssembly && T->getIntegerBitWidth() > 32) ||
+                           ( OnlyWebAssembly && T->getIntegerBitWidth() > 64))) {
     errs() << *I << "\n";
     report_fatal_error("legalization problem");
   }
@@ -2309,6 +2340,25 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::AShr:{
     Code << getAssignIfNeeded(I);
     unsigned opcode = Operator::getOpcode(I);
+    if (OnlyWebAssembly && I->getType()->isIntegerTy() && I->getType()->getIntegerBitWidth() == 64) {
+      switch (opcode) {
+        case Instruction::Add:  Code << "i64_add(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Sub:  Code << "i64_sub(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Mul:  Code << "i64_mul(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::UDiv: Code << "i64_udiv(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::SDiv: Code << "i64_sdiv(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::URem: Code << "i64_urem(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::SRem: Code << "i64_srem(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::And:  Code << "i64_and(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Or:   Code << "i64_or(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Xor:  Code << "i64_xor(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::Shl:  Code << "i64_shl(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::AShr: Code << "i64_ashr(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case Instruction::LShr: Code << "i64_lshr(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        default: error("bad wasm-i64 binary opcode"); break;
+      }
+      break;
+    }
     switch (opcode) {
       case Instruction::Add:  Code << getParenCast(
                                         getValueAsParenStr(I->getOperand(0)) +
@@ -2426,6 +2476,23 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     auto predicate = isa<ConstantExpr>(I) ?
                      (CmpInst::Predicate)cast<ConstantExpr>(I)->getPredicate() :
                      cast<ICmpInst>(I)->getPredicate();
+    if (OnlyWebAssembly && I->getOperand(0)->getType()->isIntegerTy() && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+      Code << getAssignIfNeeded(I);
+      switch (predicate) {
+        case ICmpInst::ICMP_EQ:  Code << "i64_eq(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_NE:  Code << "i64_ne(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_ULE: Code << "i64_ule(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SLE: Code << "i64_sle(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_UGE: Code << "i64_uge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SGE: Code << "i64_sge(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_ULT: Code << "i64_ult(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SLT: Code << "i64_slt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_UGT: Code << "i64_ugt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        case ICmpInst::ICMP_SGT: Code << "i64_sgt(" << getValueAsStr(I->getOperand(0)) << "," << getValueAsStr(I->getOperand(1)) << ")"; break;
+        default: llvm_unreachable("Invalid ICmp-64 predicate");
+      }
+      break;
+    }
     AsmCast sign = CmpInst::isUnsigned(predicate) ? ASM_UNSIGNED : ASM_SIGNED;
     Code << getAssignIfNeeded(I) << "(" <<
       getValueAsCastStr(I->getOperand(0), sign) <<
@@ -2523,7 +2590,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     }
 
     Type *T = V->getType();
-    if (T->isIntegerTy() && T->getIntegerBitWidth() > 32) {
+    if (T->isIntegerTy() && T->getIntegerBitWidth() > 32 && !OnlyWebAssembly) {
       errs() << *I << "\n";
       report_fatal_error("legalization problem");
     }
@@ -2568,7 +2635,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
           ConstantOffset = 0;
 
           // Now add the scaled dynamic index.
-          std::string Mul = getIMul(Index, ConstantInt::get(Type::getInt32Ty(GEP->getContext()), ElementSize));
+          std::string Mul = getIMul(Index, ConstantInt::get(i32, ElementSize));
           text = text.empty() ? Mul : ("(" + text + " + (" + Mul + ")|0)");
         }
       }
@@ -2581,10 +2648,24 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     // handled separately - we push them back into the relooper branchings
     return;
   }
-  case Instruction::PtrToInt:
-  case Instruction::IntToPtr:
+  case Instruction::PtrToInt: {
+    if (OnlyWebAssembly && I->getType()->getIntegerBitWidth() == 64) {
+      // it is valid in LLVM IR to convert a pointer into an i64, it zexts
+      Code << getAssignIfNeeded(I) << "i64_zext(" << getValueAsStr(I->getOperand(0)) << ')';
+      break;
+    }
     Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
     break;
+  }
+  case Instruction::IntToPtr: {
+    if (OnlyWebAssembly && I->getOperand(0)->getType()->getIntegerBitWidth() == 64) {
+      // it is valid in LLVM IR to convert an i64 into a 32-bit pointer, it truncates
+      Code << getAssignIfNeeded(I) << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')';
+      break;
+    }
+    Code << getAssignIfNeeded(I) << getValueAsStr(I->getOperand(0));
+    break;
+  }
   case Instruction::Trunc:
   case Instruction::ZExt:
   case Instruction::SExt:
@@ -2595,6 +2676,40 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   case Instruction::UIToFP:
   case Instruction::SIToFP: {
     Code << getAssignIfNeeded(I);
+    if (OnlyWebAssembly &&
+        ((I->getType()->isIntegerTy() && I->getType()->getIntegerBitWidth() == 64) ||
+         (I->getOperand(0)->getType()->isIntegerTy() && I->getOperand(0)->getType()->getIntegerBitWidth() == 64))) {
+      switch (Operator::getOpcode(I)) {
+        case Instruction::Trunc: {
+          unsigned outBits = I->getType()->getIntegerBitWidth();
+          Code << "i64_trunc(" << getValueAsStr(I->getOperand(0)) << ')';
+          if (outBits < 32) {
+            Code << "&" << utostr(LSBMask(outBits));
+          }
+          break;
+        }
+        case Instruction::SExt: {
+          unsigned inBits = I->getOperand(0)->getType()->getIntegerBitWidth();
+          std::string bits = utostr(32 - inBits);
+          Code << "i64_sext(" << getValueAsStr(I->getOperand(0));
+          if (inBits < 32) {
+            Code << " << " << bits << " >> " << bits;
+          }
+          Code << ')';
+          break;
+        }
+        case Instruction::ZExt: {
+          Code << "i64_zext(" << getValueAsCastStr(I->getOperand(0), ASM_UNSIGNED) << ')';
+          break;
+        }
+        case Instruction::SIToFP: Code << (I->getType()->isFloatTy() ? "i64_s2f(" : "i64_s2d(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::UIToFP: Code << (I->getType()->isFloatTy() ? "i64_u2f(" : "i64_u2d(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::FPToSI: Code << (I->getOperand(0)->getType()->isFloatTy() ? "i64_f2s(" : "i64_d2s(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        case Instruction::FPToUI: Code << (I->getOperand(0)->getType()->isFloatTy() ? "i64_f2u(" : "i64_d2u(") << getValueAsStr(I->getOperand(0)) << ')'; break;
+        default: llvm_unreachable("Unreachable-i64");
+      }
+      break;
+    }
     switch (Operator::getOpcode(I)) {
     case Instruction::Trunc: {
       //unsigned inBits = V->getType()->getIntegerBitWidth();
@@ -2640,9 +2755,17 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     Type *OutType = I->getType();
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
+      if (OnlyWebAssembly && InType->getIntegerBitWidth() == 64) {
+        Code << "i64_bc2d(" << V << ')';
+        break;
+      }
       assert(InType->getIntegerBitWidth() == 32);
       Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) << ")";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
+      if (OnlyWebAssembly && OutType->getIntegerBitWidth() == 64) {
+        Code << "i64_bc2i(" << V << ')';
+        break;
+      }
       assert(OutType->getIntegerBitWidth() == 32);
       Code << "(HEAPF32[tempDoublePtr>>2]=" << V << "," "HEAP32[tempDoublePtr>>2]|0)";
     } else {
@@ -2851,7 +2974,13 @@ void JSWriter::printFunctionBody(const Function *F) {
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
           const BasicBlock *BB = i.getCaseSuccessor();
-          std::string Curr = i.getCaseValue()->getValue().toString(10, true);
+          APInt CaseValue = i.getCaseValue()->getValue();
+          std::string Curr;
+          if (CaseValue.getBitWidth() == 64) {
+            Curr = emitI64Const(CaseValue);
+          } else {
+            Curr = CaseValue.toString(10, true);
+          }
           std::string Condition;
           if (UseSwitch) {
             Condition = "case " + Curr + ": ";
@@ -2880,12 +3009,12 @@ void JSWriter::printFunctionBody(const Function *F) {
   R.Render();
 
   // Emit local variables
-  UsedVars["sp"] = Type::getInt32Ty(F->getContext());
+  UsedVars["sp"] = i32;
   unsigned MaxAlignment = Allocas.getMaxAlignment();
   if (MaxAlignment > STACK_ALIGN) {
-    UsedVars["sp_a"] = Type::getInt32Ty(F->getContext());
+    UsedVars["sp_a"] = i32;
   }
-  UsedVars["label"] = Type::getInt32Ty(F->getContext());
+  UsedVars["label"] = i32;
   if (!UsedVars.empty()) {
     unsigned Count = 0;
     for (VarMap::const_iterator VI = UsedVars.begin(); VI != UsedVars.end(); ++VI) {
@@ -2903,8 +3032,15 @@ void JSWriter::printFunctionBody(const Function *F) {
         default:
           llvm_unreachable("unsupported variable initializer type");
         case Type::PointerTyID:
-        case Type::IntegerTyID:
           Out << "0";
+          break;
+        case Type::IntegerTyID:
+          if (VI->second->getIntegerBitWidth() == 64) {
+            assert(OnlyWebAssembly);
+            Out << "i64()";
+          } else {
+            Out << "0";
+          }
           break;
         case Type::FloatTyID:
           if (PreciseF32) {
@@ -2948,7 +3084,7 @@ void JSWriter::printFunctionBody(const Function *F) {
   }
 
   // Emit stack entry
-  Out << " " << getAdHocAssign("sp", Type::getInt32Ty(F->getContext())) << "STACKTOP;";
+  Out << " " << getAdHocAssign("sp", i32) << "STACKTOP;";
   if (uint64_t FrameSize = Allocas.getFrameSize()) {
     if (MaxAlignment > STACK_ALIGN) {
       // We must align this entire stack frame to something higher than the default
@@ -3913,6 +4049,7 @@ void JSWriter::printModule(const std::string& fname,
 bool JSWriter::runOnModule(Module &M) {
   TheModule = &M;
   DL = &M.getDataLayout();
+  i32 = Type::getInt32Ty(M.getContext());
 
   // sanity checks on options
   assert(Relocatable ? GlobalBase == 0 : true);
@@ -4072,7 +4209,14 @@ bool JSTargetMachine::addPassesToEmitFile(
   // end PNaCl legalization
 
   PM.add(createExpandInsertExtractElementPass());
-  PM.add(createExpandI64Pass());
+
+  if (!OnlyWebAssembly) {
+    // if only wasm, then we can emit i64s, otherwise they must be lowered
+    PM.add(createExpandI64Pass());
+  } else {
+    // only wasm, and for now no atomics there, so just lower them out
+    PM.add(createLowerAtomicPass());
+  }
 
   CodeGenOpt::Level OptLevel = getOptLevel();
 

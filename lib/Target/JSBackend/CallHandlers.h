@@ -581,6 +581,22 @@ DEF_CALL_HANDLER(llvm_cttz_i32, {
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
 
+DEF_CALL_HANDLER(llvm_ctlz_i64, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "i64_ctlz", 1);
+  }
+  Declares.insert("llvm_ctlz_i64");
+  return CH___default__(CI, "_llvm_ctlz_i64");
+})
+
+DEF_CALL_HANDLER(llvm_cttz_i64, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "i64_cttz", 1);
+  }
+  Declares.insert("llvm_cttz_i64");
+  return CH___default__(CI, "_llvm_cttz_i64");
+})
+
 DEF_CALL_HANDLER(llvm_maxnum_f32, {
   return CH___default__(CI, "Math_max", 2);
 })
@@ -1526,6 +1542,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(bitshift64Shl);
   SETUP_CALL_HANDLER(llvm_ctlz_i32);
   SETUP_CALL_HANDLER(llvm_cttz_i32);
+  SETUP_CALL_HANDLER(llvm_ctlz_i64);
+  SETUP_CALL_HANDLER(llvm_cttz_i64);
   SETUP_CALL_HANDLER(llvm_maxnum_f32);
   SETUP_CALL_HANDLER(llvm_maxnum_f64);
   SETUP_CALL_HANDLER(llvm_copysign_f32);
