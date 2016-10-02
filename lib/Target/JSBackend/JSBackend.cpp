@@ -614,6 +614,14 @@ namespace {
       }
     }
 
+    std::string emitI64Const(uint64_t value) {
+      return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
+    }
+
+    std::string emitI64Const(APInt i) {
+      return emitI64Const(i.getZExtValue());
+    }
+
     std::string ftostr(const ConstantFP *CFP, AsmCast sign) {
       const APFloat &flt = CFP->getValueAPF();
 
@@ -1430,11 +1438,6 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   const char *HeapName = 0;
   std::string Index = getHeapNameAndIndex(Ptr, &HeapName);
   return std::string(HeapName) + '[' + Index + ']';
-}
-
-static std::string emitI64Const(APInt i) {
-  auto value = i.getZExtValue();
-  return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
