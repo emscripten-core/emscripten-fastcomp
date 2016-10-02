@@ -1135,6 +1135,11 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
   if (OnlyWebAssembly) {
+    if (isAbsolute(P)) {
+      // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
+      JSWriter::getAssign(I); // ensure the variable is defined, even if it isn't used
+      return "abort() /* segfault, load from absolute addr */";
+    }
     if (T->isIntegerTy() || T->isPointerTy()) {
       switch (Bytes) {
         case 1: return Assign + "load1(" + getValueAsStr(P) + ")";
@@ -1271,6 +1276,9 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
   if (OnlyWebAssembly) {
+    if (Alignment == 536870912) {
+      return "abort() /* segfault */";
+    }
     if (T->isIntegerTy() || T->isPointerTy()) {
       switch (Bytes) {
         case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
