@@ -360,37 +360,64 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
         unsigned Len = LenInt->getZExtValue();
         if (Len <= WRITE_LOOP_MAX) {
           unsigned Align = AlignInt->getZExtValue();
-          if (Align > 4) Align = 4;
-          else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
-          if (Align == 1 && Len > 1 && WarnOnUnaligned) {
-            errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
-          }
-          unsigned Pos = 0;
-          std::string Ret;
-          std::string Dest = getValueAsStr(CI->getOperand(0));
-          std::string Src = getValueAsStr(CI->getOperand(1));
-          while (Len > 0) {
-            // handle as much as we can in the current alignment
-            unsigned CurrLen = Align*(Len/Align);
-            unsigned Factor = CurrLen/Align;
-            if (Factor <= UNROLL_LOOP_MAX) {
-              // unroll
-              for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
+          if (OnlyWebAssembly) {
+            // wasm
+            if (Align > 8) Align = 8;
+            else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default')
+            unsigned Pos = 0;
+            std::string Ret;
+            std::string Dest = getValueAsStr(CI->getOperand(0));
+            std::string Src = getValueAsStr(CI->getOperand(1));
+            unsigned Size = 8; // start by writing out i64 copies
+            while (Len > 0) {
+              // handle as much as we can in the current size
+              unsigned CurrLen = Size*(Len/Size);
+              for (unsigned Offset = 0; Offset < CurrLen; Offset += Size) {
                 unsigned PosOffset = Pos + Offset;
-                std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
-                Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + getHeapAccess(Src + Add, Align) + "|0";
+                std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset) + " | 0");
+                Ret += "; store" + utostr(Size) + "(" + Dest + Add +
+                           ",load" + utostr(Size) + "(" + Src + Add + "," + utostr(std::min(Align, Size)) + ")" +
+                       "," + utostr(std::min(Align, Size)) + ")";
               }
-            } else {
-              // emit a loop
-              UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-              std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
-              Ret += "dest=" + Dest + Add + "; src=" + Src + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+              Pos += CurrLen;
+              Len -= CurrLen;
+              Size /= 2;
             }
-            Pos += CurrLen;
-            Len -= CurrLen;
-            Align /= 2;
+            return Ret;
+          } else {
+            // asm.js
+            if (Align > 4) Align = 4;
+            else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
+            if (Align == 1 && Len > 1 && WarnOnUnaligned) {
+              errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+            }
+            unsigned Pos = 0;
+            std::string Ret;
+            std::string Dest = getValueAsStr(CI->getOperand(0));
+            std::string Src = getValueAsStr(CI->getOperand(1));
+            while (Len > 0) {
+              // handle as much as we can in the current alignment
+              unsigned CurrLen = Align*(Len/Align);
+              unsigned Factor = CurrLen/Align;
+              if (Factor <= UNROLL_LOOP_MAX) {
+                // unroll
+                for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
+                  unsigned PosOffset = Pos + Offset;
+                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
+                  Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + getHeapAccess(Src + Add, Align) + "|0";
+                }
+              } else {
+                // emit a loop
+                UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
+                std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
+                Ret += "dest=" + Dest + Add + "; src=" + Src + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+              }
+              Pos += CurrLen;
+              Len -= CurrLen;
+              Align /= 2;
+            }
+            return Ret;
           }
-          return Ret;
         }
       }
     }
@@ -411,42 +438,74 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
           unsigned Len = LenInt->getZExtValue();
           if (Len <= WRITE_LOOP_MAX) {
             unsigned Align = AlignInt->getZExtValue();
-            unsigned Val = ValInt->getZExtValue();
-            if (Align > 4) Align = 4;
-            else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
-            if (Align == 1 && Len > 1 && WarnOnUnaligned) {
-              errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
-            }
-            unsigned Pos = 0;
-            std::string Ret;
-            std::string Dest = getValueAsStr(CI->getOperand(0));
-            while (Len > 0) {
-              // handle as much as we can in the current alignment
-              unsigned CurrLen = Align*(Len/Align);
-              unsigned FullVal = 0;
-              for (unsigned i = 0; i < Align; i++) {
-                FullVal <<= 8;
-                FullVal |= Val;
-              }
-              unsigned Factor = CurrLen/Align;
-              if (Factor <= UNROLL_LOOP_MAX) {
-                // unroll
-                for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
-                  unsigned PosOffset = Pos + Offset;
-                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
-                  Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+            if (OnlyWebAssembly) {
+              // wasm
+              uint64_t Val64 = ValInt->getZExtValue();
+              if (Align > 8) Align = 8;
+              else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default')
+              unsigned Pos = 0;
+              std::string Ret;
+              std::string Dest = getValueAsStr(CI->getOperand(0));
+              std::string Src = getValueAsStr(CI->getOperand(1));
+              unsigned Size = 8; // start by writing out i64 copies
+              while (Len > 0) {
+                // handle as much as we can in the current size
+                unsigned CurrLen = Size*(Len/Size);
+                uint64_t FullVal = 0;
+                for (unsigned i = 0; i < Size; i++) {
+                  FullVal <<= 8;
+                  FullVal |= Val64;
                 }
-              } else {
-                // emit a loop
-                UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-                std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
-                Ret += "dest=" + Dest + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+                std::string ValStr = Size < 8 ? utostr(FullVal) : emitI64Const(FullVal);
+                for (unsigned Offset = 0; Offset < CurrLen; Offset += Size) {
+                  unsigned PosOffset = Pos + Offset;
+                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset) + "|0");
+                  Ret += "; store" + utostr(Size) + "(" + Dest + Add + "," + ValStr  + "," + utostr(std::min(Align, Size)) + ")";
+                }
+                Pos += CurrLen;
+                Len -= CurrLen;
+                Size /= 2;
               }
-              Pos += CurrLen;
-              Len -= CurrLen;
-              Align /= 2;
+              return Ret;
+            } else {
+              // asm.js
+              unsigned Val = ValInt->getZExtValue();
+              if (Align > 4) Align = 4;
+              else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
+              if (Align == 1 && Len > 1 && WarnOnUnaligned) {
+                errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+              }
+              unsigned Pos = 0;
+              std::string Ret;
+              std::string Dest = getValueAsStr(CI->getOperand(0));
+              while (Len > 0) {
+                // handle as much as we can in the current alignment
+                unsigned CurrLen = Align*(Len/Align);
+                unsigned FullVal = 0;
+                for (unsigned i = 0; i < Align; i++) {
+                  FullVal <<= 8;
+                  FullVal |= Val;
+                }
+                unsigned Factor = CurrLen/Align;
+                if (Factor <= UNROLL_LOOP_MAX) {
+                  // unroll
+                  for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
+                    unsigned PosOffset = Pos + Offset;
+                    std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
+                    Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+                  }
+                } else {
+                  // emit a loop
+                  UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
+                  std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
+                  Ret += "dest=" + Dest + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+                }
+                Pos += CurrLen;
+                Len -= CurrLen;
+                Align /= 2;
+              }
+              return Ret;
             }
-            return Ret;
           }
         }
       }

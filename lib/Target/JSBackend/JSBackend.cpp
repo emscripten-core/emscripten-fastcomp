@@ -614,6 +614,14 @@ namespace {
       }
     }
 
+    std::string emitI64Const(uint64_t value) {
+      return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
+    }
+
+    std::string emitI64Const(APInt i) {
+      return emitI64Const(i.getZExtValue());
+    }
+
     std::string ftostr(const ConstantFP *CFP, AsmCast sign) {
       const APFloat &flt = CFP->getValueAPF();
 
@@ -1125,11 +1133,31 @@ static const char *heapNameToAtomicTypeName(const char *HeapName)
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
-  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
-    return Assign + "i64_load(" + getValueAsStr(P) + "," + itostr(Alignment) + ")";
+  bool Aligned = Bytes <= Alignment || Alignment == 0;
+  if (OnlyWebAssembly) {
+    if (isAbsolute(P)) {
+      // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
+      JSWriter::getAssign(I); // ensure the variable is defined, even if it isn't used
+      return "abort() /* segfault, load from absolute addr */";
+    }
+    if (T->isIntegerTy() || T->isPointerTy()) {
+      switch (Bytes) {
+        case 1: return Assign + "load1(" + getValueAsStr(P) + ")";
+        case 2: return Assign + "load2(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4: return Assign + "load4(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return Assign + "load8(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only int load size");
+      }
+    } else {
+      switch (Bytes) {
+        case 4: return Assign + "loadf(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return Assign + "loadd(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only float load size");
+      }
+    }
   }
   std::string text;
-  if (Bytes <= Alignment || Alignment == 0) {
+  if (Aligned) {
     if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
@@ -1246,11 +1274,29 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
-  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
-    return "i64_store(" + getValueAsStr(P) + "," + VS + "," + itostr(Alignment) + ")";
+  bool Aligned = Bytes <= Alignment || Alignment == 0;
+  if (OnlyWebAssembly) {
+    if (Alignment == 536870912) {
+      return "abort() /* segfault */";
+    }
+    if (T->isIntegerTy() || T->isPointerTy()) {
+      switch (Bytes) {
+        case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
+        case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only int load size");
+      }
+    } else {
+      switch (Bytes) {
+        case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only float load size");
+      }
+    }
   }
   std::string text;
-  if (Bytes <= Alignment || Alignment == 0) {
+  if (Aligned) {
     if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
@@ -1400,11 +1446,6 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   const char *HeapName = 0;
   std::string Index = getHeapNameAndIndex(Ptr, &HeapName);
   return std::string(HeapName) + '[' + Index + ']';
-}
-
-static std::string emitI64Const(APInt i) {
-  auto value = i.getZExtValue();
-  return "i64_const(" + itostr(value & uint32_t(-1)) + "," + itostr((value >> 32) & uint32_t(-1)) + ")";
 }
 
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
@@ -2755,15 +2796,23 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     Type *OutType = I->getType();
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
-      if (OnlyWebAssembly && InType->getIntegerBitWidth() == 64) {
-        Code << "i64_bc2d(" << V << ')';
+      if (OnlyWebAssembly) {
+        if (InType->getIntegerBitWidth() == 64) {
+          Code << "i64_bc2d(" << V << ')';
+        } else {
+          Code << "i32_bc2f(" << V << ')';
+        }
         break;
       }
       assert(InType->getIntegerBitWidth() == 32);
       Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) << ")";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
-      if (OnlyWebAssembly && OutType->getIntegerBitWidth() == 64) {
-        Code << "i64_bc2i(" << V << ')';
+      if (OnlyWebAssembly) {
+        if (OutType->getIntegerBitWidth() == 64) {
+          Code << "i64_bc2i(" << V << ')';
+        } else {
+          Code << "i32_bc2i(" << V << ')';
+        }
         break;
       }
       assert(OutType->getIntegerBitWidth() == 32);
