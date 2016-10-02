@@ -636,6 +636,9 @@ DEF_CALL_HANDLER(llvm_ctlz_i32, {
 })
 
 DEF_CALL_HANDLER(llvm_cttz_i32, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "i32_cttz", 1);
+  }
   Declares.insert("llvm_cttz_i32");
   return CH___default__(CI, "_llvm_cttz_i32", 1);
 })
@@ -656,6 +659,22 @@ DEF_CALL_HANDLER(llvm_cttz_i64, {
   return CH___default__(CI, "_llvm_cttz_i64");
 })
 
+DEF_CALL_HANDLER(llvm_ctpop_i32, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "i32_ctpop", 1);
+  }
+  Declares.insert("llvm_ctpop_i32");
+  return CH___default__(CI, "_llvm_ctpop_i32");
+})
+
+DEF_CALL_HANDLER(llvm_ctpop_i64, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "i64_ctpop", 1);
+  }
+  Declares.insert("llvm_ctpop_i64");
+  return CH___default__(CI, "_llvm_ctpop_i64");
+})
+
 DEF_CALL_HANDLER(llvm_maxnum_f32, {
   return CH___default__(CI, "Math_max", 2);
 })
@@ -665,11 +684,17 @@ DEF_CALL_HANDLER(llvm_maxnum_f64, {
 })
 
 DEF_CALL_HANDLER(llvm_copysign_f32, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "f32_copysign", 2);
+  }
   Declares.insert("llvm_copysign_f32");
   return CH___default__(CI, "_llvm_copysign_f32", 2);
 })
 
 DEF_CALL_HANDLER(llvm_copysign_f64, {
+  if (OnlyWebAssembly) {
+    return CH___default__(CI, "(f64_copysign)", 2); // XXX add parens as this will be +f64_copysign(...), which triggers +f64 => f64.0. TODO fix regex in emscripten.py
+  }
   Declares.insert("llvm_copysign_f64");
   return CH___default__(CI, "_llvm_copysign_f64", 2);
 })
@@ -1603,6 +1628,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_cttz_i32);
   SETUP_CALL_HANDLER(llvm_ctlz_i64);
   SETUP_CALL_HANDLER(llvm_cttz_i64);
+  SETUP_CALL_HANDLER(llvm_ctpop_i32);
+  SETUP_CALL_HANDLER(llvm_ctpop_i64);
   SETUP_CALL_HANDLER(llvm_maxnum_f32);
   SETUP_CALL_HANDLER(llvm_maxnum_f64);
   SETUP_CALL_HANDLER(llvm_copysign_f32);
