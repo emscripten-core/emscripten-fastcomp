@@ -1125,11 +1125,26 @@ static const char *heapNameToAtomicTypeName(const char *HeapName)
 std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, unsigned Alignment, char sep) {
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
-  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
-    return Assign + "i64_load(" + getValueAsStr(P) + "," + itostr(Alignment) + ")";
+  bool Aligned = Bytes <= Alignment || Alignment == 0;
+  if (OnlyWebAssembly) {
+    if (T->isIntegerTy() || T->isPointerTy()) {
+      switch (Bytes) {
+        case 1: return Assign + "load1(" + getValueAsStr(P) + ")";
+        case 2: return Assign + "load2(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4: return Assign + "load4(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return Assign + "load8(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only int load size");
+      }
+    } else {
+      switch (Bytes) {
+        case 4: return Assign + "loadf(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return Assign + "loadd(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only float load size");
+      }
+    }
   }
   std::string text;
-  if (Bytes <= Alignment || Alignment == 0) {
+  if (Aligned) {
     if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
@@ -1246,11 +1261,26 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
 std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, const std::string& VS, unsigned Alignment, char sep) {
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
-  if (OnlyWebAssembly && Bytes == 8 && T->isIntegerTy()) {
-    return "i64_store(" + getValueAsStr(P) + "," + VS + "," + itostr(Alignment) + ")";
+  bool Aligned = Bytes <= Alignment || Alignment == 0;
+  if (OnlyWebAssembly) {
+    if (T->isIntegerTy() || T->isPointerTy()) {
+      switch (Bytes) {
+        case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
+        case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only int load size");
+      }
+    } else {
+      switch (Bytes) {
+        case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        default: llvm_unreachable("invalid wasm-only float load size");
+      }
+    }
   }
   std::string text;
-  if (Bytes <= Alignment || Alignment == 0) {
+  if (Aligned) {
     if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
