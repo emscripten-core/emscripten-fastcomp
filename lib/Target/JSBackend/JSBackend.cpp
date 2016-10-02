@@ -2785,15 +2785,23 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     Type *OutType = I->getType();
     std::string V = getValueAsStr(I->getOperand(0));
     if (InType->isIntegerTy() && OutType->isFloatingPointTy()) {
-      if (OnlyWebAssembly && InType->getIntegerBitWidth() == 64) {
-        Code << "i64_bc2d(" << V << ')';
+      if (OnlyWebAssembly) {
+        if (InType->getIntegerBitWidth() == 64) {
+          Code << "i64_bc2d(" << V << ')';
+        } else {
+          Code << "i32_bc2f(" << V << ')';
+        }
         break;
       }
       assert(InType->getIntegerBitWidth() == 32);
       Code << "(HEAP32[tempDoublePtr>>2]=" << V << "," << getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext())) << ")";
     } else if (OutType->isIntegerTy() && InType->isFloatingPointTy()) {
-      if (OnlyWebAssembly && OutType->getIntegerBitWidth() == 64) {
-        Code << "i64_bc2i(" << V << ')';
+      if (OnlyWebAssembly) {
+        if (OutType->getIntegerBitWidth() == 64) {
+          Code << "i64_bc2i(" << V << ')';
+        } else {
+          Code << "i32_bc2i(" << V << ')';
+        }
         break;
       }
       assert(OutType->getIntegerBitWidth() == 32);
