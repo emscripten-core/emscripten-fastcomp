@@ -132,11 +132,14 @@ DEF_CALL_HANDLER(__default__, {
     }
     if (NumArgs > 0) text += ",";
   }
-  // this is an ffi call if we need casts, and it is not a special Math_ builtin
+  // this is an ffi call if we need casts, and it is not a special Math_ builtin or wasm-only intrinsic
   bool FFI = NeedCasts;
-  if (FFI && IsMath) {
-    if (Name == "Math_ceil" || Name == "Math_floor" || Name == "Math_min" || Name == "Math_max" || Name == "Math_sqrt" || Name == "Math_abs") {
+  if (FFI) {
+    if (IsMath && (Name == "Math_ceil" || Name == "Math_floor" || Name == "Math_min" || Name == "Math_max" || Name == "Math_sqrt" || Name == "Math_abs")) {
       // This special Math builtin is optimizable with all types, including floats, so can treat it as non-ffi
+      FFI = false;
+    } else if (OnlyWebAssembly && Name == "f32_copysign") {
+      // f32_copysign doesn't need to use a +() coercion which an ffi would need, it's a simple f32 operation
       FFI = false;
     }
   }
