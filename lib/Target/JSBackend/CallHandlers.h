@@ -903,10 +903,12 @@ DEF_BUILTIN_HANDLER(llvm_fabs_f64, Math_abs);
 DEF_BUILTIN_HANDLER(ceil, Math_ceil);
 DEF_BUILTIN_HANDLER(ceilf, Math_ceil);
 DEF_BUILTIN_HANDLER(ceill, Math_ceil);
+DEF_BUILTIN_HANDLER(llvm_ceil_f32, Math_ceil);
 DEF_BUILTIN_HANDLER(llvm_ceil_f64, Math_ceil);
 DEF_BUILTIN_HANDLER(floor, Math_floor);
 DEF_BUILTIN_HANDLER(floorf, Math_floor);
 DEF_BUILTIN_HANDLER(floorl, Math_floor);
+DEF_BUILTIN_HANDLER(llvm_floor_f32, Math_floor);
 DEF_BUILTIN_HANDLER(llvm_floor_f64, Math_floor);
 DEF_MAYBE_BUILTIN_HANDLER(pow, Math_pow);
 DEF_MAYBE_BUILTIN_HANDLER(powf, Math_pow);
@@ -915,6 +917,8 @@ DEF_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt);
 DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow); // XXX these will be slow in wasm, but need to link in libc before getting here, or stop
 DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow); //     LLVM from creating these intrinsics
+DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f32, Math_cos);
+DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f64, Math_cos);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f32, Math_sin);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f64, Math_sin);
 
@@ -2148,10 +2152,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(ceil);
   SETUP_CALL_HANDLER(ceilf);
   SETUP_CALL_HANDLER(ceill);
+  SETUP_CALL_HANDLER(llvm_ceil_f32);
   SETUP_CALL_HANDLER(llvm_ceil_f64);
   SETUP_CALL_HANDLER(floor);
   SETUP_CALL_HANDLER(floorf);
   SETUP_CALL_HANDLER(floorl);
+  SETUP_CALL_HANDLER(llvm_floor_f32);
   SETUP_CALL_HANDLER(llvm_floor_f64);
   SETUP_CALL_HANDLER(pow);
   SETUP_CALL_HANDLER(powf);
@@ -2166,6 +2172,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_log_f64);
   SETUP_CALL_HANDLER(llvm_exp_f32);
   SETUP_CALL_HANDLER(llvm_exp_f64);
+  SETUP_CALL_HANDLER(llvm_cos_f32);
+  SETUP_CALL_HANDLER(llvm_cos_f64);
   SETUP_CALL_HANDLER(llvm_sin_f32);
   SETUP_CALL_HANDLER(llvm_sin_f64);
 }
