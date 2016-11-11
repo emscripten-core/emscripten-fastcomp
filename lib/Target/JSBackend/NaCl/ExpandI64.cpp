@@ -733,6 +733,10 @@ bool ExpandI64::splitInst(Instruction *I) {
       CallInst *CI = cast<CallInst>(I);
       Function *F = CI->getCalledFunction();
       if (F) {
+        // EM_ASMs should not have i64s as arguments
+        if (F->getName().startswith("emscripten_asm_const")) {
+          report_fatal_error("EM_ASM should not receive i64s as inputs, they are not valid in JS");
+        }
         assert(okToRemainIllegal(F));
         return false;
       }
