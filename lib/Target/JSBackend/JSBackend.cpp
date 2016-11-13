@@ -112,6 +112,11 @@ Relocatable("emscripten-relocatable",
             cl::init(false));
 
 static cl::opt<bool>
+SideModule("emscripten-side-module",
+           cl::desc("Whether to emit a side module (see emscripten SIDE_MODULE option)"),
+           cl::init(false));
+
+static cl::opt<bool>
 EnableSjLjEH("enable-pnacl-sjlj-eh",
              cl::desc("Enable use of SJLJ-based C++ exception handling "
                       "as part of the pnacl-abi-simplify passes"),
@@ -3357,6 +3362,22 @@ void JSWriter::printModuleBody() {
       Out << "}\n";
     } while (i < num);
     PostSets.clear();
+    if (WebAssembly && SideModule) {
+      // emit the __start_module method for a wasm side module,
+      // which runs postsets and global inits
+      // note that we can't use the wasm start mechanism, as the JS side is
+      // not yet ready - imagine that in the start method we call out to JS,
+      // then try to call back in, but we haven't yet captured the exports
+      // from the wasm module to their places on the JS Module object etc.
+      Out << "function __start_module() {\n";
+      Out << " runPostSets();\n";
+      for (auto& init : GlobalInitializers) {
+        Out << " " << init << "();\n";
+      }
+      GlobalInitializers.clear();
+      Out << "}\n";
+      Exports.push_back("__start_module");
+    }
   }
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
