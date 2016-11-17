@@ -396,7 +396,14 @@ namespace {
       return Ret;
     }
     FunctionTable& ensureFunctionTable(const FunctionType *FT) {
-      FunctionTable &Table = FunctionTables[getFunctionSignature(FT)];
+      std::string Sig = getFunctionSignature(FT);
+      if (WebAssembly && EmulatedFunctionPointers) {
+        // wasm function pointer emulation uses a single simple wasm table. ensure the specific tables
+        // exist (so we have properly typed calls to the outside), but only fill in the singleton.
+        FunctionTables[Sig];
+        Sig = "X";
+      }
+      FunctionTable &Table = FunctionTables[Sig];
       unsigned MinSize = ReservedFunctionPointers ? 2*(ReservedFunctionPointers+1) : 1; // each reserved slot must be 2-aligned
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
@@ -404,7 +411,6 @@ namespace {
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
-      std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
       if (NoAliasingFunctionPointers) {
         while (Table.size() < NextFunctionIndex) Table.push_back("0");
@@ -3539,14 +3545,17 @@ void JSWriter::printModuleBody() {
   unsigned Num = FunctionTables.size();
   for (FunctionTableMap::iterator I = FunctionTables.begin(), E = FunctionTables.end(); I != E; ++I) {
     Out << "  \"" << I->first << "\": \"var FUNCTION_TABLE_" << I->first << " = [";
-    FunctionTable &Table = I->second;
-    // ensure power of two
-    unsigned Size = 1;
-    while (Size < Table.size()) Size <<= 1;
-    while (Table.size() < Size) Table.push_back("0");
-    for (unsigned i = 0; i < Table.size(); i++) {
-      Out << Table[i];
-      if (i < Table.size()-1) Out << ",";
+    // wasm emulated function pointers use just one table
+    if (!(WebAssembly && EmulatedFunctionPointers && I->first != "X")) {
+      FunctionTable &Table = I->second;
+      // ensure power of two
+      unsigned Size = 1;
+      while (Size < Table.size()) Size <<= 1;
+      while (Table.size() < Size) Table.push_back("0");
+      for (unsigned i = 0; i < Table.size(); i++) {
+        Out << Table[i];
+        if (i < Table.size()-1) Out << ",";
+      }
     }
     Out << "];\"";
     if (--Num > 0) Out << ",";
