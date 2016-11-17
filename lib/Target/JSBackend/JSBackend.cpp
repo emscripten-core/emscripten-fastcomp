@@ -116,6 +116,11 @@ SideModule("emscripten-side-module",
            cl::desc("Whether to emit a side module (see emscripten SIDE_MODULE option)"),
            cl::init(false));
 
+static cl::opt<int>
+StackSize("emscripten-stack-size",
+           cl::desc("How large a stack to create (important in wasm side modules; see emscripten TOTAL_STACK option)"),
+           cl::init(0));
+
 static cl::opt<bool>
 EnableSjLjEH("enable-pnacl-sjlj-eh",
              cl::desc("Enable use of SJLJ-based C++ exception handling "
@@ -3209,6 +3214,10 @@ void JSWriter::processConstants() {
       parseConstant(I->getName().str(), I->getInitializer(), I->getAlignment(), true);
     }
   }
+  if (WebAssembly && SideModule && StackSize > 0) {
+    // allocate the stack
+    allocateZeroInitAddress("wasm-module-stack", STACK_ALIGN, StackSize);
+  }
   // Calculate MaxGlobalAlign, adjust final paddings, and adjust GlobalBasePadding
   assert(MaxGlobalAlign == 0);
   for (auto& GI : GlobalDataMap) {
@@ -3370,6 +3379,10 @@ void JSWriter::printModuleBody() {
       // then try to call back in, but we haven't yet captured the exports
       // from the wasm module to their places on the JS Module object etc.
       Out << "function __start_module() {\n";
+      if (StackSize > 0) {
+        Out << " STACKTOP = " << relocateGlobal(utostr(getGlobalAddress("wasm-module-stack"))) << ";\n";
+        Out << " STACK_MAX = STACKTOP + " << StackSize << " | 0;\n";
+      }
       Out << " runPostSets();\n";
       for (auto& init : GlobalInitializers) {
         Out << " " << init << "();\n";
