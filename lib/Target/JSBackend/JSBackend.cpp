@@ -3378,13 +3378,13 @@ void JSWriter::printModuleBody() {
     } while (i < num);
     PostSets.clear();
     if (WebAssembly && SideModule) {
-      // emit the __start_module method for a wasm side module,
+      // emit the init method for a wasm side module,
       // which runs postsets and global inits
       // note that we can't use the wasm start mechanism, as the JS side is
       // not yet ready - imagine that in the start method we call out to JS,
       // then try to call back in, but we haven't yet captured the exports
       // from the wasm module to their places on the JS Module object etc.
-      Out << "function __start_module() {\n";
+      Out << "function __post_instantiate() {\n";
       if (StackSize > 0) {
         Out << " STACKTOP = " << relocateGlobal(utostr(getGlobalAddress("wasm-module-stack"))) << ";\n";
         Out << " STACK_MAX = STACKTOP + " << StackSize << " | 0;\n";
@@ -3395,7 +3395,7 @@ void JSWriter::printModuleBody() {
       }
       GlobalInitializers.clear();
       Out << "}\n";
-      Exports.push_back("__start_module");
+      Exports.push_back("__post_instantiate");
     }
   }
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
