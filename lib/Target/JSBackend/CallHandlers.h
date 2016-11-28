@@ -227,6 +227,8 @@ DEF_CALL_HANDLER(emscripten_check_longjmp, {
   std::string Threw = getValueAsStr(CI->getOperand(0));
   std::string Target = getJSName(CI);
   std::string Assign = getAssign(CI);
+  Declares.insert("testSetjmp");
+  Declares.insert("longjmp");
   return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
            Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable|0, _setjmpTableSize|0)|0; " +
            "if ((" + Target + "|0) == 0) { _longjmp(" + Threw + "|0, threwValue|0); } " + // rethrow
