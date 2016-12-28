@@ -87,6 +87,10 @@ DEF_CALL_HANDLER(__default__, {
           Name = std::string(Relocatable ? "mftCall_" : "ftCall_") + Sig + "(" + getCast(Name, Type::getInt32Ty(CI->getContext()));
           if (NumArgs > 0) Name += ',';
           Emulated = true;
+          if (WebAssembly) {
+            // this call uses the wasm Table
+            NeedCasts = false;
+          }
         }
       }
     }

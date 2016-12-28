@@ -112,6 +112,16 @@ Relocatable("emscripten-relocatable",
             cl::init(false));
 
 static cl::opt<bool>
+SideModule("emscripten-side-module",
+           cl::desc("Whether to emit a side module (see emscripten SIDE_MODULE option)"),
+           cl::init(false));
+
+static cl::opt<int>
+StackSize("emscripten-stack-size",
+           cl::desc("How large a stack to create (important in wasm side modules; see emscripten TOTAL_STACK option)"),
+           cl::init(0));
+
+static cl::opt<bool>
 EnableSjLjEH("enable-pnacl-sjlj-eh",
              cl::desc("Enable use of SJLJ-based C++ exception handling "
                       "as part of the pnacl-abi-simplify passes"),
@@ -223,6 +233,7 @@ namespace {
     BlockAddressMap BlockAddresses;
     std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
+    std::set<const Function*> DeclaresNeedingTypeDeclarations; // list of declared funcs whose type we must declare asm.js-style with a usage, as they may not have another usage
 
     struct {
       // 0 is reserved for void type
@@ -386,7 +397,14 @@ namespace {
       return Ret;
     }
     FunctionTable& ensureFunctionTable(const FunctionType *FT) {
-      FunctionTable &Table = FunctionTables[getFunctionSignature(FT)];
+      std::string Sig = getFunctionSignature(FT);
+      if (WebAssembly && EmulatedFunctionPointers) {
+        // wasm function pointer emulation uses a single simple wasm table. ensure the specific tables
+        // exist (so we have properly typed calls to the outside), but only fill in the singleton.
+        FunctionTables[Sig];
+        Sig = "X";
+      }
+      FunctionTable &Table = FunctionTables[Sig];
       unsigned MinSize = ReservedFunctionPointers ? 2*(ReservedFunctionPointers+1) : 1; // each reserved slot must be 2-aligned
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
@@ -394,7 +412,6 @@ namespace {
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
-      std::string Sig = getFunctionSignature(F->getFunctionType());
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
       if (NoAliasingFunctionPointers) {
         while (Table.size() < NextFunctionIndex) Table.push_back("0");
@@ -416,6 +433,14 @@ namespace {
       CallHandlerMap::const_iterator CH = CallHandlers.find(Name);
       if (CH != CallHandlers.end()) {
         (this->*(CH->second))(NULL, Name, -1);
+      }
+
+      // and in asm.js, types are inferred from use. so if we have a method that *only* appears in a table, it therefore has no use,
+      // and we are in trouble; emit a fake dce-able use for it.
+      if (WebAssembly) {
+        if (F->isDeclaration()) {
+          DeclaresNeedingTypeDeclarations.insert(F);
+        }
       }
 
       return Index;
@@ -685,6 +710,7 @@ namespace {
     /// Like getPtrUse(), but for pointers represented in string expression form.
     static std::string getHeapAccess(const std::string& Name, unsigned Bytes, bool Integer=true);
 
+    std::string getUndefValue(Type* T, AsmCast sign=ASM_SIGNED);
     std::string getConstant(const Constant*, AsmCast sign=ASM_SIGNED);
     template<typename VectorType/*= ConstantVector or ConstantDataVector*/>
     std::string getConstantVector(const VectorType *C);
@@ -1448,6 +1474,23 @@ std::string JSWriter::getPtrUse(const Value* Ptr) {
   return std::string(HeapName) + '[' + Index + ']';
 }
 
+std::string JSWriter::getUndefValue(Type* T, AsmCast sign) {
+  std::string S;
+  if (VectorType *VT = dyn_cast<VectorType>(T)) {
+    checkVectorType(VT);
+    S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
+  } else {
+    if (OnlyWebAssembly && T->isIntegerTy() && T->getIntegerBitWidth() == 64) {
+      return "i64(0)"; 
+    }
+    S = T->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
+    if (PreciseF32 && T->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+      S = "Math_fround(" + S + ")";
+    }
+  }
+  return S;
+}
+
 std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
@@ -1500,20 +1543,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
       return emitI64Const(CI->getValue());
     }
   } else if (isa<UndefValue>(CV)) {
-    std::string S;
-    if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
-      checkVectorType(VT);
-      S = std::string("SIMD_") + SIMDType(VT) + "_splat(" + ensureFloat("0", !VT->getElementType()->isIntegerTy()) + ')';
-    } else {
-      if (OnlyWebAssembly && CV->getType()->isIntegerTy() && CV->getType()->getIntegerBitWidth() == 64) {
-        return "i64(0)"; 
-      }
-      S = CV->getType()->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
-      if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
-        S = "Math_fround(" + S + ")";
-      }
-    }
-    return S;
+    return getUndefValue(CV->getType(), sign);
   } else if (isa<ConstantAggregateZero>(CV)) {
     if (VectorType *VT = dyn_cast<VectorType>(CV->getType())) {
       checkVectorType(VT);
@@ -3204,6 +3234,10 @@ void JSWriter::processConstants() {
       parseConstant(I->getName().str(), I->getInitializer(), I->getAlignment(), true);
     }
   }
+  if (WebAssembly && SideModule && StackSize > 0) {
+    // allocate the stack
+    allocateZeroInitAddress("wasm-module-stack", STACK_ALIGN, StackSize);
+  }
   // Calculate MaxGlobalAlign, adjust final paddings, and adjust GlobalBasePadding
   assert(MaxGlobalAlign == 0);
   for (auto& GI : GlobalDataMap) {
@@ -3357,6 +3391,49 @@ void JSWriter::printModuleBody() {
       Out << "}\n";
     } while (i < num);
     PostSets.clear();
+    if (WebAssembly && SideModule) {
+      // emit the init method for a wasm side module,
+      // which runs postsets and global inits
+      // note that we can't use the wasm start mechanism, as the JS side is
+      // not yet ready - imagine that in the start method we call out to JS,
+      // then try to call back in, but we haven't yet captured the exports
+      // from the wasm module to their places on the JS Module object etc.
+      Out << "function __post_instantiate() {\n";
+      if (StackSize > 0) {
+        Out << " STACKTOP = " << relocateGlobal(utostr(getGlobalAddress("wasm-module-stack"))) << ";\n";
+        Out << " STACK_MAX = STACKTOP + " << StackSize << " | 0;\n";
+      }
+      Out << " runPostSets();\n";
+      for (auto& init : GlobalInitializers) {
+        Out << " " << init << "();\n";
+      }
+      GlobalInitializers.clear();
+      Out << "}\n";
+      Exports.push_back("__post_instantiate");
+    }
+    if (DeclaresNeedingTypeDeclarations.size() > 0) {
+      Out << "function __emscripten_dceable_type_decls() {\n";
+      for (auto& Decl : DeclaresNeedingTypeDeclarations) {
+        std::string Call = getJSName(Decl) + "(";
+        bool First = true;
+        auto* FT = Decl->getFunctionType();
+        for (auto AI = FT->param_begin(), AE = FT->param_end(); AI != AE; ++AI) {
+          if (First) {
+            First = false;
+          } else {
+            Call += ", ";
+          }
+          Call += getUndefValue(*AI);
+        }
+        Call += ")";
+        Type *RT = FT->getReturnType();
+        if (!RT->isVoidTy()) {
+          Call = getCast(Call, RT);
+        }
+        Out << " " << Call << ";\n";
+      }
+      Out << "}\n";
+    }
   }
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
 
@@ -3505,14 +3582,17 @@ void JSWriter::printModuleBody() {
   unsigned Num = FunctionTables.size();
   for (FunctionTableMap::iterator I = FunctionTables.begin(), E = FunctionTables.end(); I != E; ++I) {
     Out << "  \"" << I->first << "\": \"var FUNCTION_TABLE_" << I->first << " = [";
-    FunctionTable &Table = I->second;
-    // ensure power of two
-    unsigned Size = 1;
-    while (Size < Table.size()) Size <<= 1;
-    while (Table.size() < Size) Table.push_back("0");
-    for (unsigned i = 0; i < Table.size(); i++) {
-      Out << Table[i];
-      if (i < Table.size()-1) Out << ",";
+    // wasm emulated function pointers use just one table
+    if (!(WebAssembly && EmulatedFunctionPointers && I->first != "X")) {
+      FunctionTable &Table = I->second;
+      // ensure power of two
+      unsigned Size = 1;
+      while (Size < Table.size()) Size <<= 1;
+      while (Table.size() < Size) Table.push_back("0");
+      for (unsigned i = 0; i < Table.size(); i++) {
+        Out << Table[i];
+        if (i < Table.size()-1) Out << ",";
+      }
     }
     Out << "];\"";
     if (--Num > 0) Out << ",";
