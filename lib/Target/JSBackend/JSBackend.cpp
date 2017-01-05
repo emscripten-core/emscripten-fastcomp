@@ -475,10 +475,16 @@ namespace {
     }
 
     std::string relocateFunctionPointer(std::string FP) {
+      if (Relocatable && WebAssembly && SideModule) {
+        return "(tableBase + (" + FP + ") | 0)";
+      }
       return Relocatable ? "(fb + (" + FP + ") | 0)" : FP;
     }
 
     std::string relocateGlobal(std::string G) {
+      if (Relocatable && WebAssembly && SideModule) {
+        return "(memoryBase + (" + G + ") | 0)";
+      }
       return Relocatable ? "(gb + (" + G + ") | 0)" : G;
     }
 
