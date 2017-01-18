@@ -122,7 +122,7 @@ static void ExpandGEP(GetElementPtrInst *GEP, DataLayout *DL, Type *PtrType) {
   }
   FlushOffset(&Ptr, &CurrentOffset, GEP, Debug, PtrType);
 
-  assert(CurrentTy == GEP->getType()->getElementType());
+  assert(CurrentTy == GEP->getResultElementType());
   Instruction *Result = new IntToPtrInst(Ptr, GEP->getType(), "", GEP);
   Result->setDebugLoc(Debug);
   Result->takeName(GEP);

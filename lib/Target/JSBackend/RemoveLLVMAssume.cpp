@@ -27,7 +27,7 @@ struct RemoveLLVMAssume : public ModulePass {
 
   bool runOnModule(Module &M) override;
 
-  const char *getPassName() const override { return "RemoveLLVMAssume"; }
+  StringRef getPassName() const override { return "RemoveLLVMAssume"; }
 };
 
 char RemoveLLVMAssume::ID = 0;

@@ -31,7 +31,7 @@ struct ExpandBigSwitches : public FunctionPass {
 
   bool runOnFunction(Function &Func) override;
 
-  const char *getPassName() const override { return "ExpandBigSwitches"; }
+  StringRef getPassName() const override { return "ExpandBigSwitches"; }
 };
 
 char ExpandBigSwitches::ID = 0;
