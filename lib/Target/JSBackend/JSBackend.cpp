@@ -2658,7 +2658,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     for (GetElementPtrInst::const_op_iterator E = GEP->op_end();
        I != E; ++I) {
       const Value *Index = *I;
-      if (StructType *STy = dyn_cast<StructType>((GTI++).getIndexedType())) {
+      if (StructType *STy = GTI.getStructTypeOrNull()) {
         // For a struct, add the member offset.
         unsigned FieldNo = cast<ConstantInt>(Index)->getZExtValue();
         uint32_t Offset = DL->getStructLayout(STy)->getElementOffset(FieldNo);
