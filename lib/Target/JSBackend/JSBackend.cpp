@@ -2656,7 +2656,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     GetElementPtrInst::const_op_iterator I = GEP->op_begin();
     I++;
     for (GetElementPtrInst::const_op_iterator E = GEP->op_end();
-       I != E; ++I) {
+       I != E; ++I, ++GTI) {
       const Value *Index = *I;
       if (StructType *STy = GTI.getStructTypeOrNull()) {
         // For a struct, add the member offset.
