@@ -24,7 +24,7 @@ const Value *getActuallyCalledValue(const Instruction *I) {
   // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
   // it to the proper form right before the call. this both causes an unnecessary indirect
   // call, and it is done with the wrong type. TODO: don't even put it into the function table
-  if (const Function *F = dyn_cast<const Function>(CV->stripPointerCasts())) {
+  if (const Function *F = dyn_cast<const Function>(stripPointerCastsWithoutSideEffects(CV))) {
     CV = F;
   }
   return CV;

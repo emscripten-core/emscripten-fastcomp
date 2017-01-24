@@ -299,6 +299,19 @@ namespace {
     raw_pwrite_stream& nl(raw_pwrite_stream &Out, int delta = 0);
 
   private:
+
+    // LLVM changed stripPointerCasts to use the "returned" attribute on
+    // calls and invokes, i.e., stripping pointer casts of a call to
+    // define internal i8* @strupr(i8* returned %str) #2 {
+    // will return the pointer, and ignore the call which has side
+    // effects. We sometimes do care about the side effects.
+    const Value* stripPointerCastsWithoutSideEffects(const Value* V) {
+      if (isa<CallInst>(V) || isa<InvokeInst>(V)) {
+        return V; // in theory we could check if there actually are side effects
+      }
+      return V->stripPointerCasts();
+    }
+
     void printCommaSeparated(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
@@ -1679,7 +1692,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
 
 std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
@@ -1690,7 +1703,7 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
 
 std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
     return getConstant(cast<Constant>(V), sign);
@@ -1701,7 +1714,7 @@ std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
 
 std::string JSWriter::getValueAsParenStr(const Value* V) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
@@ -1712,7 +1725,7 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
 
 std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V) || isa<UndefValue>(V)) {
     return getConstant(cast<Constant>(V), sign);
@@ -2362,7 +2375,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   // and all-zero-index geps that LLVM needs to satisfy its type system, we
   // call stripPointerCasts() on all values before translating them. This
   // includes bitcasts whose only use is lifetime marker intrinsics.
-  assert(I == I->stripPointerCasts());
+  assert(I == stripPointerCastsWithoutSideEffects(I));
 
   Type *T = I->getType();
   if (T->isIntegerTy() && ((!OnlyWebAssembly && T->getIntegerBitWidth() > 32) ||
@@ -2961,7 +2974,7 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
        II != E; ++II) {
     auto I = &*II;
-    if (I->stripPointerCasts() == I) {
+    if (stripPointerCastsWithoutSideEffects(I) == I) {
       CurrInstruction = I;
       generateExpression(I, CodeStream);
     }
