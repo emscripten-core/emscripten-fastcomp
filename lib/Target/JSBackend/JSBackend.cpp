@@ -128,7 +128,7 @@ EnableSjLjEH("enable-pnacl-sjlj-eh",
              cl::init(false));
 
 static cl::opt<bool>
-EnableEmCxxExceptions("enable-emscripten-cxx-exceptions",
+EnableEmCxxExceptions("enable-emscripten-cpp-exceptions",
                       cl::desc("Enables C++ exceptions in emscripten"),
                       cl::init(false));
 
