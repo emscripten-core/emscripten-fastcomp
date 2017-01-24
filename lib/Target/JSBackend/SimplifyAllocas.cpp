@@ -35,7 +35,7 @@ struct SimplifyAllocas : public FunctionPass {
 
   bool runOnFunction(Function &Func) override;
 
-  const char *getPassName() const override { return "SimplifyAllocas"; }
+  StringRef getPassName() const override { return "SimplifyAllocas"; }
 };
 
 char SimplifyAllocas::ID = 0;

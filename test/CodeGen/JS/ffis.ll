@@ -5,6 +5,9 @@
 target datalayout = "e-i1:8:8-i8:8:8-i16:16:16-i32:32:32-i64:64:64-f32:32:32-f64:64:64-p:32:32:32-v128:32:128-n32-S128"
 target triple = "asmjs-unknown-emscripten"
 
+declare void @blackbox.float(float %a)
+declare void @blackbox.double(double %a)
+
 ; CHECK:      (+Math_sqrt(+1));
 ; CHECK-NEXT: (+Math_sqrt(+1));
 ; CHECK-NEXT: (+Math_sqrt((+$d)));
@@ -52,6 +55,12 @@ entry:
 
   %sind = call double @sin(double 1.0)
   %sinf = call float @sinf(float 1.0)
+
+  call void @blackbox.float(float %sqrtf)
+  call void @blackbox.double(double %sqrtd)
+
+  call void @blackbox.float(float %sinf)
+  call void @blackbox.double(double %sind)
 
   ret void
 }
