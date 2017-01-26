@@ -990,9 +990,29 @@ std::string JSWriter::getAssignIfNeeded(const Value *V) {
   return std::string();
 }
 
+int SIMDNumElements(VectorType *t) {
+  assert(t->getElementType()->getPrimitiveSizeInBits() <= 128);
+
+  if (t->getElementType()->getPrimitiveSizeInBits() == 1) { // Bool8x16, Bool16x8, Bool32x4 or Bool64x2
+    if (t->getNumElements() <= 2) return 2;
+    if (t->getNumElements() <= 4) return 4;
+    if (t->getNumElements() <= 8) return 8;
+    if (t->getNumElements() <= 16) return 16;
+    // fall-through to error
+  } else { // Int/Float 8x16, 16x8, 32x4 or 64x2
+    if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return 2;
+    if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return 4;
+    if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return 8;
+    if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return 16;
+    // fall-through to error
+  }
+  errs() << *t << "\n";
+  report_fatal_error("Unsupported type!");
+  return 0;
+}
+
 const char *SIMDType(VectorType *t) {
-  int primSize = t->getElementType()->getPrimitiveSizeInBits();
-  assert(primSize <= 128);
+  assert(t->getElementType()->getPrimitiveSizeInBits() <= 128);
 
   if (t->getElementType()->isIntegerTy()) {
     if (t->getElementType()->getPrimitiveSizeInBits() == 1) {
@@ -1645,8 +1665,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     }
   }
 
-  int primSize = C->getType()->getElementType()->getPrimitiveSizeInBits();
-  const int SIMDJsRetNumElements = 128 / primSize;
+  const int SIMDJsRetNumElements = SIMDNumElements(C->getType());
 
   std::string c;
   if (!hasSpecialNaNs) {
@@ -1852,7 +1871,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
   }
 
   // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  int toNumElems = 128 / toPrimSize;
+  const int toNumElems = SIMDNumElements(toType);
 
   bool fromIsBool = (fromInt && fromPrimSize == 1);
   bool toIsBool = (toInt && toPrimSize == 1);
@@ -1899,8 +1918,8 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   int OpNumElements = op0->getNumElements();
   int ResultNumElements = SVI->getType()->getNumElements();
   // Promote smaller than 128-bit vector types to 128-bit since smaller ones do not exist in SIMD.js. (pad with zero lanes)
-  int SIMDJsRetNumElements = 128 / cast<VectorType>(SVI->getType())->getElementType()->getPrimitiveSizeInBits();
-  int SIMDJsOp0NumElements = 128 / op0->getElementType()->getPrimitiveSizeInBits();
+  const int SIMDJsRetNumElements = SIMDNumElements(cast<VectorType>(SVI->getType()));
+  const int SIMDJsOp0NumElements = SIMDNumElements(op0);
   bool swizzleA = true;
   bool swizzleB = true;
   for(int i = 0; i < ResultNumElements; ++i) {
