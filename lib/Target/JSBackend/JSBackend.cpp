@@ -4299,9 +4299,6 @@ bool JSTargetMachine::addPassesToEmitFile(
 
     PM.add(createExpandCtorsPass());
 
-    if (EnableEmAsyncify)
-      PM.add(createLowerEmAsyncifyPass());
-
     // ExpandStructRegs must be run after ExpandArithWithOverflow to expand out
     // the insertvalue instructions that ExpandArithWithOverflow introduces.
     PM.add(createExpandArithWithOverflowPass());
@@ -4355,6 +4352,10 @@ bool JSTargetMachine::addPassesToEmitFile(
     PM.add(createDeadCodeEliminationPass());
   }
   // end PNaCl legalization
+
+  if (EnableEmAsyncify) {
+    PM.add(createLowerEmAsyncifyPass());
+  }
 
   PM.add(createExpandInsertExtractElementPass());
 
