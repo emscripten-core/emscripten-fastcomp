@@ -484,6 +484,10 @@ namespace {
       // isn't an issue for i64s even though they are illegal, precisely because
       // f32/f64 overloading is possible but i64s don't overload in asm.js with
       // anything.
+      // TODO: if there are no uses of F (aside from being in the table) then
+      //       we don't need this, as we'll add a use in
+      //       DeclaresNeedingTypeDeclarations which will have the proper type,
+      //       and nothing will contradict it/overload it.
       if (WebAssembly && F->isDeclaration() && usesFloat32(F->getFunctionType())) {
         Table.push_back(makeFloat32Legalizer(F));
       } else {
