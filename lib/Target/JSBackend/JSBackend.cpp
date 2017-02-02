@@ -233,6 +233,7 @@ namespace {
     BlockAddressMap BlockAddresses;
     std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
+    std::vector<std::string> ExtraFunctions;
     std::set<const Function*> DeclaresNeedingTypeDeclarations; // list of declared funcs whose type we must declare asm.js-style with a usage, as they may not have another usage
 
     struct {
@@ -409,6 +410,55 @@ namespace {
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
     }
+    bool usesFloat32(FunctionType* F) {
+      if (F->getReturnType()->isFloatTy()) return true;
+      for (FunctionType::param_iterator AI = F->param_begin(),
+             AE = F->param_end(); AI != AE; ++AI) {
+        if ((*AI)->isFloatTy()) return true;
+      }
+      return false;
+    }
+    // create a lettered argument name (a, b, c, etc.)
+    std::string getArgLetter(int Index) {
+      std::string Ret = "";
+      while (1) {
+        auto Curr = Index % 26;
+        Ret += char('a' + Curr);
+        Index = Index / 26;
+        if (Index == 0) return Ret;
+      }
+    }
+    std::string makeFloat32Legalizer(const Function *F) {
+      auto* FT = F->getFunctionType();
+      const std::string& Name = getJSName(F);
+      std::string LegalName = Name + "$legalf32";
+      std::string LegalFunc = "function " + LegalName + "(";
+      std::string Declares = "";
+      std::string Call = Name + "(";
+      int Index = 0;
+      for (FunctionType::param_iterator AI = FT->param_begin(),
+             AE = FT->param_end(); AI != AE; ++AI) {
+        if (Index > 0) {
+          LegalFunc += ", ";
+          Declares += " ";
+          Call += ", ";
+        }
+        auto Arg = getArgLetter(Index);
+        LegalFunc += Arg;
+        Declares += Arg + " = " + getCast(Arg, *AI) + ';';
+        Call += getCast(Arg, *AI, ASM_NONSPECIFIC | ASM_FFI_OUT);
+        Index++;
+      }
+      LegalFunc += ") {\n ";
+      LegalFunc += Declares + "\n ";
+      Call += ")";
+      if (!FT->getReturnType()->isVoidTy()) {
+        Call = "return " + getCast(Call, FT->getReturnType(), ASM_FFI_IN);
+      }
+      LegalFunc += Call + ";\n}";
+      ExtraFunctions.push_back(LegalFunc);
+      return LegalName;
+    }
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
@@ -423,7 +473,22 @@ namespace {
       unsigned Alignment = 1;
       while (Table.size() % Alignment) Table.push_back("0");
       unsigned Index = Table.size();
-      Table.push_back(Name);
+      // add the name to the table. normally we can just add the function itself,
+      // however, that may not be valid in wasm. consider an imported function with an
+      // f32 parameter - due to asm.js ffi rules, we must send it f64s. So its
+      // uses will appear to use f64s, but when called through the function table,
+      // it must use an f32 for wasm correctness. so we must have an import with
+      // f64, and put a thunk in the table which accepts f32 and redirects to the
+      // import. Note that this cannot be done in a later stage, like binaryen's
+      // legalization, as f32/f64 asm.js overloading can mask it. Note that this
+      // isn't an issue for i64s even though they are illegal, precisely because
+      // f32/f64 overloading is possible but i64s don't overload in asm.js with
+      // anything.
+      if (WebAssembly && F->isDeclaration() && usesFloat32(F->getFunctionType())) {
+        Table.push_back(makeFloat32Legalizer(F));
+      } else {
+        Table.push_back(Name);
+      }
       IndexedFunctions[Name] = Index;
       if (NoAliasingFunctionPointers) {
         NextFunctionIndex = Index+1;
@@ -435,7 +500,7 @@ namespace {
         (this->*(CH->second))(NULL, Name, -1);
       }
 
-      // and in asm.js, types are inferred from use. so if we have a method that *only* appears in a table, it therefore has no use,
+      // in asm.js, types are inferred from use. so if we have a method that *only* appears in a table, it therefore has no use,
       // and we are in trouble; emit a fake dce-able use for it.
       if (WebAssembly) {
         if (F->isDeclaration()) {
@@ -3458,6 +3523,9 @@ void JSWriter::printModuleBody() {
         Out << " " << Call << ";\n";
       }
       Out << "}\n";
+    }
+    for (auto& Name : ExtraFunctions) {
+      Out << Name << '\n';
     }
   }
   Out << "// EMSCRIPTEN_END_FUNCTIONS\n\n";
