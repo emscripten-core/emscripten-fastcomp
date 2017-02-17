@@ -66,9 +66,12 @@ static bool isOkType(Type *Ty) {
 unsigned JSTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
     TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo) {
+    TTI::OperandValueProperties Opd2PropInfo,
+    ArrayRef<const Value*> Args) {
 
-  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info, Opd2Info);
+  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info,
+                                                                      Opd2Info, Opd1PropInfo,
+                                                                      Opd2PropInfo, Args);
 
   if (!isOkType(Ty))
     return Nope;

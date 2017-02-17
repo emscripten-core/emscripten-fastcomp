@@ -30,6 +30,9 @@ using namespace llvm;
 
 STATISTIC(NumAllocas, "Number of allocas eliminated");
 
+static const char *TimerGroupName = "AllocaManager";
+static const char *TimerGroupDesc = "Alloca manager";
+
 // Return the size of the given alloca.
 uint64_t AllocaManager::getSize(const AllocaInst *AI) {
   assert(AI->isStaticAlloca());
@@ -146,8 +149,8 @@ int AllocaManager::AllocaSort(const AllocaInfo *li, const AllocaInfo *ri) {
 
 // Collect allocas
 void AllocaManager::collectMarkedAllocas() {
-  NamedRegionTimer Timer("Collect Marked Allocas", "AllocaManager",
-                         TimePassesIsEnabled);
+  NamedRegionTimer Timer("collect-marked-allocas", "Collect Marked Allocas",
+                         TimerGroupName, TimerGroupDesc, TimePassesIsEnabled);
 
   // Weird semantics: If an alloca *ever* appears in a lifetime start or end
   // within the same function, its lifetime begins only at the explicit lifetime
@@ -206,8 +209,8 @@ void AllocaManager::collectMarkedAllocas() {
 // Calculate the starting point from which inter-block liveness will be
 // computed.
 void AllocaManager::collectBlocks() {
-  NamedRegionTimer Timer("Collect Blocks", "AllocaManager",
-                         TimePassesIsEnabled);
+  NamedRegionTimer Timer("collect-blocks", "Collect Blocks", TimerGroupName,
+                         TimerGroupDesc, TimePassesIsEnabled);
 
   size_t AllocaCount = AllocasByIndex.size();
 
@@ -286,8 +289,8 @@ void AllocaManager::collectBlocks() {
 
 // Compute the LiveIn and LiveOut sets for each block in F.
 void AllocaManager::computeInterBlockLiveness() {
-  NamedRegionTimer Timer("Compute inter-block liveness", "AllocaManager",
-                         TimePassesIsEnabled);
+  NamedRegionTimer Timer("compute-inter-block-liveness", "Compute inter-block liveness",
+                         TimerGroupName, TimerGroupDesc, TimePassesIsEnabled);
 
   size_t AllocaCount = AllocasByIndex.size();
 
@@ -346,8 +349,8 @@ void AllocaManager::computeInterBlockLiveness() {
 
 // Determine overlapping liveranges within blocks.
 void AllocaManager::computeIntraBlockLiveness() {
-  NamedRegionTimer Timer("Compute intra-block liveness", "AllocaManager",
-                         TimePassesIsEnabled);
+  NamedRegionTimer Timer("compute-intra-block-liveness", "Compute intra-block liveness",
+                         TimerGroupName, TimerGroupDesc, TimePassesIsEnabled);
 
   size_t AllocaCount = AllocasByIndex.size();
 
@@ -401,8 +404,8 @@ void AllocaManager::computeIntraBlockLiveness() {
 // Decide which allocas will represent which other allocas, and if so what their
 // size and alignment will need to be.
 void AllocaManager::computeRepresentatives() {
-  NamedRegionTimer Timer("Compute Representatives", "AllocaManager",
-                         TimePassesIsEnabled);
+  NamedRegionTimer Timer("compute-representatives", "Compute Representatives",
+                         TimerGroupName, TimerGroupDesc, TimePassesIsEnabled);
 
   for (size_t i = 0, e = AllocasByIndex.size(); i != e; ++i) {
     // If we've already represented this alloca with another, don't visit it.
@@ -437,7 +440,8 @@ void AllocaManager::computeRepresentatives() {
 }
 
 void AllocaManager::computeFrameOffsets() {
-  NamedRegionTimer Timer("Compute Frame Offsets", "AllocaManager",
+  NamedRegionTimer Timer("compute-frame-offsets", "Compute Frame Offsets",
+                         TimerGroupName, TimerGroupDesc,
                          TimePassesIsEnabled);
 
   // Walk through the entry block and collect all the allocas, including the
@@ -521,7 +525,9 @@ AllocaManager::AllocaManager() : MaxAlignment(0) {
 
 void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
                             bool PerformColoring) {
-  NamedRegionTimer Timer("AllocaManager", TimePassesIsEnabled);
+  NamedRegionTimer Timer("analyze", "Analyze", TimerGroupName, TimerGroupDesc,
+                         TimePassesIsEnabled);
+
   assert(Allocas.empty());
   assert(AllocasByIndex.empty());
   assert(AllocaCompatibility.empty());

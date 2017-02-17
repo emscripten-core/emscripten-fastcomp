@@ -996,7 +996,7 @@ ChunksVec ExpandI64::getChunks(Value *V, bool AllowUnreachable) {
       Constant *NewC = ConstantExpr::getTrunc(ConstantExpr::getLShr(C, Count), i32);
       TargetLibraryInfo *TLI = 0; // TODO
       if (ConstantExpr *NewCE = dyn_cast<ConstantExpr>(NewC)) {
-        if (Constant *FoldedC = ConstantFoldConstantExpression(NewCE, *DL, TLI)) {
+        if (Constant *FoldedC = ConstantFoldConstant(NewCE, *DL, TLI)) {
           NewC = FoldedC;
         }
       }

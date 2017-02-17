@@ -23,10 +23,6 @@
 #include "llvm/Support/MathExtras.h"
 using namespace llvm;
 
-namespace llvm {
-void initializeAArch64ExpandPseudoPass(PassRegistry &);
-}
-
 #define AARCH64_EXPAND_PSEUDO_NAME "AArch64 pseudo instruction expansion pass"
 
 namespace {
@@ -41,9 +37,7 @@ public:
 
   bool runOnMachineFunction(MachineFunction &Fn) override;
 
-  const char *getPassName() const override {
-    return AARCH64_EXPAND_PSEUDO_NAME;
-  }
+  StringRef getPassName() const override { return AARCH64_EXPAND_PSEUDO_NAME; }
 
 private:
   bool expandMBB(MachineBasicBlock &MBB);
@@ -718,13 +712,21 @@ bool AArch64ExpandPseudo::expandCMP_SWAP_128(
       .addReg(DestLo.getReg(), getKillRegState(DestLo.isDead()))
       .addOperand(DesiredLo)
       .addImm(0);
-  BuildMI(LoadCmpBB, DL, TII->get(AArch64::SBCSXr), AArch64::XZR)
+  BuildMI(LoadCmpBB, DL, TII->get(AArch64::CSINCWr), StatusReg)
+    .addUse(AArch64::WZR)
+    .addUse(AArch64::WZR)
+    .addImm(AArch64CC::EQ);
+  BuildMI(LoadCmpBB, DL, TII->get(AArch64::SUBSXrs), AArch64::XZR)
       .addReg(DestHi.getReg(), getKillRegState(DestHi.isDead()))
-      .addOperand(DesiredHi);
-  BuildMI(LoadCmpBB, DL, TII->get(AArch64::Bcc))
-      .addImm(AArch64CC::NE)
-      .addMBB(DoneBB)
-      .addReg(AArch64::NZCV, RegState::Implicit | RegState::Kill);
+      .addOperand(DesiredHi)
+      .addImm(0);
+  BuildMI(LoadCmpBB, DL, TII->get(AArch64::CSINCWr), StatusReg)
+      .addUse(StatusReg, RegState::Kill)
+      .addUse(StatusReg, RegState::Kill)
+      .addImm(AArch64CC::EQ);
+  BuildMI(LoadCmpBB, DL, TII->get(AArch64::CBNZW))
+      .addUse(StatusReg, RegState::Kill)
+      .addMBB(DoneBB);
   LoadCmpBB->addSuccessor(DoneBB);
   LoadCmpBB->addSuccessor(StoreBB);
 
@@ -895,9 +897,14 @@ bool AArch64ExpandPseudo::expandMI(MachineBasicBlock &MBB,
   case AArch64::MOVi64imm:
     return expandMOVImm(MBB, MBBI, 64);
   case AArch64::RET_ReallyLR: {
+    // Hiding the LR use with RET_ReallyLR may lead to extra kills in the
+    // function and missing live-ins. We are fine in practice because callee
+    // saved register handling ensures the register value is restored before
+    // RET, but we need the undef flag here to appease the MachineVerifier
+    // liveness checks.
     MachineInstrBuilder MIB =
         BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::RET))
-          .addReg(AArch64::LR);
+          .addReg(AArch64::LR, RegState::Undef);
     transferImpOps(MI, MIB, MIB);
     MI.eraseFromParent();
     return true;

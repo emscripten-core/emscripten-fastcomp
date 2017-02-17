@@ -53,10 +53,10 @@ namespace {
 
     MachineFunctionProperties getRequiredProperties() const override {
       return MachineFunctionProperties().set(
-          MachineFunctionProperties::Property::AllVRegsAllocated);
+          MachineFunctionProperties::Property::NoVRegs);
     }
 
-    const char *getPassName() const override {
+    StringRef getPassName() const override {
       return "ARM pseudo instruction expansion pass";
     }
 
@@ -657,6 +657,9 @@ static bool IsAnAddressOperand(const MachineOperand &MO) {
     return true;
   case MachineOperand::MO_CFIIndex:
     return false;
+  case MachineOperand::MO_IntrinsicID:
+  case MachineOperand::MO_Predicate:
+    llvm_unreachable("should not exist post-isel");
   }
   llvm_unreachable("unhandled machine operand type");
 }
@@ -932,13 +935,10 @@ bool ARMExpandPseudo::ExpandCMP_SWAP_64(MachineBasicBlock &MBB,
                      .addReg(DestLo, getKillRegState(Dest.isDead()))
                      .addReg(DesiredLo, getKillRegState(Desired.isDead())));
 
-  unsigned SBCrr = IsThumb ? ARM::t2SBCrr : ARM::SBCrr;
-  MIB = BuildMI(LoadCmpBB, DL, TII->get(SBCrr))
-            .addReg(StatusReg, RegState::Define | RegState::Dead)
-            .addReg(DestHi, getKillRegState(Dest.isDead()))
-            .addReg(DesiredHi, getKillRegState(Desired.isDead()));
-  AddDefaultPred(MIB);
-  MIB.addReg(ARM::CPSR, RegState::Kill);
+  BuildMI(LoadCmpBB, DL, TII->get(CMPrr))
+      .addReg(DestHi, getKillRegState(Dest.isDead()))
+      .addReg(DesiredHi, getKillRegState(Desired.isDead()))
+      .addImm(ARMCC::EQ).addReg(ARM::CPSR, RegState::Kill);
 
   unsigned Bcc = IsThumb ? ARM::tBcc : ARM::Bcc;
   BuildMI(LoadCmpBB, DL, TII->get(Bcc))
@@ -1178,8 +1178,8 @@ bool ARMExpandPseudo::ExpandMI(MachineBasicBlock &MBB,
         }
         // If there's dynamic realignment, adjust for it.
         if (RI.needsStackRealignment(MF)) {
-          MachineFrameInfo  *MFI = MF.getFrameInfo();
-          unsigned MaxAlign = MFI->getMaxAlignment();
+          MachineFrameInfo &MFI = MF.getFrameInfo();
+          unsigned MaxAlign = MFI.getMaxAlignment();
           assert (!AFI->isThumb1OnlyFunction());
           // Emit bic r6, r6, MaxAlign
           assert(MaxAlign <= 256 && "The BIC instruction cannot encode "

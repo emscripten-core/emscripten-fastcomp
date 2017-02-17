@@ -282,7 +282,7 @@ namespace {
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
         CurrInstruction(nullptr) {}
 
-    const char *getPassName() const override { return "JavaScript backend"; }
+    StringRef getPassName() const override { return "JavaScript backend"; }
 
     bool runOnModule(Module &M) override;
 
@@ -2780,16 +2780,16 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     GetElementPtrInst::const_op_iterator I = GEP->op_begin();
     I++;
     for (GetElementPtrInst::const_op_iterator E = GEP->op_end();
-       I != E; ++I) {
+       I != E; ++I, ++GTI) {
       const Value *Index = *I;
-      if (StructType *STy = dyn_cast<StructType>(*GTI++)) {
+      if (StructType *STy = GTI.getStructTypeOrNull()) {
         // For a struct, add the member offset.
         unsigned FieldNo = cast<ConstantInt>(Index)->getZExtValue();
         uint32_t Offset = DL->getStructLayout(STy)->getElementOffset(FieldNo);
         ConstantOffset = (uint32_t)ConstantOffset + Offset;
       } else {
         // For an array, add the element offset, explicitly scaled.
-        uint32_t ElementSize = DL->getTypeAllocSize(*GTI);
+        uint32_t ElementSize = DL->getTypeAllocSize(GTI.getIndexedType());
         if (const ConstantInt *CI = dyn_cast<ConstantInt>(Index)) {
           // The index is constant. Add it to the accumulating offset.
           ConstantOffset = (uint32_t)ConstantOffset + (uint32_t)CI->getSExtValue() * ElementSize;
@@ -4319,7 +4319,7 @@ Pass *createCheckTriplePass() {
 bool JSTargetMachine::addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify, AnalysisID StartBefore,
-      AnalysisID StartAfter, AnalysisID StopAfter,
+      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter,
       MachineFunctionInitializer *MFInitializer) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
