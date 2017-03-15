@@ -1,4 +1,5 @@
 ; RUN: opt < %s -S -early-cse | FileCheck %s
+; RUN: opt < %s -S -basicaa -early-cse-memssa | FileCheck %s
 ; RUN: opt < %s -S -passes=early-cse | FileCheck %s
 
 declare void @llvm.assume(i1) nounwind
@@ -276,3 +277,17 @@ define void @dse_neg2(i32 *%P) {
   ret void
 }
 
+@c = external global i32, align 4
+declare i32 @reads_c(i32 returned)
+define void @pr28763() {
+entry:
+; CHECK-LABEL: @pr28763(
+; CHECK: store i32 0, i32* @c, align 4
+; CHECK: call i32 @reads_c(i32 0)
+; CHECK: store i32 2, i32* @c, align 4
+  %load = load i32, i32* @c, align 4
+  store i32 0, i32* @c, align 4
+  %call = call i32 @reads_c(i32 0)
+  store i32 2, i32* @c, align 4
+  ret void
+}

@@ -1,6 +1,6 @@
-; RUN: llc < %s -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64-unknown-linux-gnu | FileCheck %s -check-prefix=CHECK-SCO
-; RUN: llc < %s -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr8 | FileCheck %s -check-prefix=CHECK-SCO-HASQPX
-; RUN: llc < %s -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64le-unknown-linux-gnu -mcpu=pwr8 | FileCheck %s -check-prefix=CHECK-SCO-HASQPX
+; RUN: llc < %s -relocation-model=static -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64-unknown-linux-gnu | FileCheck %s -check-prefix=CHECK-SCO
+; RUN: llc < %s -relocation-model=static -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64-unknown-linux-gnu -mcpu=pwr8 | FileCheck %s -check-prefix=CHECK-SCO-HASQPX
+; RUN: llc < %s -relocation-model=static -O1 -disable-ppc-sco=false -verify-machineinstrs -mtriple=powerpc64le-unknown-linux-gnu -mcpu=pwr8 | FileCheck %s -check-prefix=CHECK-SCO-HASQPX
 
 ; No combination of "powerpc64le-unknown-linux-gnu" + "CHECK-SCO", because
 ; only Power8 (and later) fully support LE.
@@ -142,7 +142,7 @@ define void @wo_hcaller(%class.T* %this, i8* %c) {
   ret void
 
 ; CHECK-SCO-LABEL: wo_hcaller:
-; CHECK-SCO: b wo_hcallee
+; CHECK-SCO: bl wo_hcallee
 }
 
 define weak_odr protected void @wo_pcallee(%class.T* %this, i8* %c) { ret void }
@@ -151,7 +151,7 @@ define void @wo_pcaller(%class.T* %this, i8* %c) {
   ret void
 
 ; CHECK-SCO-LABEL: wo_pcaller:
-; CHECK-SCO: b wo_pcallee
+; CHECK-SCO: bl wo_pcallee
 }
 
 define weak_odr void @wo_callee(%class.T* %this, i8* %c) { ret void }
@@ -169,7 +169,7 @@ define void @w_pcaller(i8* %ptr) {
   ret void
 
 ; CHECK-SCO-LABEL: w_pcaller:
-; CHECK-SCO: b w_pcallee
+; CHECK-SCO: bl w_pcallee
 }
 
 define weak hidden void @w_hcallee(i8* %ptr) { ret void }
@@ -178,7 +178,7 @@ define void @w_hcaller(i8* %ptr) {
   ret void
 
 ; CHECK-SCO-LABEL: w_hcaller:
-; CHECK-SCO: b w_hcallee
+; CHECK-SCO: bl w_hcallee
 }
 
 define weak void @w_callee(i8* %ptr) { ret void }
@@ -188,4 +188,16 @@ define void @w_caller(i8* %ptr) {
 
 ; CHECK-SCO-LABEL: w_caller:
 ; CHECK-SCO: bl w_callee
+}
+
+%struct.byvalTest = type { [8 x i8] }
+@byval = common global %struct.byvalTest zeroinitializer
+
+define void @byval_callee(%struct.byvalTest* byval %ptr) { ret void }
+define void @byval_caller() {
+  tail call void @byval_callee(%struct.byvalTest* byval @byval)
+  ret void
+
+; CHECK-SCO-LABEL: bl byval_callee
+; CHECK-SCO: bl byval_callee
 }

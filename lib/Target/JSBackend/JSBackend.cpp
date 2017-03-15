@@ -128,7 +128,7 @@ EnableSjLjEH("enable-pnacl-sjlj-eh",
              cl::init(false));
 
 static cl::opt<bool>
-EnableEmCxxExceptions("enable-emscripten-cxx-exceptions",
+EnableEmCxxExceptions("enable-emscripten-cpp-exceptions",
                       cl::desc("Enables C++ exceptions in emscripten"),
                       cl::init(false));
 
@@ -282,7 +282,7 @@ namespace {
         OptLevel(OptLevel), StackBumped(false), GlobalBasePadding(0), MaxGlobalAlign(0),
         CurrInstruction(nullptr) {}
 
-    const char *getPassName() const override { return "JavaScript backend"; }
+    StringRef getPassName() const override { return "JavaScript backend"; }
 
     bool runOnModule(Module &M) override;
 
@@ -300,6 +300,19 @@ namespace {
     raw_pwrite_stream& nl(raw_pwrite_stream &Out, int delta = 0);
 
   private:
+
+    // LLVM changed stripPointerCasts to use the "returned" attribute on
+    // calls and invokes, i.e., stripping pointer casts of a call to
+    // define internal i8* @strupr(i8* returned %str) #2 {
+    // will return the pointer, and ignore the call which has side
+    // effects. We sometimes do care about the side effects.
+    const Value* stripPointerCastsWithoutSideEffects(const Value* V) {
+      if (isa<CallInst>(V) || isa<InvokeInst>(V)) {
+        return V; // in theory we could check if there actually are side effects
+      }
+      return V->stripPointerCasts();
+    }
+
     void printCommaSeparated(const HeapData v);
 
     // parsing of constants has two phases: calculate, and then emit
@@ -1767,7 +1780,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
 
 std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV, sign);
@@ -1778,7 +1791,7 @@ std::string JSWriter::getValueAsStr(const Value* V, AsmCast sign) {
 
 std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V)) {
     return getConstant(cast<Constant>(V), sign);
@@ -1789,7 +1802,7 @@ std::string JSWriter::getValueAsCastStr(const Value* V, AsmCast sign) {
 
 std::string JSWriter::getValueAsParenStr(const Value* V) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (const Constant *CV = dyn_cast<Constant>(V)) {
     return getConstant(CV);
@@ -1800,7 +1813,7 @@ std::string JSWriter::getValueAsParenStr(const Value* V) {
 
 std::string JSWriter::getValueAsCastParenStr(const Value* V, AsmCast sign) {
   // Skip past no-op bitcasts and zero-index geps.
-  V = V->stripPointerCasts();
+  V = stripPointerCastsWithoutSideEffects(V);
 
   if (isa<ConstantInt>(V) || isa<ConstantFP>(V) || isa<UndefValue>(V)) {
     return getConstant(cast<Constant>(V), sign);
@@ -2450,7 +2463,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
   // and all-zero-index geps that LLVM needs to satisfy its type system, we
   // call stripPointerCasts() on all values before translating them. This
   // includes bitcasts whose only use is lifetime marker intrinsics.
-  assert(I == I->stripPointerCasts());
+  assert(I == stripPointerCastsWithoutSideEffects(I));
 
   Type *T = I->getType();
   if (T->isIntegerTy() && ((!OnlyWebAssembly && T->getIntegerBitWidth() > 32) ||
@@ -2780,16 +2793,16 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     GetElementPtrInst::const_op_iterator I = GEP->op_begin();
     I++;
     for (GetElementPtrInst::const_op_iterator E = GEP->op_end();
-       I != E; ++I) {
+       I != E; ++I, ++GTI) {
       const Value *Index = *I;
-      if (StructType *STy = dyn_cast<StructType>(*GTI++)) {
+      if (StructType *STy = GTI.getStructTypeOrNull()) {
         // For a struct, add the member offset.
         unsigned FieldNo = cast<ConstantInt>(Index)->getZExtValue();
         uint32_t Offset = DL->getStructLayout(STy)->getElementOffset(FieldNo);
         ConstantOffset = (uint32_t)ConstantOffset + Offset;
       } else {
         // For an array, add the element offset, explicitly scaled.
-        uint32_t ElementSize = DL->getTypeAllocSize(*GTI);
+        uint32_t ElementSize = DL->getTypeAllocSize(GTI.getIndexedType());
         if (const ConstantInt *CI = dyn_cast<ConstantInt>(Index)) {
           // The index is constant. Add it to the accumulating offset.
           ConstantOffset = (uint32_t)ConstantOffset + (uint32_t)CI->getSExtValue() * ElementSize;
@@ -3049,7 +3062,7 @@ void JSWriter::addBlock(const BasicBlock *BB, Relooper& R, LLVMToRelooperMap& LL
   for (BasicBlock::const_iterator II = BB->begin(), E = BB->end();
        II != E; ++II) {
     auto I = &*II;
-    if (I->stripPointerCasts() == I) {
+    if (stripPointerCastsWithoutSideEffects(I) == I) {
       CurrInstruction = I;
       generateExpression(I, CodeStream);
     }
@@ -4319,7 +4332,7 @@ Pass *createCheckTriplePass() {
 bool JSTargetMachine::addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify, AnalysisID StartBefore,
-      AnalysisID StartAfter, AnalysisID StopAfter,
+      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter,
       MachineFunctionInitializer *MFInitializer) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 

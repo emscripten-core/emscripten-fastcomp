@@ -50,7 +50,7 @@
 using namespace llvm;
 
 static cl::list<std::string>
-Whitelist("emscripten-cxx-exceptions-whitelist",
+Whitelist("emscripten-cpp-exceptions-whitelist",
           cl::desc("Enables C++ exceptions in emscripten (see emscripten EXCEPTION_CATCHING_WHITELIST option)"),
           cl::CommaSeparated);
 

@@ -27,7 +27,6 @@ required_libraries =
  IRReader
  IPO
  Instrumentation
- JSBackend
  Linker
  ObjCARC
  Scalar

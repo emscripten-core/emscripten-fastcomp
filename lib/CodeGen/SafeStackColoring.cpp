@@ -25,7 +25,9 @@ static cl::opt<bool> ClColoring("safe-stack-coloring",
                                 cl::Hidden, cl::init(true));
 
 const StackColoring::LiveRange &StackColoring::getLiveRange(AllocaInst *AI) {
-  return LiveRanges[AllocaNumbering[AI]];
+  const auto IT = AllocaNumbering.find(AI);
+  assert(IT != AllocaNumbering.end());
+  return LiveRanges[IT->second];
 }
 
 bool StackColoring::readMarker(Instruction *I, bool *IsStart) {
@@ -212,10 +214,12 @@ void StackColoring::calculateLiveIntervals() {
       unsigned AllocaNo = It.second.AllocaNo;
 
       if (IsStart) {
-        assert(!Started.test(AllocaNo));
-        Started.set(AllocaNo);
-        Ended.reset(AllocaNo);
-        Start[AllocaNo] = InstNo;
+        assert(!Started.test(AllocaNo) || Start[AllocaNo] == BBStart);
+        if (!Started.test(AllocaNo)) {
+          Started.set(AllocaNo);
+          Ended.reset(AllocaNo);
+          Start[AllocaNo] = InstNo;
+        }
       } else {
         assert(!Ended.test(AllocaNo));
         if (Started.test(AllocaNo)) {

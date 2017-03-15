@@ -53,6 +53,17 @@ define i1 @test3a(i32 %A) {
 	ret i1 %C
 }
 
+define <2 x i1> @test3a_vec(<2 x i32> %A) {
+; CHECK-LABEL: @test3a_vec(
+; CHECK-NEXT:    [[B1:%.*]] = and <2 x i32> %A, <i32 7, i32 7>
+; CHECK-NEXT:    [[C:%.*]] = icmp ne <2 x i32> [[B1]], zeroinitializer
+; CHECK-NEXT:    ret <2 x i1> [[C]]
+;
+  %B = srem <2 x i32> %A, <i32 -8, i32 -8>
+  %C = icmp ne <2 x i32> %B, zeroinitializer
+  ret <2 x i1> %C
+}
+
 define i32 @test4(i32 %X, i1 %C) {
 ; CHECK-LABEL: @test4(
 ; CHECK-NEXT: [[SEL:%.*]] = select i1 %C, i32 0, i32 7
@@ -193,11 +204,11 @@ define i32 @test17(i32 %X) {
 
 define i32 @test18(i16 %x, i32 %y) {
 ; CHECK: @test18
-; CHECK-NEXT: [[AND:%.*]] = and i16 %x, 4
-; CHECK-NEXT: [[EXT:%.*]] = zext i16 [[AND]] to i32
-; CHECK-NEXT: [[SHL:%.*]] = shl nuw nsw i32 [[EXT]], 3
-; CHECK-NEXT: [[XOR:%.*]] = xor i32 [[SHL]], 63
-; CHECK-NEXT: [[REM:%.*]] = and i32 [[XOR]], %y
+; CHECK-NEXT: [[SHL:%.*]] = shl i16 %x, 3
+; CHECK-NEXT: [[AND:%.*]] = and i16 [[SHL]], 32
+; CHECK-NEXT: [[XOR:%.*]] = xor i16 [[AND]], 63
+; CHECK-NEXT: [[EXT:%.*]] = zext i16 [[XOR]] to i32
+; CHECK-NEXT: [[REM:%.*]] = and i32 [[EXT]], %y
 ; CHECK-NEXT: ret i32 [[REM]]
 	%1 = and i16 %x, 4
 	%2 = icmp ne i16 %1, 0

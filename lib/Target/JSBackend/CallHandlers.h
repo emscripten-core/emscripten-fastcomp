@@ -24,7 +24,7 @@ const Value *getActuallyCalledValue(const Instruction *I) {
   // for example, extern void x() in C will turn into void x(...) in LLVM IR, then the IR bitcasts
   // it to the proper form right before the call. this both causes an unnecessary indirect
   // call, and it is done with the wrong type. TODO: don't even put it into the function table
-  if (const Function *F = dyn_cast<const Function>(CV->stripPointerCasts())) {
+  if (const Function *F = dyn_cast<const Function>(stripPointerCastsWithoutSideEffects(CV))) {
     CV = F;
   }
   return CV;
@@ -603,11 +603,11 @@ DEF_CALL_HANDLER(llvm_lifetime_end, {
   return "";
 })
 
-DEF_CALL_HANDLER(llvm_invariant_start, {
+DEF_CALL_HANDLER(llvm_invariant_start_p0i8, {
   return "";
 })
 
-DEF_CALL_HANDLER(llvm_invariant_end, {
+DEF_CALL_HANDLER(llvm_invariant_end_p0i8, {
   return "";
 })
 
@@ -1629,8 +1629,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_dbg_value);
   SETUP_CALL_HANDLER(llvm_lifetime_start);
   SETUP_CALL_HANDLER(llvm_lifetime_end);
-  SETUP_CALL_HANDLER(llvm_invariant_start);
-  SETUP_CALL_HANDLER(llvm_invariant_end);
+  SETUP_CALL_HANDLER(llvm_invariant_start_p0i8);
+  SETUP_CALL_HANDLER(llvm_invariant_end_p0i8);
   SETUP_CALL_HANDLER(llvm_prefetch);
   SETUP_CALL_HANDLER(llvm_objectsize_i32_p0i8);
   SETUP_CALL_HANDLER(llvm_flt_rounds);

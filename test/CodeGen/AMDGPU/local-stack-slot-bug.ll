@@ -6,11 +6,16 @@
 ; from https://bugs.freedesktop.org/show_bug.cgi?id=96602
 ;
 ; CHECK-LABEL: {{^}}main:
-; CHECK: v_lshlrev_b32_e32 [[BYTES:v[0-9]+]], 2, v0
-; CHECK: v_mov_b32_e32 [[HI_CONST:v[0-9]+]], 0x200
-; CHECK: v_mov_b32_e32 [[LO_CONST:v[0-9]+]], 0
-; CHECK: v_add_i32_e32 [[HI_OFF:v[0-9]+]], vcc, [[BYTES]], [[HI_CONST]]
-; CHECK: v_add_i32_e32 [[LO_OFF:v[0-9]+]], vcc, [[BYTES]], [[LO_CONST]]
+
+; CHECK-DAG: v_mov_b32_e32 [[K:v[0-9]+]], 0x200
+; CHECK-DAG: v_mov_b32_e32 [[ZERO:v[0-9]+]], 0{{$}}
+; CHECK-DAG: v_lshlrev_b32_e32 [[BYTES:v[0-9]+]], 2, v0
+; CHECK-DAG: v_and_b32_e32 [[CLAMP_IDX:v[0-9]+]], 0x1fc, [[BYTES]]
+
+; TODO: add 0?
+; CHECK-DAG: v_or_b32_e32 [[LO_OFF:v[0-9]+]], [[CLAMP_IDX]], [[ZERO]]
+; CHECK-DAG: v_or_b32_e32 [[HI_OFF:v[0-9]+]], [[CLAMP_IDX]], [[K]]
+
 ; CHECK: buffer_load_dword {{v[0-9]+}}, [[LO_OFF]], {{s\[[0-9]+:[0-9]+\]}}, {{s[0-9]+}} offen
 ; CHECK: buffer_load_dword {{v[0-9]+}}, [[HI_OFF]], {{s\[[0-9]+:[0-9]+\]}}, {{s[0-9]+}} offen
 define amdgpu_ps float @main(i32 %idx) {
