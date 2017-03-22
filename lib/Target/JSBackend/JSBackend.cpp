@@ -38,6 +38,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/Transforms/IPO.h"
@@ -1924,7 +1925,7 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
     Code << getAssignIfNeeded(EEI);
     std::string OperandCode;
     raw_string_ostream CodeStream(OperandCode);
-    CodeStream << std::string("SIMD_") << SIMDType(VT) << "_extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << std::to_string(Index) << ')';
+    CodeStream << std::string("SIMD_") << SIMDType(VT) << "_extractLane(" << getValueAsStr(EEI->getVectorOperand()) << ',' << Index << ')';
     Code << getCast(CodeStream.str(), EEI->getType());
     return;
   }
@@ -1936,7 +1937,7 @@ void JSWriter::generateExtractElementExpression(const ExtractElementInst *EEI, r
 std::string castIntVecToBoolVec(int numElems, const std::string &str)
 {
   int elemWidth = 128 / numElems;
-  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
+  std::string simdType = "SIMD_Int" + to_string(elemWidth) + "x" + to_string(numElems);
   return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
 }
 

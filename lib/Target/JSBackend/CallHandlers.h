@@ -7,6 +7,8 @@
 // which are reported as declared but not implemented symbols, so that
 // JS linking brings them in.
 
+#include "llvm/Support/ScopedPrinter.h"
+
 typedef std::string (JSWriter::*CallHandler)(const Instruction*, std::string Name, int NumArgs);
 typedef std::map<std::string, CallHandler> CallHandlerMap;
 CallHandlerMap CallHandlers;
@@ -1039,7 +1041,7 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_Float32x4_abs);
 std::string castBoolVecToIntVec(int numElems, const std::string &str, bool signExtend)
 {
   int elemWidth = 128 / numElems;
-  std::string simdType = "SIMD_Int" + std::to_string(elemWidth) + "x" + std::to_string(numElems);
+  std::string simdType = "SIMD_Int" + llvm::to_string(elemWidth) + "x" + llvm::to_string(numElems);
   return simdType + "_select(" + str + ", " + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
 }
 DEF_CALL_HANDLER(emscripten_float32x4_lessThan, {
