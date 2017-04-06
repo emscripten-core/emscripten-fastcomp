@@ -68,7 +68,9 @@ char ExpandStructRegs::ID = 0;
 INITIALIZE_PASS(ExpandStructRegs, "expand-struct-regs",
                 "Expand out variables with struct types", false, false)
 
-static bool DoAnotherPass(Type *Ty) { return isa<StructType>(Ty); }
+static bool DoAnotherPass(Type *Ty) {
+  return isa<StructType>(Ty) || isa<ArrayType>(Ty);
+}
 static bool DoAnotherPass(Value *V) { return DoAnotherPass(V->getType()); }
 
 static bool SplitUpPHINode(PHINode *Phi) {
