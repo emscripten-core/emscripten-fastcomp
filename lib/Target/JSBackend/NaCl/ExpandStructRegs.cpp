@@ -319,6 +319,37 @@ static bool SplitUpArrayLoad(LoadInst *Load, const DataLayout *DL) {
   return NeedsAnotherPass;
 }
 
+static bool SplitUpArraySelect(SelectInst *Select, const DataLayout *DL) {
+  ArrayType *ATy = cast<ArrayType>(Select->getType());
+  Value *NewStruct = UndefValue::get(ATy);
+
+  bool NeedsAnotherPass = false;
+  // Create a separate select instruction for each struct field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+    Value *TrueValue = ExtractValueInst::Create(Select->getTrueValue(),
+                                                EVIndexes, "", Select);
+    Value *FalseValue = ExtractValueInst::Create(Select->getFalseValue(),
+                                                 EVIndexes, "", Select);
+    SelectInst *NewSelect = new SelectInst(Select->getCondition(), TrueValue,
+                                           FalseValue, Select);
+    NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewSelect);
+
+    // Reconstruct the struct value.
+    SmallVector<unsigned, 1> IVIndexes;
+    IVIndexes.push_back(Index);
+    NewStruct =
+        CopyDebug(InsertValueInst::Create(NewStruct, NewSelect, IVIndexes,
+                                          Select->getName() + ".insert", Select),
+                  Select);
+  }
+  Select->replaceAllUsesWith(NewStruct);
+  Select->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
 static bool ExpandExtractValue(ExtractValueInst *EV,
                                SmallVectorImpl<Instruction *> *ToErase) {
   // Search for the insertvalue instruction that inserts the struct field
@@ -547,6 +578,9 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
           } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
             if (Select->getType()->isStructTy()) {
               NeedsAnotherPass |= SplitUpSelect(Select);
+              Changed = true;
+            } else if (Select->getType()->isArrayTy()) {
+              NeedsAnotherPass |= SplitUpArraySelect(Select);
               Changed = true;
             }
           }
