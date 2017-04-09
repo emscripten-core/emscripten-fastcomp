@@ -352,6 +352,48 @@ static bool SplitUpArraySelect(SelectInst *Select) {
   return NeedsAnotherPass;
 }
 
+static bool SplitUpArrayPHINode(PHINode *Phi) {
+  ArrayType *ATy = cast<ArrayType>(Phi->getType());
+
+  Value *NewArray = UndefValue::get(ATy);
+  Instruction *NewArrayInsertPt = &*Phi->getParent()->getFirstInsertionPt();
+
+  bool NeedsAnotherPass = false;
+
+  // Create a separate PHINode for each array field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+
+    Type *ElemTy = ATy->getElementType();
+    NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(ElemTy);
+
+    PHINode *NewPhi = PHINode::Create(ElemTy, Phi->getNumIncomingValues(),
+                                      Phi->getName() + ".index", Phi);
+    CopyDebug(NewPhi, Phi);
+    for (unsigned PhiIndex = 0; PhiIndex < Phi->getNumIncomingValues();
+         ++PhiIndex) {
+      BasicBlock *IncomingBB = Phi->getIncomingBlock(PhiIndex);
+      Value *EV = CopyDebug(
+          ExtractValueInst::Create(Phi->getIncomingValue(PhiIndex), EVIndexes,
+                                   Phi->getName() + ".extract",
+                                   IncomingBB->getTerminator()),
+          Phi);
+      NewPhi->addIncoming(EV, IncomingBB);
+    }
+
+    // Reconstruct the original struct value.
+    NewArray = CopyDebug(InsertValueInst::Create(NewArray, NewPhi, EVIndexes,
+                                                 Phi->getName() + ".insert",
+                                                 NewArrayInsertPt),
+                          Phi);
+  }
+  Phi->replaceAllUsesWith(NewArray);
+  Phi->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
 static bool ExpandExtractValue(ExtractValueInst *EV,
                                SmallVectorImpl<Instruction *> *ToErase) {
   // Search for the insertvalue instruction that inserts the struct field
@@ -575,6 +617,9 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
           } else if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
             if (Phi->getType()->isStructTy()) {
               NeedsAnotherPass |= SplitUpPHINode(Phi);
+              Changed = true;
+            }else if (Phi->getType()->isArrayTy()) {
+              NeedsAnotherPass |= SplitUpArrayPHINode(Phi);
               Changed = true;
             }
           } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
