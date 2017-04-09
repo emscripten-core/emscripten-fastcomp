@@ -319,7 +319,7 @@ static bool SplitUpArrayLoad(LoadInst *Load, const DataLayout *DL) {
   return NeedsAnotherPass;
 }
 
-static bool SplitUpArraySelect(SelectInst *Select, const DataLayout *DL) {
+static bool SplitUpArraySelect(SelectInst *Select) {
   ArrayType *ATy = cast<ArrayType>(Select->getType());
   Value *NewStruct = UndefValue::get(ATy);
 
@@ -332,8 +332,10 @@ static bool SplitUpArraySelect(SelectInst *Select, const DataLayout *DL) {
                                                 EVIndexes, "", Select);
     Value *FalseValue = ExtractValueInst::Create(Select->getFalseValue(),
                                                  EVIndexes, "", Select);
-    SelectInst *NewSelect = new SelectInst(Select->getCondition(), TrueValue,
-                                           FalseValue, Select);
+    SelectInst *NewSelect = SelectInst::Create(Select->getCondition(),
+                                               TrueValue, FalseValue,
+                                               Select->getName(),
+                                               Select);
     NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewSelect);
 
     // Reconstruct the struct value.
