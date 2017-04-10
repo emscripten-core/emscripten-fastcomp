@@ -259,7 +259,7 @@ static bool SplitUpArrayStore(StoreInst *Store, const DataLayout *DL) {
   ArrayType *ATy = cast<ArrayType>(Store->getValueOperand()->getType());
 
   bool NeedsAnotherPass = false;
-  // Create a separate store instruction for each struct field.
+  // Create a separate store instruction for each array field.
   for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
     SmallVector<Value *, 2> Indexes;
     Indexes.push_back(ConstantInt::get(Store->getContext(), APInt(32, 0)));
@@ -287,10 +287,10 @@ static bool SplitUpArrayStore(StoreInst *Store, const DataLayout *DL) {
 
 static bool SplitUpArrayLoad(LoadInst *Load, const DataLayout *DL) {
   ArrayType *ATy = cast<ArrayType>(Load->getType());
-  Value *NewStruct = UndefValue::get(ATy);
+  Value *NewArray = UndefValue::get(ATy);
 
   bool NeedsAnotherPass = false;
-  // Create a separate load instruction for each struct field.
+  // Create a separate load instruction for each array field.
   for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
     SmallVector<Value *, 2> Indexes;
     Indexes.push_back(ConstantInt::get(Load->getContext(), APInt(32, 0)));
@@ -305,16 +305,91 @@ static bool SplitUpArrayLoad(LoadInst *Load, const DataLayout *DL) {
     NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewLoad);
     ProcessArrayLoadOrStoreAttrs(NewLoad, Load, ATy, Index, DL);
 
-    // Reconstruct the struct value.
+    // Reconstruct the array value.
     SmallVector<unsigned, 1> EVIndexes;
     EVIndexes.push_back(Index);
-    NewStruct =
-        CopyDebug(InsertValueInst::Create(NewStruct, NewLoad, EVIndexes,
+    NewArray =
+        CopyDebug(InsertValueInst::Create(NewArray, NewLoad, EVIndexes,
                                           Load->getName() + ".insert", Load),
                   Load);
   }
-  Load->replaceAllUsesWith(NewStruct);
+  Load->replaceAllUsesWith(NewArray);
   Load->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
+static bool SplitUpArraySelect(SelectInst *Select) {
+  ArrayType *ATy = cast<ArrayType>(Select->getType());
+  Value *NewArray = UndefValue::get(ATy);
+
+  bool NeedsAnotherPass = false;
+  // Create a separate select instruction for each array field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+    Value *TrueValue = ExtractValueInst::Create(Select->getTrueValue(),
+                                                EVIndexes, "", Select);
+    Value *FalseValue = ExtractValueInst::Create(Select->getFalseValue(),
+                                                 EVIndexes, "", Select);
+    SelectInst *NewSelect = SelectInst::Create(Select->getCondition(),
+                                               TrueValue, FalseValue,
+                                               Select->getName(),
+                                               Select);
+    NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(NewSelect);
+
+    // Reconstruct the struct value.
+    SmallVector<unsigned, 1> IVIndexes;
+    IVIndexes.push_back(Index);
+    NewArray =
+        CopyDebug(InsertValueInst::Create(NewArray, NewSelect, IVIndexes,
+                                          Select->getName() + ".insert", Select),
+                  Select);
+  }
+  Select->replaceAllUsesWith(NewArray);
+  Select->eraseFromParent();
+
+  return NeedsAnotherPass;
+}
+
+static bool SplitUpArrayPHINode(PHINode *Phi) {
+  ArrayType *ATy = cast<ArrayType>(Phi->getType());
+
+  Value *NewArray = UndefValue::get(ATy);
+  Instruction *NewArrayInsertPt = &*Phi->getParent()->getFirstInsertionPt();
+
+  bool NeedsAnotherPass = false;
+
+  // Create a separate PHINode for each array field.
+  for (unsigned Index = 0; Index < ATy->getNumElements(); ++Index) {
+    SmallVector<unsigned, 1> EVIndexes;
+    EVIndexes.push_back(Index);
+
+    Type *ElemTy = ATy->getElementType();
+    NeedsAnotherPass = NeedsAnotherPass || DoAnotherPass(ElemTy);
+
+    PHINode *NewPhi = PHINode::Create(ElemTy, Phi->getNumIncomingValues(),
+                                      Phi->getName() + ".index", Phi);
+    CopyDebug(NewPhi, Phi);
+    for (unsigned PhiIndex = 0; PhiIndex < Phi->getNumIncomingValues();
+         ++PhiIndex) {
+      BasicBlock *IncomingBB = Phi->getIncomingBlock(PhiIndex);
+      Value *EV = CopyDebug(
+          ExtractValueInst::Create(Phi->getIncomingValue(PhiIndex), EVIndexes,
+                                   Phi->getName() + ".extract",
+                                   IncomingBB->getTerminator()),
+          Phi);
+      NewPhi->addIncoming(EV, IncomingBB);
+    }
+
+    // Reconstruct the original array value.
+    NewArray = CopyDebug(InsertValueInst::Create(NewArray, NewPhi, EVIndexes,
+                                                 Phi->getName() + ".insert",
+                                                 NewArrayInsertPt),
+                          Phi);
+  }
+  Phi->replaceAllUsesWith(NewArray);
+  Phi->eraseFromParent();
 
   return NeedsAnotherPass;
 }
@@ -543,10 +618,16 @@ bool ExpandStructRegs::runOnFunction(Function &Func) {
             if (Phi->getType()->isStructTy()) {
               NeedsAnotherPass |= SplitUpPHINode(Phi);
               Changed = true;
+            }else if (Phi->getType()->isArrayTy()) {
+              NeedsAnotherPass |= SplitUpArrayPHINode(Phi);
+              Changed = true;
             }
           } else if (SelectInst *Select = dyn_cast<SelectInst>(Inst)) {
             if (Select->getType()->isStructTy()) {
               NeedsAnotherPass |= SplitUpSelect(Select);
+              Changed = true;
+            } else if (Select->getType()->isArrayTy()) {
+              NeedsAnotherPass |= SplitUpArraySelect(Select);
               Changed = true;
             }
           }
