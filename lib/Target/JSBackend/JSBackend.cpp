@@ -113,6 +113,11 @@ Relocatable("emscripten-relocatable",
             cl::init(false));
 
 static cl::opt<bool>
+LegalizeJavaScriptFFI("emscripten-legalize-javascript-ffi",
+           cl::desc("Whether to legalize JavaScript FFI calls (see emscripten LEGALIZE_JS_FFI option)"),
+           cl::init(true));
+
+static cl::opt<bool>
 SideModule("emscripten-side-module",
            cl::desc("Whether to emit a side module (see emscripten SIDE_MODULE option)"),
            cl::init(false));
