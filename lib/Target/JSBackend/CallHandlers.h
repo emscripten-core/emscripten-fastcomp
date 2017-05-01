@@ -139,7 +139,7 @@ DEF_CALL_HANDLER(__default__, {
     if (NumArgs > 0) text += ",";
   }
   // this is an ffi call if we need casts, and it is not a special Math_ builtin or wasm-only intrinsic
-  bool FFI = NeedCasts;
+  bool FFI = LegalizeJavaScriptFFI && NeedCasts;
   if (FFI) {
     if (IsMath && (Name == "Math_ceil" || Name == "Math_floor" || Name == "Math_min" || Name == "Math_max" || Name == "Math_sqrt" || Name == "Math_abs")) {
       // This special Math builtin is optimizable with all types, including floats, so can treat it as non-ffi
