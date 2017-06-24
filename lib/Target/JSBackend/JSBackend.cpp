@@ -209,7 +209,7 @@ namespace {
   typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
   struct AsmConstInfo {
     int Id;
-    std::set<std::string> Sigs;
+    std::set<std::pair<std::string /*call type*/, std::string /*signature*/> > Sigs;
   };
 
   /// JSWriter - This class is the main chunk of code that converts an LLVM
@@ -628,7 +628,7 @@ namespace {
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
-    unsigned getAsmConstId(const Value *V, std::string Sig) {
+    unsigned getAsmConstId(const Value *V, std::string CallType, std::string Sig) {
       V = resolveFully(V);
       const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
       std::string code;
@@ -665,11 +665,11 @@ namespace {
       if (AsmConsts.count(code) > 0) {
         auto& Info = AsmConsts[code];
         Id = Info.Id;
-        Info.Sigs.insert(Sig);
+        Info.Sigs.insert(std::make_pair(CallType, Sig));
       } else {
         AsmConstInfo Info;
         Info.Id = Id = AsmConsts.size();
-        Info.Sigs.insert(Sig);
+        Info.Sigs.insert(std::make_pair(CallType, Sig));
         AsmConsts[code] = Info;
       }
       return Id;
@@ -3797,6 +3797,8 @@ void JSWriter::printModuleBody() {
     }
     Out << "\"" << utostr(I.second.Id) << "\": [\"" << I.first.c_str() << "\", [";
     auto& Sigs = I.second.Sigs;
+
+    // Signatures of the EM_ASM blocks
     bool innerFirst = true;
     for (auto& Sig : Sigs) {
       if (innerFirst) {
@@ -3804,8 +3806,21 @@ void JSWriter::printModuleBody() {
       } else {
         Out << ", ";
       }
-      Out << "\"" << Sig << "\"";
+      Out << "\"" << Sig.second << "\"";
     }
+
+     Out << "], [";
+    // Call types for proxying (sync, async or none)
+    innerFirst = true;
+    for (auto& Sig : Sigs) {
+      if (innerFirst) {
+        innerFirst = false;
+      } else {
+        Out << ", ";
+      }
+      Out << "\"" << Sig.first << "\"";
+    }
+
     Out << "]]";
   }
   Out << "}";
