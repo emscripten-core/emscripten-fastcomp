@@ -38,6 +38,7 @@
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/IR/GetElementPtrTypeIterator.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/IR/DebugInfo.h"
@@ -728,8 +729,16 @@ namespace {
         auto *Scope = cast_or_null<DIScope>(Loc.getScope());
         if (Scope) {
           StringRef File = Scope->getFilename();
-          if (Line > 0)
-            Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+		  if (Line > 0)
+		  {
+			  const StringRef Dir = Loc->getDirectory();
+			  const Twine currentFilePath(File);
+
+			  if (llvm::sys::path::is_absolute(currentFilePath))
+				Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? File.str() : "?") << "\"";
+			  else
+				Code << " //@line " << utostr(Line) << " \"" << (File.size() > 0 ? Dir.str() + "/" + File.str() : "?") << "\"";
+		  }
         }
       }
     }
