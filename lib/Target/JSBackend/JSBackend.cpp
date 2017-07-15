@@ -3702,10 +3702,13 @@ void JSWriter::printModuleBody() {
     // wasm emulated function pointers use just one table
     if (!(WebAssembly && EmulatedFunctionPointers && I->first != "X")) {
       FunctionTable &Table = I->second;
-      // ensure power of two
-      unsigned Size = 1;
-      while (Size < Table.size()) Size <<= 1;
-      while (Table.size() < Size) Table.push_back("0");
+      // we don't need power-of-2 size tables when in wasm-only mode and emulating function pointers
+      if (!(OnlyWebAssembly && EmulatedFunctionPointers)) {
+        // ensure power of two
+        unsigned Size = 1;
+        while (Size < Table.size()) Size <<= 1;
+        while (Table.size() < Size) Table.push_back("0");
+      }
       for (unsigned i = 0; i < Table.size(); i++) {
         Out << Table[i];
         if (i < Table.size()-1) Out << ",";
