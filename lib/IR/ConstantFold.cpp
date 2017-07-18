@@ -18,6 +18,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "ConstantFold.h"
+#include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
@@ -222,7 +223,7 @@ static Constant *ExtractConstantBytes(Constant *C, unsigned ByteStart,
   if (ConstantInt *CI = dyn_cast<ConstantInt>(C)) {
     APInt V = CI->getValue();
     if (ByteStart)
-      V = V.lshr(ByteStart*8);
+      V.lshrInPlace(ByteStart*8);
     V = V.trunc(ByteSize*8);
     return ConstantInt::get(CI->getContext(), V);
   }
@@ -347,8 +348,7 @@ static Constant *ExtractConstantBytes(Constant *C, unsigned ByteStart,
 /// factors factored out. If Folded is false, return null if no factoring was
 /// possible, to avoid endlessly bouncing an unfoldable expression back into the
 /// top-level folder.
-static Constant *getFoldedSizeOf(Type *Ty, Type *DestTy,
-                                 bool Folded) {
+static Constant *getFoldedSizeOf(Type *Ty, Type *DestTy, bool Folded) {
   if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
     Constant *N = ConstantInt::get(DestTy, ATy->getNumElements());
     Constant *E = getFoldedSizeOf(ATy->getElementType(), DestTy, true);
@@ -403,8 +403,7 @@ static Constant *getFoldedSizeOf(Type *Ty, Type *DestTy,
 /// factors factored out. If Folded is false, return null if no factoring was
 /// possible, to avoid endlessly bouncing an unfoldable expression back into the
 /// top-level folder.
-static Constant *getFoldedAlignOf(Type *Ty, Type *DestTy,
-                                  bool Folded) {
+static Constant *getFoldedAlignOf(Type *Ty, Type *DestTy, bool Folded) {
   // The alignment of an array is equal to the alignment of the
   // array element. Note that this is not always true for vectors.
   if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
@@ -468,8 +467,7 @@ static Constant *getFoldedAlignOf(Type *Ty, Type *DestTy,
 /// any known factors factored out. If Folded is false, return null if no
 /// factoring was possible, to avoid endlessly bouncing an unfoldable expression
 /// back into the top-level folder.
-static Constant *getFoldedOffsetOf(Type *Ty, Constant *FieldNo,
-                                   Type *DestTy,
+static Constant *getFoldedOffsetOf(Type *Ty, Constant *FieldNo, Type *DestTy,
                                    bool Folded) {
   if (ArrayType *ATy = dyn_cast<ArrayType>(Ty)) {
     Constant *N = ConstantExpr::getCast(CastInst::getCastOpcode(FieldNo, false,
@@ -606,17 +604,15 @@ Constant *llvm::ConstantFoldCastInstruction(unsigned opc, Constant *V,
     if (ConstantFP *FPC = dyn_cast<ConstantFP>(V)) {
       const APFloat &V = FPC->getValueAPF();
       bool ignored;
-      uint64_t x[2];
       uint32_t DestBitWidth = cast<IntegerType>(DestTy)->getBitWidth();
+      APSInt IntVal(DestBitWidth, opc == Instruction::FPToUI);
       if (APFloat::opInvalidOp ==
-          V.convertToInteger(x, DestBitWidth, opc==Instruction::FPToSI,
-                             APFloat::rmTowardZero, &ignored)) {
+          V.convertToInteger(IntVal, APFloat::rmTowardZero, &ignored)) {
         // Undefined behavior invoked - the destination type can't represent
         // the input constant.
         return UndefValue::get(DestTy);
       }
-      APInt Val(DestBitWidth, x);
-      return ConstantInt::get(FPC->getContext(), Val);
+      return ConstantInt::get(FPC->getContext(), IntVal);
     }
     return nullptr; // Can't fold.
   case Instruction::IntToPtr:   //always treated as unsigned
@@ -1209,10 +1205,15 @@ Constant *llvm::ConstantFoldBinaryInstruction(unsigned Opcode,
     SmallVector<Constant*, 16> Result;
     Type *Ty = IntegerType::get(VTy->getContext(), 32);
     for (unsigned i = 0, e = VTy->getNumElements(); i != e; ++i) {
-      Constant *LHS =
-        ConstantExpr::getExtractElement(C1, ConstantInt::get(Ty, i));
-      Constant *RHS =
-        ConstantExpr::getExtractElement(C2, ConstantInt::get(Ty, i));
+      Constant *ExtractIdx = ConstantInt::get(Ty, i);
+      Constant *LHS = ConstantExpr::getExtractElement(C1, ExtractIdx);
+      Constant *RHS = ConstantExpr::getExtractElement(C2, ExtractIdx);
+
+      // If any element of a divisor vector is zero, the whole op is undef.
+      if ((Opcode == Instruction::SDiv || Opcode == Instruction::UDiv ||
+           Opcode == Instruction::SRem || Opcode == Instruction::URem) &&
+          RHS->isNullValue())
+        return UndefValue::get(VTy);
 
       Result.push_back(ConstantExpr::get(Opcode, LHS, RHS));
     }
@@ -2037,9 +2038,6 @@ Constant *llvm::ConstantFoldGetElementPtr(Type *PointeeTy, Constant *C,
                                           Optional<unsigned> InRangeIndex,
                                           ArrayRef<Value *> Idxs) {
   if (Idxs.empty()) return C;
-  Constant *Idx0 = cast<Constant>(Idxs[0]);
-  if ((Idxs.size() == 1 && Idx0->isNullValue()))
-    return C;
 
   if (isa<UndefValue>(C)) {
     Type *GEPTy = GetElementPtrInst::getGEPReturnType(
@@ -2047,10 +2045,15 @@ Constant *llvm::ConstantFoldGetElementPtr(Type *PointeeTy, Constant *C,
     return UndefValue::get(GEPTy);
   }
 
+  Constant *Idx0 = cast<Constant>(Idxs[0]);
+  if (Idxs.size() == 1 && (Idx0->isNullValue() || isa<UndefValue>(Idx0)))
+    return C;
+
   if (C->isNullValue()) {
     bool isNull = true;
     for (unsigned i = 0, e = Idxs.size(); i != e; ++i)
-      if (!cast<Constant>(Idxs[i])->isNullValue()) {
+      if (!isa<UndefValue>(Idxs[i]) &&
+          !cast<Constant>(Idxs[i])->isNullValue()) {
         isNull = false;
         break;
       }
@@ -2231,7 +2234,8 @@ Constant *llvm::ConstantFoldGetElementPtr(Type *PointeeTy, Constant *C,
     ConstantInt *Factor = ConstantInt::get(CI->getType(), NumElements);
     NewIdxs[i] = ConstantExpr::getSRem(CI, Factor);
 
-    Constant *PrevIdx = cast<Constant>(Idxs[i - 1]);
+    Constant *PrevIdx = NewIdxs[i-1] ? NewIdxs[i-1] :
+                           cast<Constant>(Idxs[i - 1]);
     Constant *Div = ConstantExpr::getSDiv(CI, Factor);
 
     unsigned CommonExtendedWidth =

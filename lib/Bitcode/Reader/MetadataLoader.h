@@ -63,7 +63,7 @@ public:
 
   /// Return the given metadata, creating a replaceable forward reference if
   /// necessary.
-  Metadata *getMetadataFwdRef(unsigned Idx);
+  Metadata *getMetadataFwdRefOrLoad(unsigned Idx);
 
   MDNode *getMDNodeFwdRefOrNull(unsigned Idx);
 
@@ -79,6 +79,9 @@ public:
 
   unsigned size() const;
   void shrinkTo(unsigned N);
+
+  /// Perform bitcode upgrades on llvm.dbg.* calls.
+  void upgradeDebugIntrinsics(Function &F);
 };
 }
 

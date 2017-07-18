@@ -25,6 +25,7 @@
 namespace llvm {
 class LLVMContext;
 class MachineInstr;
+class MachineIRBuilder;
 class MachineRegisterInfo;
 class Type;
 class VectorType;
@@ -96,6 +97,7 @@ public:
   };
 
   LegalizerInfo();
+  virtual ~LegalizerInfo() = default;
 
   /// Compute any ancillary tables needed to quickly decide how an operation
   /// should be handled. This must be called after all "set*Action"methods but
@@ -143,16 +145,20 @@ public:
 
   /// Iterate the given function (typically something like doubling the width)
   /// on Ty until we find a legal type for this operation.
-  LLT findLegalType(const InstrAspect &Aspect,
-                    std::function<LLT(LLT)> NextType) const {
+  Optional<LLT> findLegalType(const InstrAspect &Aspect,
+                    function_ref<LLT(LLT)> NextType) const {
     LegalizeAction Action;
     const TypeMap &Map = Actions[Aspect.Opcode - FirstOp][Aspect.Idx];
     LLT Ty = Aspect.Type;
     do {
       Ty = NextType(Ty);
       auto ActionIt = Map.find(Ty);
-      if (ActionIt == Map.end())
-        Action = DefaultActions.find(Aspect.Opcode)->second;
+      if (ActionIt == Map.end()) {
+        auto DefaultIt = DefaultActions.find(Aspect.Opcode);
+        if (DefaultIt == DefaultActions.end())
+          return None;
+        Action = DefaultIt->second;
+      }
       else
         Action = ActionIt->second;
     } while(Action != Legal);
@@ -161,11 +167,14 @@ public:
 
   /// Find what type it's actually OK to perform the given operation on, given
   /// the general approach we've decided to take.
-  LLT findLegalType(const InstrAspect &Aspect, LegalizeAction Action) const;
+  Optional<LLT> findLegalType(const InstrAspect &Aspect, LegalizeAction Action) const;
 
   std::pair<LegalizeAction, LLT> findLegalAction(const InstrAspect &Aspect,
                                                  LegalizeAction Action) const {
-    return std::make_pair(Action, findLegalType(Aspect, Action));
+    auto LegalType = findLegalType(Aspect, Action);
+    if (!LegalType)
+      return std::make_pair(LegalizeAction::Unsupported, LLT());
+    return std::make_pair(Action, *LegalType);
   }
 
   /// Find the specified \p Aspect in the primary (explicitly set) Actions
@@ -185,6 +194,10 @@ public:
   }
 
   bool isLegal(const MachineInstr &MI, const MachineRegisterInfo &MRI) const;
+
+  virtual bool legalizeCustom(MachineInstr &MI,
+                              MachineRegisterInfo &MRI,
+                              MachineIRBuilder &MIRBuilder) const;
 
 private:
   static const int FirstOp = TargetOpcode::PRE_ISEL_GENERIC_OPCODE_START;

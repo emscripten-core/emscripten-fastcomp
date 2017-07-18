@@ -29,9 +29,9 @@ using namespace llvm;
 
 // Always verify dominfo if expensive checking is enabled.
 #ifdef EXPENSIVE_CHECKS
-static bool VerifyDomInfo = true;
+bool llvm::VerifyDomInfo = true;
 #else
-static bool VerifyDomInfo = false;
+bool llvm::VerifyDomInfo = false;
 #endif
 static cl::opt<bool,true>
 VerifyDomInfoX("verify-dom-info", cl::location(VerifyDomInfo),
@@ -72,6 +72,15 @@ template void llvm::Calculate<Function, Inverse<BasicBlock *>>(
     DominatorTreeBase<typename std::remove_pointer<
         GraphTraits<Inverse<BasicBlock *>>::NodeRef>::type> &DT,
     Function &F);
+
+bool DominatorTree::invalidate(Function &F, const PreservedAnalyses &PA,
+                               FunctionAnalysisManager::Invalidator &) {
+  // Check whether the analysis, all analyses on functions, or the function's
+  // CFG have been preserved.
+  auto PAC = PA.getChecker<DominatorTreeAnalysis>();
+  return !(PAC.preserved() || PAC.preservedSet<AllAnalysesOn<Function>>() ||
+           PAC.preservedSet<CFGAnalyses>());
+}
 
 // dominates - Return true if Def dominates a use in User. This performs
 // the special checks necessary if Def and User are in the same basic block.
@@ -141,12 +150,6 @@ bool DominatorTree::dominates(const Instruction *Def,
 
 bool DominatorTree::dominates(const BasicBlockEdge &BBE,
                               const BasicBlock *UseBB) const {
-  // Assert that we have a single edge. We could handle them by simply
-  // returning false, but since isSingleEdge is linear on the number of
-  // edges, the callers can normally handle them more efficiently.
-  assert(BBE.isSingleEdge() &&
-         "This function is not efficient in handling multiple edges");
-
   // If the BB the edge ends in doesn't dominate the use BB, then the
   // edge also doesn't.
   const BasicBlock *Start = BBE.getStart();
@@ -179,11 +182,17 @@ bool DominatorTree::dominates(const BasicBlockEdge &BBE,
   // trivially dominates itself, so we only have to find if it dominates the
   // other predecessors. Since the only way out of X is via NormalDest, X can
   // only properly dominate a node if NormalDest dominates that node too.
+  int IsDuplicateEdge = 0;
   for (const_pred_iterator PI = pred_begin(End), E = pred_end(End);
        PI != E; ++PI) {
     const BasicBlock *BB = *PI;
-    if (BB == Start)
+    if (BB == Start) {
+      // If there are multiple edges between Start and End, by definition they
+      // can't dominate anything.
+      if (IsDuplicateEdge++)
+        return false;
       continue;
+    }
 
     if (!dominates(End, BB))
       return false;
@@ -192,12 +201,6 @@ bool DominatorTree::dominates(const BasicBlockEdge &BBE,
 }
 
 bool DominatorTree::dominates(const BasicBlockEdge &BBE, const Use &U) const {
-  // Assert that we have a single edge. We could handle them by simply
-  // returning false, but since isSingleEdge is linear on the number of
-  // edges, the callers can normally handle them more efficiently.
-  assert(BBE.isSingleEdge() &&
-         "This function is not efficient in handling multiple edges");
-
   Instruction *UserInst = cast<Instruction>(U.getUser());
   // A PHI in the end of the edge is dominated by it.
   PHINode *PN = dyn_cast<PHINode>(UserInst);

@@ -20,8 +20,8 @@
 #include "llvm/MC/MCDisassembler/MCDisassembler.h"
 #include "llvm/MC/MCDisassembler/MCRelocationInfo.h"
 #include "llvm/MC/MCDisassembler/MCSymbolizer.h"
-#include <cstdint>
 #include <algorithm>
+#include <cstdint>
 #include <memory>
 
 namespace llvm {
@@ -39,6 +39,8 @@ class Twine;
 class AMDGPUDisassembler : public MCDisassembler {
 private:
   mutable ArrayRef<uint8_t> Bytes;
+  mutable uint32_t Literal;
+  mutable bool HasLiteral;
 
 public:
   AMDGPUDisassembler(const MCSubtargetInfo &STI, MCContext &Ctx) :
@@ -67,6 +69,7 @@ public:
   MCOperand decodeOperand_VS_32(unsigned Val) const;
   MCOperand decodeOperand_VS_64(unsigned Val) const;
   MCOperand decodeOperand_VSrc16(unsigned Val) const;
+  MCOperand decodeOperand_VSrcV216(unsigned Val) const;
 
   MCOperand decodeOperand_VReg_64(unsigned Val) const;
   MCOperand decodeOperand_VReg_96(unsigned Val) const;
@@ -85,6 +88,7 @@ public:
     OPW64,
     OPW128,
     OPW16,
+    OPWV216,
     OPW_LAST_,
     OPW_FIRST_ = OPW32
   };
@@ -100,6 +104,11 @@ public:
   MCOperand decodeSrcOp(const OpWidthTy Width, unsigned Val) const;
   MCOperand decodeSpecialReg32(unsigned Val) const;
   MCOperand decodeSpecialReg64(unsigned Val) const;
+
+  MCOperand decodeSDWA9Src(const OpWidthTy Width, unsigned Val) const;
+  MCOperand decodeSDWA9Src16(unsigned Val) const;
+  MCOperand decodeSDWA9Src32(unsigned Val) const;
+  MCOperand decodeSDWA9VopcDst(unsigned Val) const;
 };
 
 //===----------------------------------------------------------------------===//

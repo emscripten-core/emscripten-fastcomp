@@ -1,4 +1,4 @@
-//===--- DWARFAcceleratorTable.cpp ----------------------------------------===//
+//===- DWARFAcceleratorTable.cpp ------------------------------------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -8,11 +8,20 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/DebugInfo/DWARF/DWARFAcceleratorTable.h"
-#include "llvm/Support/Dwarf.h"
+
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/BinaryFormat/Dwarf.h"
+#include "llvm/DebugInfo/DWARF/DWARFContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
+#include "llvm/DebugInfo/DWARF/DWARFRelocMap.h"
+#include "llvm/Support/Compiler.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
+#include <cstddef>
+#include <cstdint>
+#include <utility>
 
-namespace llvm {
+using namespace llvm;
 
 bool DWARFAcceleratorTable::extract() {
   uint32_t Offset = 0;
@@ -46,7 +55,14 @@ bool DWARFAcceleratorTable::extract() {
   return true;
 }
 
-void DWARFAcceleratorTable::dump(raw_ostream &OS) const {
+uint32_t DWARFAcceleratorTable::getNumBuckets() { return Hdr.NumBuckets; }
+uint32_t DWARFAcceleratorTable::getNumHashes() { return Hdr.NumHashes; }
+uint32_t DWARFAcceleratorTable::getSizeHdr() { return sizeof(Hdr); }
+uint32_t DWARFAcceleratorTable::getHeaderDataLength() {
+  return Hdr.HeaderDataLength;
+}
+
+LLVM_DUMP_METHOD void DWARFAcceleratorTable::dump(raw_ostream &OS) const {
   // Dump the header.
   OS << "Magic = " << format("0x%08x", Hdr.Magic) << '\n'
      << "Version = " << format("0x%04x", Hdr.Version) << '\n'
@@ -105,10 +121,8 @@ void DWARFAcceleratorTable::dump(raw_ostream &OS) const {
         continue;
       }
       while (AccelSection.isValidOffsetForDataOfSize(DataOffset, 4)) {
-        unsigned StringOffset = AccelSection.getU32(&DataOffset);
-        RelocAddrMap::const_iterator Reloc = Relocs.find(DataOffset-4);
-        if (Reloc != Relocs.end())
-          StringOffset += Reloc->second.second;
+        unsigned StringOffset =
+            getRelocatedValue(AccelSection, 4, &DataOffset, &Relocs);
         if (!StringOffset)
           break;
         OS << format("    Name: %08x \"%s\"\n", StringOffset,
@@ -130,5 +144,4 @@ void DWARFAcceleratorTable::dump(raw_ostream &OS) const {
       }
     }
   }
-}
 }

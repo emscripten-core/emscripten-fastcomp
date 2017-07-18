@@ -1,5 +1,5 @@
-; RUN: llc -march=amdgcn -mcpu=SI -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=GCN %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=VI -check-prefix=GCN %s
+; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=GCN %s
+; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefix=VI -check-prefix=GCN %s
 
 declare float @llvm.amdgcn.div.fixup.f32(float, float, float) nounwind readnone
 declare double @llvm.amdgcn.div.fixup.f64(double, double, double) nounwind readnone
@@ -16,7 +16,7 @@ declare double @llvm.amdgcn.div.fixup.f64(double, double, double) nounwind readn
 ; GCN: v_div_fixup_f32 [[RESULT:v[0-9]+]], [[SA]], [[VB]], [[VC]]
 ; GCN: buffer_store_dword [[RESULT]],
 ; GCN: s_endpgm
-define void @test_div_fixup_f32(float addrspace(1)* %out, float %a, float %b, float %c) nounwind {
+define amdgpu_kernel void @test_div_fixup_f32(float addrspace(1)* %out, float %a, float %b, float %c) nounwind {
   %result = call float @llvm.amdgcn.div.fixup.f32(float %a, float %b, float %c) nounwind readnone
   store float %result, float addrspace(1)* %out, align 4
   ret void
@@ -24,7 +24,7 @@ define void @test_div_fixup_f32(float addrspace(1)* %out, float %a, float %b, fl
 
 ; GCN-LABEL: {{^}}test_div_fixup_f64:
 ; GCN: v_div_fixup_f64
-define void @test_div_fixup_f64(double addrspace(1)* %out, double %a, double %b, double %c) nounwind {
+define amdgpu_kernel void @test_div_fixup_f64(double addrspace(1)* %out, double %a, double %b, double %c) nounwind {
   %result = call double @llvm.amdgcn.div.fixup.f64(double %a, double %b, double %c) nounwind readnone
   store double %result, double addrspace(1)* %out, align 8
   ret void

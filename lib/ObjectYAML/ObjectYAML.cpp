@@ -11,8 +11,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/ObjectYAML/YAML.h"
 #include "llvm/ObjectYAML/ObjectYAML.h"
+#include "llvm/ObjectYAML/YAML.h"
 
 using namespace llvm;
 using namespace yaml;
@@ -43,6 +43,9 @@ void MappingTraits<YamlObjectFile>::mapping(IO &IO,
       ObjectFile.FatMachO.reset(new MachOYAML::UniversalBinary());
       MappingTraits<MachOYAML::UniversalBinary>::mapping(IO,
                                                          *ObjectFile.FatMachO);
+    } else if (IO.mapTag("!WASM")) {
+      ObjectFile.Wasm.reset(new WasmYAML::Object());
+      MappingTraits<WasmYAML::Object>::mapping(IO, *ObjectFile.Wasm);
     } else {
       Input &In = (Input &)IO;
       std::string Tag = In.getCurrentNode()->getRawTag();

@@ -454,7 +454,7 @@ public:
                               MachineBasicBlock *BB) const override;
   SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
   bool allowTruncateForTailCall(Type *, Type *) const override;
-  bool mayBeEmittedAsTailCall(CallInst *CI) const override;
+  bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
   SDValue LowerFormalArguments(SDValue Chain, CallingConv::ID CallConv,
                                bool isVarArg,
                                const SmallVectorImpl<ISD::InputArg> &Ins,
@@ -537,6 +537,7 @@ private:
                                  unsigned UnpackHigh) const;
   SDValue lowerShift(SDValue Op, SelectionDAG &DAG, unsigned ByScalar) const;
 
+  bool canTreatAsByteVector(EVT VT) const;
   SDValue combineExtract(const SDLoc &DL, EVT ElemVT, EVT VecVT, SDValue OrigOp,
                          unsigned Index, DAGCombinerInfo &DCI,
                          bool Force) const;
@@ -589,6 +590,8 @@ private:
   MachineBasicBlock *emitLoadAndTestCmp0(MachineInstr &MI,
                                          MachineBasicBlock *MBB,
                                          unsigned Opcode) const;
+
+  const TargetRegisterClass *getRepRegClassFor(MVT VT) const override;
 };
 } // end namespace llvm
 

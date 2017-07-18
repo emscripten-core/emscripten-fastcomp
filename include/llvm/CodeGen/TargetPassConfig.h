@@ -22,7 +22,7 @@ namespace llvm {
 
 class PassConfigImpl;
 class ScheduleDAGInstrs;
-class TargetMachine;
+class LLVMTargetMachine;
 struct MachineSchedContext;
 
 // The old pass manager infrastructure is hidden in a legacy namespace now.
@@ -103,7 +103,7 @@ private:
   bool AddingMachinePasses;
 
 protected:
-  TargetMachine *TM;
+  LLVMTargetMachine *TM;
   PassConfigImpl *Impl; // Internal data structures
   bool Initialized;     // Flagged after all passes are configured.
 
@@ -115,8 +115,16 @@ protected:
   /// Default setting for -enable-tail-merge on this target.
   bool EnableTailMerge;
 
+  /// Require processing of functions such that callees are generated before
+  /// callers.
+  bool RequireCodeGenSCCOrder;
+
+  /// Add the actual instruction selection passes. This does not include
+  /// preparation passes on IR.
+  bool addCoreISelPasses();
+
 public:
-  TargetPassConfig(TargetMachine *tm, PassManagerBase &pm);
+  TargetPassConfig(LLVMTargetMachine &TM, PassManagerBase &pm);
   // Dummy constructor.
   TargetPassConfig();
 
@@ -162,6 +170,11 @@ public:
   bool getEnableTailMerge() const { return EnableTailMerge; }
   void setEnableTailMerge(bool Enable) { setOpt(EnableTailMerge, Enable); }
 
+  bool requiresCodeGenSCCOrder() const { return RequireCodeGenSCCOrder; }
+  void setRequiresCodeGenSCCOrder(bool Enable = true) {
+    setOpt(RequireCodeGenSCCOrder, Enable);
+  }
+
   /// Allow the target to override a specific pass without overriding the pass
   /// pipeline. When passes are added to the standard pipeline at the
   /// point where StandardID is expected, add TargetID in its place.
@@ -196,6 +209,13 @@ public:
   /// Return true if the default global register allocator is in use and
   /// has not be overriden on the command line with '-regalloc=...'
   bool usingDefaultRegAlloc() const;
+
+  /// High level function that adds all passes necessary to go from llvm IR
+  /// representation to the MI representation.
+  /// Adds IR based lowering and target specific optimization passes and finally
+  /// the core instruction selection passes.
+  /// \returns true if an error occured, false otherwise.
+  bool addISelPasses();
 
   /// Add common target configurable passes that perform LLVM IR to IR
   /// transforms following machine independent optimization.
@@ -285,6 +305,10 @@ public:
   /// Add a pass to perform basic verification of the machine function if
   /// verification is enabled.
   void addVerifyPass(const std::string &Banner);
+
+  /// Check whether or not GlobalISel should be enabled by default.
+  /// Fallback/abort behavior is controlled via other methods.
+  virtual bool isGlobalISelEnabled() const;
 
   /// Check whether or not GlobalISel should abort on error.
   /// When this is disable, GlobalISel will fall back on SDISel instead of

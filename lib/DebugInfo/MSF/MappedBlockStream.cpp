@@ -11,8 +11,8 @@
 
 #include "llvm/DebugInfo/MSF/IMSFFile.h"
 #include "llvm/DebugInfo/MSF/MSFCommon.h"
-#include "llvm/DebugInfo/MSF/MSFError.h"
 #include "llvm/DebugInfo/MSF/MSFStreamLayout.h"
+#include "llvm/Support/BinaryStreamError.h"
 
 using namespace llvm;
 using namespace llvm::msf;
@@ -45,56 +45,55 @@ static Interval intersect(const Interval &I1, const Interval &I2) {
                         std::min(I1.second, I2.second));
 }
 
-MappedBlockStream::MappedBlockStream(uint32_t BlockSize, uint32_t NumBlocks,
+MappedBlockStream::MappedBlockStream(uint32_t BlockSize,
                                      const MSFStreamLayout &Layout,
-                                     const ReadableStream &MsfData)
-    : BlockSize(BlockSize), NumBlocks(NumBlocks), StreamLayout(Layout),
-      MsfData(MsfData) {}
+                                     BinaryStreamRef MsfData,
+                                     BumpPtrAllocator &Allocator)
+    : BlockSize(BlockSize), StreamLayout(Layout), MsfData(MsfData),
+      Allocator(Allocator) {}
 
-std::unique_ptr<MappedBlockStream>
-MappedBlockStream::createStream(uint32_t BlockSize, uint32_t NumBlocks,
-                                const MSFStreamLayout &Layout,
-                                const ReadableStream &MsfData) {
+std::unique_ptr<MappedBlockStream> MappedBlockStream::createStream(
+    uint32_t BlockSize, const MSFStreamLayout &Layout, BinaryStreamRef MsfData,
+    BumpPtrAllocator &Allocator) {
   return llvm::make_unique<MappedBlockStreamImpl<MappedBlockStream>>(
-      BlockSize, NumBlocks, Layout, MsfData);
+      BlockSize, Layout, MsfData, Allocator);
 }
 
-std::unique_ptr<MappedBlockStream>
-MappedBlockStream::createIndexedStream(const MSFLayout &Layout,
-                                       const ReadableStream &MsfData,
-                                       uint32_t StreamIndex) {
+std::unique_ptr<MappedBlockStream> MappedBlockStream::createIndexedStream(
+    const MSFLayout &Layout, BinaryStreamRef MsfData, uint32_t StreamIndex,
+    BumpPtrAllocator &Allocator) {
   assert(StreamIndex < Layout.StreamMap.size() && "Invalid stream index");
   MSFStreamLayout SL;
   SL.Blocks = Layout.StreamMap[StreamIndex];
   SL.Length = Layout.StreamSizes[StreamIndex];
   return llvm::make_unique<MappedBlockStreamImpl<MappedBlockStream>>(
-      Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+      Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 std::unique_ptr<MappedBlockStream>
 MappedBlockStream::createDirectoryStream(const MSFLayout &Layout,
-                                         const ReadableStream &MsfData) {
+                                         BinaryStreamRef MsfData,
+                                         BumpPtrAllocator &Allocator) {
   MSFStreamLayout SL;
   SL.Blocks = Layout.DirectoryBlocks;
   SL.Length = Layout.SB->NumDirectoryBytes;
-  return createStream(Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+  return createStream(Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 std::unique_ptr<MappedBlockStream>
 MappedBlockStream::createFpmStream(const MSFLayout &Layout,
-                                   const ReadableStream &MsfData) {
+                                   BinaryStreamRef MsfData,
+                                   BumpPtrAllocator &Allocator) {
   MSFStreamLayout SL;
   initializeFpmStreamLayout(Layout, SL);
-  return createStream(Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+  return createStream(Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 Error MappedBlockStream::readBytes(uint32_t Offset, uint32_t Size,
-                                   ArrayRef<uint8_t> &Buffer) const {
+                                   ArrayRef<uint8_t> &Buffer) {
   // Make sure we aren't trying to read beyond the end of the stream.
-  if (Size > StreamLayout.Length)
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
-  if (Offset > StreamLayout.Length - Size)
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
+  if (auto EC = checkOffset(Offset, Size))
+    return EC;
 
   if (tryReadContiguously(Offset, Size, Buffer))
     return Error::success();
@@ -153,7 +152,7 @@ Error MappedBlockStream::readBytes(uint32_t Offset, uint32_t Size,
   // into it, and return an ArrayRef to that.  Do not touch existing pool
   // allocations, as existing clients may be holding a pointer which must
   // not be invalidated.
-  uint8_t *WriteBuffer = static_cast<uint8_t *>(Pool.Allocate(Size, 8));
+  uint8_t *WriteBuffer = static_cast<uint8_t *>(Allocator.Allocate(Size, 8));
   if (auto EC = readBytes(Offset, MutableArrayRef<uint8_t>(WriteBuffer, Size)))
     return EC;
 
@@ -168,15 +167,16 @@ Error MappedBlockStream::readBytes(uint32_t Offset, uint32_t Size,
   return Error::success();
 }
 
-Error MappedBlockStream::readLongestContiguousChunk(
-    uint32_t Offset, ArrayRef<uint8_t> &Buffer) const {
+Error MappedBlockStream::readLongestContiguousChunk(uint32_t Offset,
+                                                    ArrayRef<uint8_t> &Buffer) {
   // Make sure we aren't trying to read beyond the end of the stream.
-  if (Offset >= StreamLayout.Length)
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
+  if (auto EC = checkOffset(Offset, 1))
+    return EC;
+
   uint32_t First = Offset / BlockSize;
   uint32_t Last = First;
 
-  while (Last < NumBlocks - 1) {
+  while (Last < getNumBlocks() - 1) {
     if (StreamLayout.Blocks[Last] != StreamLayout.Blocks[Last + 1] - 1)
       break;
     ++Last;
@@ -197,10 +197,10 @@ Error MappedBlockStream::readLongestContiguousChunk(
   return Error::success();
 }
 
-uint32_t MappedBlockStream::getLength() const { return StreamLayout.Length; }
+uint32_t MappedBlockStream::getLength() { return StreamLayout.Length; }
 
 bool MappedBlockStream::tryReadContiguously(uint32_t Offset, uint32_t Size,
-                                            ArrayRef<uint8_t> &Buffer) const {
+                                            ArrayRef<uint8_t> &Buffer) {
   if (Size == 0) {
     Buffer = ArrayRef<uint8_t>();
     return true;
@@ -241,15 +241,13 @@ bool MappedBlockStream::tryReadContiguously(uint32_t Offset, uint32_t Size,
 }
 
 Error MappedBlockStream::readBytes(uint32_t Offset,
-                                   MutableArrayRef<uint8_t> Buffer) const {
+                                   MutableArrayRef<uint8_t> Buffer) {
   uint32_t BlockNum = Offset / BlockSize;
   uint32_t OffsetInBlock = Offset % BlockSize;
 
   // Make sure we aren't trying to read beyond the end of the stream.
-  if (Buffer.size() > StreamLayout.Length)
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
-  if (Offset > StreamLayout.Length - Buffer.size())
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
+  if (auto EC = checkOffset(Offset, Buffer.size()))
+    return EC;
 
   uint32_t BytesLeft = Buffer.size();
   uint32_t BytesWritten = 0;
@@ -273,10 +271,6 @@ Error MappedBlockStream::readBytes(uint32_t Offset,
   }
 
   return Error::success();
-}
-
-uint32_t MappedBlockStream::getNumBytesCopied() const {
-  return static_cast<uint32_t>(Pool.getBytesAllocated());
 }
 
 void MappedBlockStream::invalidateCache() { CacheMap.shrink_and_clear(); }
@@ -318,69 +312,70 @@ void MappedBlockStream::fixCacheAfterWrite(uint32_t Offset,
 }
 
 WritableMappedBlockStream::WritableMappedBlockStream(
-    uint32_t BlockSize, uint32_t NumBlocks, const MSFStreamLayout &Layout,
-    const WritableStream &MsfData)
-    : ReadInterface(BlockSize, NumBlocks, Layout, MsfData),
+    uint32_t BlockSize, const MSFStreamLayout &Layout,
+    WritableBinaryStreamRef MsfData, BumpPtrAllocator &Allocator)
+    : ReadInterface(BlockSize, Layout, MsfData, Allocator),
       WriteInterface(MsfData) {}
 
 std::unique_ptr<WritableMappedBlockStream>
-WritableMappedBlockStream::createStream(uint32_t BlockSize, uint32_t NumBlocks,
+WritableMappedBlockStream::createStream(uint32_t BlockSize,
                                         const MSFStreamLayout &Layout,
-                                        const WritableStream &MsfData) {
+                                        WritableBinaryStreamRef MsfData,
+                                        BumpPtrAllocator &Allocator) {
   return llvm::make_unique<MappedBlockStreamImpl<WritableMappedBlockStream>>(
-      BlockSize, NumBlocks, Layout, MsfData);
+      BlockSize, Layout, MsfData, Allocator);
 }
 
 std::unique_ptr<WritableMappedBlockStream>
 WritableMappedBlockStream::createIndexedStream(const MSFLayout &Layout,
-                                               const WritableStream &MsfData,
-                                               uint32_t StreamIndex) {
+                                               WritableBinaryStreamRef MsfData,
+                                               uint32_t StreamIndex,
+                                               BumpPtrAllocator &Allocator) {
   assert(StreamIndex < Layout.StreamMap.size() && "Invalid stream index");
   MSFStreamLayout SL;
   SL.Blocks = Layout.StreamMap[StreamIndex];
   SL.Length = Layout.StreamSizes[StreamIndex];
-  return createStream(Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+  return createStream(Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 std::unique_ptr<WritableMappedBlockStream>
 WritableMappedBlockStream::createDirectoryStream(
-    const MSFLayout &Layout, const WritableStream &MsfData) {
+    const MSFLayout &Layout, WritableBinaryStreamRef MsfData,
+    BumpPtrAllocator &Allocator) {
   MSFStreamLayout SL;
   SL.Blocks = Layout.DirectoryBlocks;
   SL.Length = Layout.SB->NumDirectoryBytes;
-  return createStream(Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+  return createStream(Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 std::unique_ptr<WritableMappedBlockStream>
 WritableMappedBlockStream::createFpmStream(const MSFLayout &Layout,
-                                           const WritableStream &MsfData) {
+                                           WritableBinaryStreamRef MsfData,
+                                           BumpPtrAllocator &Allocator) {
   MSFStreamLayout SL;
   initializeFpmStreamLayout(Layout, SL);
-  return createStream(Layout.SB->BlockSize, Layout.SB->NumBlocks, SL, MsfData);
+  return createStream(Layout.SB->BlockSize, SL, MsfData, Allocator);
 }
 
 Error WritableMappedBlockStream::readBytes(uint32_t Offset, uint32_t Size,
-                                           ArrayRef<uint8_t> &Buffer) const {
+                                           ArrayRef<uint8_t> &Buffer) {
   return ReadInterface.readBytes(Offset, Size, Buffer);
 }
 
 Error WritableMappedBlockStream::readLongestContiguousChunk(
-    uint32_t Offset, ArrayRef<uint8_t> &Buffer) const {
+    uint32_t Offset, ArrayRef<uint8_t> &Buffer) {
   return ReadInterface.readLongestContiguousChunk(Offset, Buffer);
 }
 
-uint32_t WritableMappedBlockStream::getLength() const {
+uint32_t WritableMappedBlockStream::getLength() {
   return ReadInterface.getLength();
 }
 
 Error WritableMappedBlockStream::writeBytes(uint32_t Offset,
-                                            ArrayRef<uint8_t> Buffer) const {
+                                            ArrayRef<uint8_t> Buffer) {
   // Make sure we aren't trying to write beyond the end of the stream.
-  if (Buffer.size() > getStreamLength())
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
-
-  if (Offset > getStreamLayout().Length - Buffer.size())
-    return make_error<MSFError>(msf_error_code::insufficient_buffer);
+  if (auto EC = checkOffset(Offset, Buffer.size()))
+    return EC;
 
   uint32_t BlockNum = Offset / getBlockSize();
   uint32_t OffsetInBlock = Offset % getBlockSize();
@@ -410,6 +405,4 @@ Error WritableMappedBlockStream::writeBytes(uint32_t Offset,
   return Error::success();
 }
 
-Error WritableMappedBlockStream::commit() const {
-  return WriteInterface.commit();
-}
+Error WritableMappedBlockStream::commit() { return WriteInterface.commit(); }
