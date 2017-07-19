@@ -265,7 +265,7 @@ void FunctionConverter::eraseReplacedInstructions() {
   // a useful error message rather than accessing a dangling pointer.
   for (DenseMap<Value *, RewrittenVal>::iterator I = RewriteMap.begin(),
            E = RewriteMap.end(); I != E; ++I) {
-    delete I->second.Placeholder;
+    I->second.Placeholder->deleteValue();
   }
 
   // We must do dropAllReferences() before doing eraseFromParent(),
@@ -285,18 +285,16 @@ void FunctionConverter::eraseReplacedInstructions() {
 
 // Remove attributes that only apply to pointer arguments.  Returns
 // the updated AttributeSet.
-static AttributeSet RemovePointerAttrs(LLVMContext &Context,
-                                       AttributeSet Attrs) {
-  SmallVector<AttributeSet, 8> AttrList;
-  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
-    unsigned Index = Attrs.getSlotIndex(Slot);
+static AttributeList RemovePointerAttrs(LLVMContext &Context,
+                                       AttributeList Attrs) {
+  SmallVector<AttributeList, 8> AttrList;
+  for (unsigned Index = Attrs.index_begin(); Index < Attrs.index_end(); ++Index) {
     AttrBuilder AB;
-    for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
-         Attr != E; ++Attr) {
-      if (!Attr->isEnumAttribute()) {
+    for (Attribute Attr : Attrs.getAttributes(Index)) {
+      if (!Attr.isEnumAttribute()) {
         continue;
       }
-      switch (Attr->getKindAsEnum()) {
+      switch (Attr.getKindAsEnum()) {
         // ByVal and StructRet should already have been removed by the
         // ExpandByVal pass.
         case Attribute::ByVal:
@@ -318,12 +316,12 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
         case Attribute::DereferenceableOrNull:
           break;
         default:
-          AB.addAttribute(*Attr);
+          AB.addAttribute(Attr);
       }
     }
-    AttrList.push_back(AttributeSet::get(Context, Index, AB));
+    AttrList.push_back(AttributeList::get(Context, Index, AB));
   }
-  return AttributeSet::get(Context, AttrList);
+  return AttributeList::get(Context, AttrList);
 }
 
 static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,

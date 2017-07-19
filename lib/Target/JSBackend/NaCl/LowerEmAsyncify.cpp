@@ -590,9 +590,9 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // the callback function does not have any return value
     // so clear all the attributes for return
     {
-      AttributeSet Attrs = CurCallbackFunc->getAttributes();
+      AttributeList Attrs = CurCallbackFunc->getAttributes();
       CurCallbackFunc->setAttributes(
-        Attrs.removeAttributes(TheModule->getContext(), AttributeSet::ReturnIndex, Attrs.getRetAttributes())
+        Attrs.removeAttributes(TheModule->getContext(), AttributeList::ReturnIndex, Attrs.getRetAttributes())
       );
     }
 

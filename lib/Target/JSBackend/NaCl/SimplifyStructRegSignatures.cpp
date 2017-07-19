@@ -182,7 +182,7 @@ static void ConvertArgumentValue(Value *Old, Value *New, Instruction *InsPoint,
 }
 // Fix returns. Return true if fixes were needed.
 static void FixReturn(Function *OldFunc, Function *NewFunc) {
-  Argument *FirstNewArg = &*NewFunc->getArgumentList().begin();
+  Argument *FirstNewArg = &*NewFunc->arg_begin();
   for (auto BIter = NewFunc->begin(), LastBlock = NewFunc->end();
        LastBlock != BIter;) {
     BasicBlock *BB = &*BIter++;
@@ -202,10 +202,10 @@ static void FixReturn(Function *OldFunc, Function *NewFunc) {
 /// In the next two functions, `RetIndex` is the index of the possibly promoted
 /// return.
 /// Ie if the return is promoted, `RetIndex` should be `1`, else `0`.
-static AttributeSet CopyRetAttributes(LLVMContext &C, const DataLayout &DL,
-                                      const AttributeSet From, Type *RetTy,
+static AttributeList CopyRetAttributes(LLVMContext &C, const DataLayout &DL,
+                                      const AttributeList From, Type *RetTy,
                                       const unsigned RetIndex) {
-  AttributeSet NewAttrs;
+  AttributeList NewAttrs;
   if (RetIndex != 0) {
     NewAttrs = NewAttrs.addAttribute(C, RetIndex, Attribute::StructRet);
     NewAttrs = NewAttrs.addAttribute(C, RetIndex, Attribute::NonNull);
@@ -219,42 +219,31 @@ static AttributeSet CopyRetAttributes(LLVMContext &C, const DataLayout &DL,
   }
   auto FnAttrs = From.getFnAttributes();
   if (RetIndex != 0) {
-    FnAttrs = FnAttrs.removeAttribute(C, AttributeSet::FunctionIndex,
-                                      Attribute::ReadOnly);
-    FnAttrs = FnAttrs.removeAttribute(C, AttributeSet::FunctionIndex,
-                                      Attribute::ReadNone);
+    FnAttrs = FnAttrs.removeAttribute(C, Attribute::ReadOnly);
+    FnAttrs = FnAttrs.removeAttribute(C, Attribute::ReadNone);
   }
-  NewAttrs = NewAttrs.addAttributes(C, AttributeSet::FunctionIndex, FnAttrs);
+  NewAttrs = NewAttrs.addAttributes(C, AttributeList::FunctionIndex, FnAttrs);
   return NewAttrs;
 }
 /// Iff the argument in question was promoted, `NewArgTy` should be non-null.
-static AttributeSet CopyArgAttributes(AttributeSet NewAttrs, LLVMContext &C,
+static AttributeList CopyArgAttributes(AttributeList NewAttrs, LLVMContext &C,
                                       const DataLayout &DL,
-                                      const AttributeSet From,
+                                      const AttributeList From,
                                       const unsigned OldArg, Type *NewArgTy,
                                       const unsigned RetIndex) {
   const unsigned NewIndex = RetIndex + OldArg + 1;
   if (!NewArgTy) {
     const unsigned OldIndex = OldArg + 1;
-    auto OldAttrs = From.getParamAttributes(OldIndex);
-    if (OldAttrs.getNumSlots() == 0) {
+    AttributeSet OldAttrs = From.getParamAttributes(OldIndex);
+    if (OldAttrs.getNumAttributes() == 0) {
       return NewAttrs;
     }
     // move the params to the new index position:
-    unsigned OldSlot = 0;
-    for (; OldSlot < OldAttrs.getNumSlots(); ++OldSlot) {
-      if (OldAttrs.getSlotIndex(OldSlot) == OldIndex) {
-        break;
-      }
+    AttrBuilder B(AttributeList(), NewIndex);
+    for (Attribute A : OldAttrs) {
+      B.addAttribute(A);
     }
-    assert(OldSlot != OldAttrs.getNumSlots());
-    AttrBuilder B(AttributeSet(), NewIndex);
-    for (auto II = OldAttrs.begin(OldSlot), IE = OldAttrs.end(OldSlot);
-         II != IE; ++II) {
-      B.addAttribute(*II);
-    }
-    auto Attrs = AttributeSet::get(C, NewIndex, B);
-    NewAttrs = NewAttrs.addAttributes(C, NewIndex, Attrs);
+    NewAttrs = NewAttrs.addAttributes(C, NewIndex, B);
     return NewAttrs;
   } else {
     NewAttrs = NewAttrs.addAttribute(C, NewIndex, Attribute::NonNull);
@@ -272,7 +261,7 @@ template <class TCall>
 void CopyCallAttributesAndMetadata(TCall *Orig, TCall *NewCall) {
   NewCall->setCallingConv(Orig->getCallingConv());
   NewCall->setAttributes(NewCall->getAttributes().addAttributes(
-      Orig->getContext(), AttributeSet::FunctionIndex,
+      Orig->getContext(), AttributeList::FunctionIndex,
       Orig->getAttributes().getFnAttributes()));
   NewCall->takeName(Orig);
 }
@@ -356,12 +345,12 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
                              ->getParent()    // F
                              ->getParent()    // M
                              ->getDataLayout();
-  const AttributeSet OldSet = OldCall->getAttributes();
+  const AttributeList OldSet = OldCall->getAttributes();
   unsigned argOffset = ExtraArg ? 1 : 0;
-  const unsigned RetSlot = AttributeSet::ReturnIndex + argOffset;
+  const unsigned RetSlot = AttributeList::ReturnIndex + argOffset;
   if (ExtraArg)
     NewArgs.push_back(ExtraArg);
-  AttributeSet NewSet =
+  AttributeList NewSet =
       CopyRetAttributes(Ctx, DL, OldSet, OldCall->getType(), RetSlot);
   // Go over the argument list used in the call/invoke, in order to
   // correctly deal with varargs scenarios.
@@ -440,9 +429,9 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
                                                   Function *NewFunc) {
   const DataLayout &DL = OldFunc->getParent()->getDataLayout();
   bool returnWasFixed = shouldPromote(OldFunc->getReturnType());
-  const AttributeSet OldSet = OldFunc->getAttributes();
-  const unsigned RetSlot = AttributeSet::ReturnIndex + (returnWasFixed ? 1 : 0);
-  AttributeSet NewSet =
+  const AttributeList OldSet = OldFunc->getAttributes();
+  const unsigned RetSlot = AttributeList::ReturnIndex + (returnWasFixed ? 1 : 0);
+  AttributeList NewSet =
       CopyRetAttributes(Ctx, DL, OldSet, OldFunc->getReturnType(), RetSlot);
   Instruction *InsPoint = &*NewFunc->begin()->begin();
   auto NewArgIter = NewFunc->arg_begin();

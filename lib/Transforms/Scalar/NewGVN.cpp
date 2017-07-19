@@ -2286,7 +2286,6 @@ void NewGVN::performCongruenceFinding(Instruction *I, const Expression *E) {
       auto Iter = ExpressionToClass.find_as(ExactEqualsExpression(*OldE));
       if (Iter != ExpressionToClass.end())
         ExpressionToClass.erase(Iter);
-      markMemoryUsersTouched(MA);
     }
   }
   ValueToExpression[I] = E;

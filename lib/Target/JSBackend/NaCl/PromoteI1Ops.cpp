@@ -80,8 +80,8 @@ bool PromoteI1Ops::runOnBasicBlock(BasicBlock &BB) {
       SwitchInst::CaseIt FalseCase = Switch->findCaseValue(False);
       SwitchInst::CaseIt TrueCase  = Switch->findCaseValue(True);
 
-      BasicBlock *FalseBlock  = FalseCase.getCaseSuccessor();
-      BasicBlock *TrueBlock   = TrueCase.getCaseSuccessor();
+      BasicBlock *FalseBlock  = FalseCase->getCaseSuccessor();
+      BasicBlock *TrueBlock   = TrueCase->getCaseSuccessor();
       BasicBlock *DefaultDest = Switch->getDefaultDest();
 
       if (TrueBlock && FalseBlock) {

@@ -52,14 +52,14 @@ bool AddPNaClExternalDecls::runOnModule(Module &M) {
                         Type::getInt32Ty(C),
                         // arguments
                         Type::getInt8Ty(C)->getPointerTo(),
-                        NULL);
+                        (llvm::Type*)NULL);
   M.getOrInsertFunction("longjmp",
                         // return type
                         Type::getVoidTy(C),
                         // arguments
                         Type::getInt8Ty(C)->getPointerTo(),
                         Type::getInt32Ty(C),
-                        NULL);
+                        (llvm::Type*)NULL);
 
   // Add Intrinsic declarations needed by ResolvePNaClIntrinsics up front.
   Intrinsic::getDeclaration(&M, Intrinsic::nacl_setjmp);

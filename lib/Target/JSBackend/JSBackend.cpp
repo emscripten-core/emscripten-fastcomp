@@ -54,6 +54,12 @@ using namespace llvm;
 #include <OptPasses.h>
 #include <Relooper.h>
 
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
+#define DUMP(I) ((I)->dump())
+#else
+#define DUMP(I) ((void)0)
+#endif
+
 raw_ostream &prettyWarning() {
   errs().changeColor(raw_ostream::YELLOW);
   errs() << "warning:";
@@ -1688,7 +1694,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     CodeStream << ')';
     return CodeStream.str();
   } else {
-    CV->dump();
+    DUMP(CV);
     llvm_unreachable("Unsupported constant kind");
   }
 }
@@ -2082,7 +2088,7 @@ void JSWriter::generateICmpExpression(const ICmpInst *I, raw_string_ostream& Cod
     case ICmpInst::ICMP_SLT: Name = "lessThan"; break;
     case ICmpInst::ICMP_UGT: Name = "unsignedGreaterThan"; break;
     case ICmpInst::ICMP_SGT: Name = "greaterThan"; break;
-    default: I->dump(); error("invalid vector icmp"); break;
+    default: DUMP(I); error("invalid vector icmp"); break;
   }
 
   checkVectorType(I->getOperand(0)->getType());
@@ -2158,7 +2164,7 @@ void JSWriter::generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Cod
     case ICmpInst::FCMP_ULT:  Name = "greaterThanOrEqual"; Invert = true; break;
     case ICmpInst::FCMP_ULE:  Name = "greaterThan"; Invert = true; break;
     case ICmpInst::FCMP_UNE:  Name = "notEqual"; break;
-    default: I->dump(); error("invalid vector fcmp"); break;
+    default: DUMP(I); error("invalid vector fcmp"); break;
   }
 
   checkVectorType(I->getOperand(0)->getType());
@@ -2296,7 +2302,7 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
                 "(" << Extract << getValueAsStr(I->getOperand(1)) << "," << Index << ")|0)"
                 "|0";
         break;
-      default: I->dump(); error("invalid unrolled vector instr"); break;
+      default: DUMP(I); error("invalid unrolled vector instr"); break;
     }
     if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
         Code << ")";
@@ -2314,7 +2320,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
     std::string simdType = SIMDType(VT);
 
     switch (Operator::getOpcode(I)) {
-      default: I->dump(); error("invalid vector instr"); break;
+      default: DUMP(I); error("invalid vector instr"); break;
       case Instruction::Call: // return value is just a SIMD value, no special handling
         return false;
       case Instruction::PHI: // handled separately - we push them back into the relooper branchings
@@ -2481,7 +2487,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
 
   if (!generateSIMDExpression(I, Code)) switch (Operator::getOpcode(I)) {
   default: {
-    I->dump();
+    DUMP(I);
     error("Invalid instruction in JSWriter::generateExpression");
     break;
   }
@@ -3089,8 +3095,8 @@ void JSWriter::printFunctionBody(const Function *F) {
   Relooper::MakeOutputBuffer(1024*1024);
   Relooper R;
   //if (!canReloop(F)) R.SetEmulate(true);
-  if (F->getAttributes().hasAttribute(AttributeSet::FunctionIndex, Attribute::MinSize) ||
-      F->getAttributes().hasAttribute(AttributeSet::FunctionIndex, Attribute::OptimizeForSize)) {
+  if (F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Attribute::MinSize) ||
+      F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Attribute::OptimizeForSize)) {
     R.SetMinSize(true);
   }
   R.SetAsmJSMode(1);
@@ -3166,8 +3172,8 @@ void JSWriter::printFunctionBody(const Function *F) {
         typedef std::map<const BasicBlock*, std::string> BlockCondMap;
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-          const BasicBlock *BB = i.getCaseSuccessor();
-          APInt CaseValue = i.getCaseValue()->getValue();
+          const BasicBlock *BB = i->getCaseSuccessor();
+          APInt CaseValue = i->getCaseValue()->getValue();
           std::string Curr;
           if (CaseValue.getBitWidth() == 64) {
             Curr = emitI64Const(CaseValue);
@@ -3184,7 +3190,7 @@ void JSWriter::printFunctionBody(const Function *F) {
         }
         std::set<const BasicBlock *> alreadyProcessed;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-          const BasicBlock *BB = i.getCaseSuccessor();
+          const BasicBlock *BB = i->getCaseSuccessor();
           if (!alreadyProcessed.insert(BB).second) continue;
           if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);
@@ -3972,7 +3978,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
             ConstantInt *CI = cast<ConstantInt>(CE->getOperand(1));
             Data += *CI->getValue().getRawData();
           } else {
-            CE->dump();
+            DUMP(CE);
             llvm_unreachable("Unexpected constant expr kind");
           }
           union { unsigned i; unsigned char b[sizeof(unsigned)]; } integer;
@@ -3993,7 +3999,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
             GlobalData[Offset++] = Str.data()[i];
           }
         } else {
-          C->dump();
+          DUMP(C);
           llvm_unreachable("Unexpected constant kind");
         }
       }
@@ -4053,7 +4059,7 @@ void JSWriter::parseConstant(const std::string& name, const Constant* CV, int Al
   } else if (isa<UndefValue>(CV)) {
     assert(false && "Unlowered UndefValue");
   } else {
-    CV->dump();
+    DUMP(CV);
     assert(false && "Unsupported constant kind");
   }
 }
@@ -4339,8 +4345,7 @@ Pass *createCheckTriplePass() {
 bool JSTargetMachine::addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify, AnalysisID StartBefore,
-      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter,
-      MachineFunctionInitializer *MFInitializer) {
+      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createCheckTriplePass());

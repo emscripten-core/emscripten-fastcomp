@@ -53,14 +53,13 @@ INITIALIZE_PASS(StripAttributes, "nacl-strip-attributes",
                 "Strip out attributes that are not part of PNaCl's ABI",
                 false, false)
 
-static void CheckAttributes(AttributeSet Attrs) {
-  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
-    for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
-         Attr != E; ++Attr) {
-      if (!Attr->isEnumAttribute()) {
+static void CheckAttributes(AttributeList Attrs) {
+  for (unsigned Index = Attrs.index_begin(); Index < Attrs.index_end(); ++Index) {
+    for (Attribute Attr : Attrs.getAttributes(Index)) {
+      if (!Attr.isEnumAttribute()) {
         continue;
       }
-      switch (Attr->getKindAsEnum()) {
+      switch (Attr.getKindAsEnum()) {
         // The vast majority of attributes are hints that can safely
         // be removed, so don't complain if we see attributes we don't
         // recognize.
@@ -200,7 +199,7 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
 
 void stripFunctionAttrs(DataLayout *DL, Function *F) {
   CheckAttributes(F->getAttributes());
-  F->setAttributes(AttributeSet());
+  F->setAttributes(AttributeList());
   F->setCallingConv(CallingConv::C);
   F->setAlignment(0);
 
@@ -209,7 +208,7 @@ void stripFunctionAttrs(DataLayout *DL, Function *F) {
       CallSite Call(&I);
       if (Call) {
         CheckAttributes(Call.getAttributes());
-        Call.setAttributes(AttributeSet());
+        Call.setAttributes(AttributeList());
         Call.setCallingConv(CallingConv::C);
       } else if (OverflowingBinaryOperator *Op =
                      dyn_cast<OverflowingBinaryOperator>(&I)) {

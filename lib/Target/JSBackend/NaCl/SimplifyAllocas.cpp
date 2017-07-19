@@ -101,7 +101,7 @@ private:
         if (Alignment == 0)
           Alignment = DL->getPrefTypeAlignment(ElementTy);
         AllocaInst *Tmp =
-            new AllocaInst(Int8Type, MulSize, Alignment, "", Alloca);
+            new AllocaInst(Int8Type, BB.getParent()->getParent()->getDataLayout().getAllocaAddrSpace(), MulSize, Alignment, "", Alloca);
         CopyDebug(Tmp, Alloca);
         Tmp->takeName(Alloca);
         BitCastInst *BC = new BitCastInst(Tmp, Alloca->getType(),
