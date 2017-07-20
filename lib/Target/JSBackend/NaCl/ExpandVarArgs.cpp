@@ -225,10 +225,10 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
   // only used for the duration of the function call, so that the
   // stack space can be reused elsewhere.
-  auto LifetimeStart = Intrinsic::getDeclaration(M, Intrinsic::lifetime_start);
-  auto LifetimeEnd = Intrinsic::getDeclaration(M, Intrinsic::lifetime_end);
   auto *I8Ptr = Type::getInt8Ty(Ctx)->getPointerTo();
   auto *BufPtr = IRB.CreateBitCast(Buf, I8Ptr, "vararg_lifetime_bitcast");
+  auto LifetimeStart = Intrinsic::getDeclaration(M, Intrinsic::lifetime_start, { BufPtr->getType() });
+  auto LifetimeEnd = Intrinsic::getDeclaration(M, Intrinsic::lifetime_end, { BufPtr->getType() });
   auto *BufSize =
       ConstantInt::get(Ctx, APInt(64, DL->getTypeAllocSize(VarArgsTy)));
   IRB.CreateCall(LifetimeStart, {BufSize, BufPtr});
