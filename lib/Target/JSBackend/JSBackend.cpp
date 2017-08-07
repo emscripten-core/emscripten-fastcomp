@@ -507,7 +507,7 @@ namespace {
       //       we don't need this, as we'll add a use in
       //       DeclaresNeedingTypeDeclarations which will have the proper type,
       //       and nothing will contradict it/overload it.
-      if (WebAssembly && F->isDeclaration() && usesFloat32(F->getFunctionType())) {
+      if (WebAssembly && !EmulatedFunctionPointers && F->isDeclaration() && usesFloat32(F->getFunctionType())) {
         Table.push_back(makeFloat32Legalizer(F));
       } else {
         Table.push_back(Name);
