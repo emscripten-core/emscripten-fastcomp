@@ -49,8 +49,7 @@ INITIALIZE_PASS(ExpandVarArgs, "expand-varargs",
 static bool isEmscriptenJSArgsFunc(Module *M, StringRef Name) {
   // TODO(jfb) Make these intrinsics in clang and remove the assert: these
   //           intrinsics should only exist for Emscripten.
-  bool isEmscriptenSpecial = Name.equals("emscripten_asm_const_int") ||
-                             Name.equals("emscripten_asm_const_double") ||
+  bool isEmscriptenSpecial = Name.startswith("emscripten_asm_const_") ||
                              Name.equals("emscripten_landingpad") ||
                              Name.equals("emscripten_resume");
   assert(isEmscriptenSpecial ? Triple(M->getTargetTriple()).isOSEmscripten()
