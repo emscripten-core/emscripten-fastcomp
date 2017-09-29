@@ -685,8 +685,8 @@ bool PromoteIntegers::ensureCompliantSignature(
                                      OldFct->getBasicBlockList());
   IRBuilder<> Builder(&*NewFct->getEntryBlock().getFirstInsertionPt());
 
-  auto OldArgIter = OldFct->getArgumentList().begin();
-  for (auto &NewArg : NewFct->getArgumentList()) {
+  auto OldArgIter = OldFct->arg_begin();
+  for (auto &NewArg : NewFct->args()) {
     Argument *OldArg = &*OldArgIter++;
 
     if (OldArg->getType() != NewArg.getType()) {

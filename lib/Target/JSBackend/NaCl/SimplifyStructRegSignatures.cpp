@@ -182,7 +182,7 @@ static void ConvertArgumentValue(Value *Old, Value *New, Instruction *InsPoint,
 }
 // Fix returns. Return true if fixes were needed.
 static void FixReturn(Function *OldFunc, Function *NewFunc) {
-  Argument *FirstNewArg = &*NewFunc->getArgumentList().begin();
+  Argument *FirstNewArg = &*NewFunc->arg_begin();
   for (auto BIter = NewFunc->begin(), LastBlock = NewFunc->end();
        LastBlock != BIter;) {
     BasicBlock *BB = &*BIter++;
