@@ -3167,8 +3167,8 @@ void JSWriter::printFunctionBody(const Function *F) {
         typedef std::map<const BasicBlock*, std::string> BlockCondMap;
         BlockCondMap BlocksToConditions;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-          const BasicBlock *BB = i.getCaseSuccessor();
-          APInt CaseValue = i.getCaseValue()->getValue();
+          const BasicBlock *BB = i->getCaseSuccessor();
+          APInt CaseValue = i->getCaseValue()->getValue();
           std::string Curr;
           if (CaseValue.getBitWidth() == 64) {
             Curr = emitI64Const(CaseValue);
@@ -3185,7 +3185,7 @@ void JSWriter::printFunctionBody(const Function *F) {
         }
         std::set<const BasicBlock *> alreadyProcessed;
         for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-          const BasicBlock *BB = i.getCaseSuccessor();
+          const BasicBlock *BB = i->getCaseSuccessor();
           if (!alreadyProcessed.insert(BB).second) continue;
           if (BB == DD) continue; // ok to eliminate this, default dest will get there anyhow
           std::string P = getPhiCode(&*BI, BB);

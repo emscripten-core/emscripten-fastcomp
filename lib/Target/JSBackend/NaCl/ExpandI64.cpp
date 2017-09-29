@@ -877,8 +877,8 @@ bool ExpandI64::splitInst(Instruction *I) {
       Map Groups;                          // (as two 64-bit values in the switch may share their lower bits)
 
       for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-        BasicBlock *BB = i.getCaseSuccessor();
-        uint64_t Bits = i.getCaseValue()->getZExtValue();
+        BasicBlock *BB = i->getCaseSuccessor();
+        uint64_t Bits = i->getCaseValue()->getZExtValue();
         uint32_t LowBits = (uint32_t)Bits;
         uint32_t HighBits = (uint32_t)(Bits >> 32);
         Vec& V = Groups[LowBits];

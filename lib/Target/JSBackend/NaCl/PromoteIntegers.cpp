@@ -621,9 +621,9 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     CopyDebug(NewInst, Switch);
     for (SwitchInst::CaseIt I = Switch->case_begin(), E = Switch->case_end();
          I != E; ++I) {
-      NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue(),
+      NewInst->addCase(cast<ConstantInt>(convertConstant(I->getCaseValue(),
                                                          /*SignExt=*/false)),
-                       I.getCaseSuccessor());
+                       I->getCaseSuccessor());
     }
     Switch->eraseFromParent();
   } else {
