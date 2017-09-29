@@ -63,7 +63,8 @@ public:
 
   bool hasBranchDivergence() { return true; }
 
-  void getUnrollingPreferences(Loop *L, TTI::UnrollingPreferences &UP);
+  void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                               TTI::UnrollingPreferences &UP);
 
   TTI::PopcntSupportKind getPopcntSupport(
       unsigned TyWidth) {
@@ -74,7 +75,7 @@ public:
 
   unsigned getNumberOfRegisters(bool Vector);
 
-  unsigned getRegisterBitWidth(bool Vector);
+  unsigned getRegisterBitWidth(bool Vector) const;
 
   unsigned getArithmeticInstrCost(
       unsigned Opcode, Type *Ty,
@@ -87,9 +88,11 @@ public:
   unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
 
   unsigned getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
-                           unsigned AddressSpace);
+                           unsigned AddressSpace,
+                           const Instruction *I = nullptr);
 
-  unsigned getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src);
+  unsigned getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
+                            const Instruction *I = nullptr);
 };
 
 } // end namespace llvm

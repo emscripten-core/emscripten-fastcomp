@@ -28,8 +28,8 @@ using namespace llvm;
 
 #define DEBUG_TYPE "JStti"
 
-void JSTTIImpl::getUnrollingPreferences(Loop *L,
-                                            TTI::UnrollingPreferences &UP) {
+void JSTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                                        TTI::UnrollingPreferences &UP) {
   // We generally don't want a lot of unrolling.
   UP.Partial = false;
   UP.Runtime = false;
@@ -41,7 +41,7 @@ unsigned JSTTIImpl::getNumberOfRegisters(bool Vector) {
   return 8; // like x86, thumb, etc.
 }
 
-unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) {
+unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) const {
   if (Vector) {
     return 128;
   }
@@ -105,14 +105,16 @@ unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Inde
 
 
 unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
-                                    unsigned AddressSpace) {
+                                    unsigned AddressSpace,
+                                    const Instruction *I) {
   if (!isOkType(Src))
     return Nope;
 
   return BasicTTIImplBase::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace);
 }
 
-unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src) {
+unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src,
+                                     const Instruction *I) {
   if (!isOkType(Src) || !isOkType(Dst))
     return Nope;
 
