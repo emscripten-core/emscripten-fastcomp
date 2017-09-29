@@ -265,7 +265,8 @@ void FunctionConverter::eraseReplacedInstructions() {
   // a useful error message rather than accessing a dangling pointer.
   for (DenseMap<Value *, RewrittenVal>::iterator I = RewriteMap.begin(),
            E = RewriteMap.end(); I != E; ++I) {
-    delete I->second.Placeholder;
+    I->second.Placeholder->deleteValue();
+    I->second.Placeholder = nullptr;
   }
 
   // We must do dropAllReferences() before doing eraseFromParent(),
