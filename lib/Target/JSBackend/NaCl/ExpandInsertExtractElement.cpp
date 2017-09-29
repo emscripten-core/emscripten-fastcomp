@@ -64,7 +64,7 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
           continue;
 
       Type *AllocaTy = III->getType();
-      Instruction *A = new AllocaInst(AllocaTy, 0, "", Entry);
+      Instruction *A = new AllocaInst(AllocaTy, /*AddrSpace=*/0, 0, "", Entry);
       CopyDebug(new StoreInst(III->getOperand(0), A, III), III);
 
       Value *Idxs[] = { Zero, III->getOperand(2) };
@@ -80,7 +80,7 @@ bool ExpandInsertExtractElement::runOnFunction(Function &F) {
           continue;
 
       Type *AllocaTy = EII->getOperand(0)->getType();
-      Instruction *A = new AllocaInst(AllocaTy, 0, "", Entry);
+      Instruction *A = new AllocaInst(AllocaTy, /*AddrSpace=*/0, 0, "", Entry);
       CopyDebug(new StoreInst(EII->getOperand(0), A, EII), EII);
 
       Value *Idxs[] = { Zero, EII->getOperand(1) };

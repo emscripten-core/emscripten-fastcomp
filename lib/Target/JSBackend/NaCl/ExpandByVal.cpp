@@ -133,7 +133,8 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
                    DL->getABITypeAlignment(ArgType));
 
       // Make a copy of the byval argument.
-      Instruction *CopyBuf = new AllocaInst(ArgType, 0, Alignment,
+      Instruction *CopyBuf = new AllocaInst(ArgType, /*AddrSpace=*/0, nullptr,
+                                            Alignment,
                                             ArgPtr->getName() + ".byval_copy");
       Function *Func = Call->getParent()->getParent();
       Func->getEntryBlock().getInstList().push_front(CopyBuf);

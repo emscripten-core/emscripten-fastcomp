@@ -184,8 +184,9 @@ void FuncRewriter::initializeFrame() {
   // Allocate the new exception frame.  This is reused across all
   // invoke instructions in the function.
   Type *I32 = Type::getInt32Ty(M->getContext());
-  Frame = new AllocaInst(ExceptionFrameTy, ConstantInt::get(I32, 1),
-                         kPNaClJmpBufAlign, "invoke_frame");
+  Frame = new AllocaInst(ExceptionFrameTy, /*AddrSpace=*/0,
+                         ConstantInt::get(I32, 1), kPNaClJmpBufAlign,
+                         "invoke_frame");
   Func->getEntryBlock().getInstList().push_front(Frame);
 
   // Calculate addresses of fields in the exception frame.
@@ -223,7 +224,8 @@ Value *FuncRewriter::createSetjmpWrappedCall(InvokeInst *Invoke) {
   // is void.
   Instruction *ResultAlloca = NULL;
   if (!Invoke->use_empty()) {
-    ResultAlloca = new AllocaInst(Invoke->getType(), "invoke_result_ptr");
+    ResultAlloca = new AllocaInst(Invoke->getType(), /*AddrSpace=*/0,
+                                  "invoke_result_ptr");
     Func->getEntryBlock().getInstList().push_front(ResultAlloca);
   }
 
