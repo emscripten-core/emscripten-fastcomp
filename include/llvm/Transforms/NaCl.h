@@ -94,7 +94,7 @@ static void CopyLoadOrStoreAttrs(InstType *Dest, InstType *Src) {
   Dest->setVolatile(Src->isVolatile());
   Dest->setAlignment(Src->getAlignment());
   Dest->setOrdering(Src->getOrdering());
-  Dest->setSynchScope(Src->getSynchScope());
+  Dest->setSyncScopeID(Src->getSyncScopeID());
 }
 
 // In order to change a function's type, the function must be

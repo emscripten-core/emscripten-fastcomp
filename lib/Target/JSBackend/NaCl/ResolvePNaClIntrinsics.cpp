@@ -236,7 +236,7 @@ private:
     // Assume the @llvm.nacl.atomic.* intrinsics follow the PNaCl ABI:
     // this should have been checked by the verifier.
     bool isVolatile = false;
-    SynchronizationScope SS = CrossThread;
+    SyncScope::ID SS = SyncScope::System;
     Instruction *I;
     SmallVector<Instruction *, 16> MaybeDead;
 

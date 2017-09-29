@@ -434,7 +434,7 @@ bool ExpandI64::splitInst(Instruction *I) {
                                      4*i));
         Chunk->setVolatile(LI->isVolatile());
         Chunk->setOrdering(LI->getOrdering());
-        Chunk->setSynchScope(LI->getSynchScope());
+        Chunk->setSyncScopeID(LI->getSyncScopeID());
         Chunks.push_back(Chunk);
       }
       break;
@@ -454,7 +454,7 @@ bool ExpandI64::splitInst(Instruction *I) {
                                      4*i));
         Chunk->setVolatile(SI->isVolatile());
         Chunk->setOrdering(SI->getOrdering());
-        Chunk->setSynchScope(SI->getSynchScope());
+        Chunk->setSyncScopeID(SI->getSyncScopeID());
         CopyDebug(Chunk, I);
       }
       break;
