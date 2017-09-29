@@ -4340,8 +4340,7 @@ Pass *createCheckTriplePass() {
 bool JSTargetMachine::addPassesToEmitFile(
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify, AnalysisID StartBefore,
-      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter,
-      MachineFunctionInitializer *MFInitializer) {
+      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createCheckTriplePass());
