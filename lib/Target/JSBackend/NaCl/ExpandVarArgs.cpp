@@ -179,9 +179,10 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   Function *F = Call->getParent()->getParent();
   LLVMContext &Ctx = M->getContext();
 
-  SmallVector<AttributeSet, 8> Attrs;
-  Attrs.push_back(Call->getAttributes().getFnAttributes());
-  Attrs.push_back(Call->getAttributes().getRetAttributes());
+  AttributeList Attrs = AttributeList::get(Ctx,
+      Call->getAttributes().getFnAttributes(),
+      Call->getAttributes().getRetAttributes(),
+      /*ArgAttrs=*/AttributeSet());
 
   // Split argument list into fixed and variable arguments.
   SmallVector<Value *, 8> FixedArgs;
@@ -189,8 +190,10 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   SmallVector<Type *, 8> VarArgsTypes;
   for (unsigned I = 0, E = FuncType->getNumParams(); I < E; ++I) {
     FixedArgs.push_back(Call->getArgOperand(I));
+
     // AttributeSets use 1-based indexing.
-    Attrs.push_back(Call->getAttributes().getParamAttributes(I + 1));
+    Attrs.addParamAttributes(Ctx, I + 1,
+        Call->getAttributes().getParamAttributes(I + 1));
   }
   for (unsigned I = FuncType->getNumParams(), E = Call->getNumArgOperands();
        I < E; ++I) {
@@ -265,13 +268,13 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   Instruction *NewCall;
   if (auto *C = dyn_cast<CallInst>(Call)) {
     auto *N = IRB.CreateCall(CastFunc, FixedArgs);
-    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    N->setAttributes(Attrs);
     NewCall = N;
     IRB.CreateCall(LifetimeEnd, {BufSize, BufPtr});
   } else if (auto *C = dyn_cast<InvokeInst>(Call)) {
     auto *N = IRB.CreateInvoke(CastFunc, C->getNormalDest(), C->getUnwindDest(),
                                FixedArgs, C->getName());
-    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    N->setAttributes(Attrs);
     (IRBuilder<>(&*C->getNormalDest()->getFirstInsertionPt()))
         .CreateCall(LifetimeEnd, {BufSize, BufPtr});
     (IRBuilder<>(&*C->getUnwindDest()->getFirstInsertionPt()))

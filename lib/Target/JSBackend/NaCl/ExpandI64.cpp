@@ -208,46 +208,40 @@ static bool isLegalInstruction(const Instruction *I) {
 // We can't use RecreateFunction because we need to handle
 // function and argument attributes specially.
 static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
+  LLVMContext &Ctx = F->getContext();
   Function *NewFunc = Function::Create(NewType, F->getLinkage());
 
-  AttributeSet Attrs = F->getAttributes();
-  AttributeSet FnAttrs = Attrs.getFnAttributes();
+  const AttributeList &OldAttrs = F->getAttributes();
+  AttributeSet NewFnAttrs(OldAttrs.getFnAttributes());
 
   // Legalizing the return value is done by storing part of the value into
   // static storage. Subsequent analysis will see this as a memory access,
   // so we can no longer claim to be readonly or readnone.
   if (isIllegal(F->getReturnType())) {
-    FnAttrs = FnAttrs.removeAttribute(F->getContext(),
-                                      AttributeSet::FunctionIndex,
-                                      Attribute::ReadOnly);
-    FnAttrs = FnAttrs.removeAttribute(F->getContext(),
-                                      AttributeSet::FunctionIndex,
-                                      Attribute::ReadNone);
+    NewFnAttrs = NewFnAttrs.removeAttribute(F->getContext(),
+                                            Attribute::ReadOnly);
+    NewFnAttrs = NewFnAttrs.removeAttribute(F->getContext(),
+                                            Attribute::ReadNone);
   }
 
-  NewFunc->addAttributes(AttributeSet::FunctionIndex, FnAttrs);
-  NewFunc->addAttributes(AttributeSet::ReturnIndex, Attrs.getRetAttributes());
   Function::arg_iterator AI = F->arg_begin();
 
   // We need to recreate the attribute set, with the right indexes
-  AttributeSet NewAttrs;
+  SmallVector<AttributeSet, 8> NewParamAttrs;
   unsigned NumArgs = F->arg_size();
   for (unsigned i = 1, j = 1; i < NumArgs+1; i++, j++, AI++) {
     if (isIllegal(AI->getType())) {
       j++;
       continue;
     }
-    if (!Attrs.hasAttributes(i)) continue;
-    AttributeSet ParamAttrs = Attrs.getParamAttributes(i);
-    AttrBuilder AB;
-    unsigned NumSlots = ParamAttrs.getNumSlots();
-    for (unsigned k = 0; k < NumSlots; k++) {
-      for (AttributeSet::iterator I = ParamAttrs.begin(k), E = ParamAttrs.end(k); I != E; I++) {
-        AB.addAttribute(*I);
-      }
-    }
-    NewFunc->addAttributes(j, AttributeSet::get(F->getContext(), j, AB));
+
+    // Copy the attributes from the old parameter to the new.
+    NewParamAttrs.push_back(OldAttrs.getParamAttributes(i));
   }
+
+  AttributeList NewAttrs = AttributeList::get(Ctx,
+      NewFnAttrs, OldAttrs.getRetAttributes(), NewParamAttrs);
+  F->setAttributes(NewAttrs);
 
   F->getParent()->getFunctionList().insert(F->getIterator(), NewFunc);
   NewFunc->takeName(F);

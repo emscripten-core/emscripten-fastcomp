@@ -53,91 +53,94 @@ INITIALIZE_PASS(StripAttributes, "nacl-strip-attributes",
                 "Strip out attributes that are not part of PNaCl's ABI",
                 false, false)
 
-static void CheckAttributes(AttributeSet Attrs) {
-  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
-    for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
-         Attr != E; ++Attr) {
-      if (!Attr->isEnumAttribute()) {
-        continue;
-      }
-      switch (Attr->getKindAsEnum()) {
-        // The vast majority of attributes are hints that can safely
-        // be removed, so don't complain if we see attributes we don't
-        // recognize.
-        default:
-
-        // The following attributes can affect calling conventions.
-        // Rather than complaining, we just strip these out.
-        // ExpandSmallArguments should have rendered SExt/ZExt
-        // meaningless since the function arguments will be at least
-        // 32-bit.
-        case Attribute::InReg:
-        case Attribute::SExt:
-        case Attribute::ZExt:
-        // These attributes influence ABI decisions that should not be
-        // visible to PNaCl pexes.
-        case Attribute::NonLazyBind:  // Only relevant to dynamic linking.
-        case Attribute::NoRedZone:
-        case Attribute::StackAlignment:
-
-        // The following attributes are just hints, which can be
-        // safely removed.
-        case Attribute::AlwaysInline:
-        case Attribute::InlineHint:
-        case Attribute::MinSize:
-        case Attribute::NoAlias:
-        case Attribute::NoBuiltin:
-        case Attribute::NoCapture:
-        case Attribute::NoDuplicate:
-        case Attribute::NoImplicitFloat:
-        case Attribute::NoInline:
-        case Attribute::NoReturn:
-        case Attribute::OptimizeForSize:
-        case Attribute::ReadNone:
-        case Attribute::ReadOnly:
-
-        // PNaCl does not support -fstack-protector in the translator.
-        case Attribute::StackProtect:
-        case Attribute::StackProtectReq:
-        case Attribute::StackProtectStrong:
-        // PNaCl does not support ASan in the translator.
-        case Attribute::SanitizeAddress:
-        case Attribute::SanitizeThread:
-        case Attribute::SanitizeMemory:
-
-        // The Language References cites setjmp() as an example of a
-        // function which returns twice, and says ReturnsTwice is
-        // necessary to disable optimizations such as tail calls.
-        // However, in the PNaCl ABI, setjmp() is an intrinsic, and
-        // user-defined functions are not allowed to return twice.
-        case Attribute::ReturnsTwice:
-
-        // NoUnwind is not a hint if it causes unwind info to be
-        // omitted, since this will prevent C++ exceptions from
-        // propagating.  In the future, when PNaCl supports zero-cost
-        // C++ exception handling using unwind info, we might allow
-        // NoUnwind and UWTable.  Alternatively, we might continue to
-        // disallow them, and just generate unwind info for all
-        // functions.
-        case Attribute::NoUnwind:
-        case Attribute::UWTable:
-          break;
-
-        // A few attributes can change program behaviour if removed,
-        // so check for these.
-        case Attribute::ByVal:
-        case Attribute::StructRet:
-        case Attribute::Alignment:
-          Attrs.dump();
-          report_fatal_error(
-              "Attribute should already have been removed by ExpandByVal");
-
-        case Attribute::Naked:
-        case Attribute::Nest:
-          Attrs.dump();
-          report_fatal_error("Unsupported attribute");
-      }
+static void CheckAttributes(const AttributeSet &Attrs) {
+  for (const Attribute &Attr : Attrs) {
+    if (!Attr.isEnumAttribute()) {
+      continue;
     }
+    switch (Attr.getKindAsEnum()) {
+      // The vast majority of attributes are hints that can safely
+      // be removed, so don't complain if we see attributes we don't
+      // recognize.
+      default:
+
+      // The following attributes can affect calling conventions.
+      // Rather than complaining, we just strip these out.
+      // ExpandSmallArguments should have rendered SExt/ZExt
+      // meaningless since the function arguments will be at least
+      // 32-bit.
+      case Attribute::InReg:
+      case Attribute::SExt:
+      case Attribute::ZExt:
+      // These attributes influence ABI decisions that should not be
+      // visible to PNaCl pexes.
+      case Attribute::NonLazyBind:  // Only relevant to dynamic linking.
+      case Attribute::NoRedZone:
+      case Attribute::StackAlignment:
+
+      // The following attributes are just hints, which can be
+      // safely removed.
+      case Attribute::AlwaysInline:
+      case Attribute::InlineHint:
+      case Attribute::MinSize:
+      case Attribute::NoAlias:
+      case Attribute::NoBuiltin:
+      case Attribute::NoCapture:
+      case Attribute::NoDuplicate:
+      case Attribute::NoImplicitFloat:
+      case Attribute::NoInline:
+      case Attribute::NoReturn:
+      case Attribute::OptimizeForSize:
+      case Attribute::ReadNone:
+      case Attribute::ReadOnly:
+
+      // PNaCl does not support -fstack-protector in the translator.
+      case Attribute::StackProtect:
+      case Attribute::StackProtectReq:
+      case Attribute::StackProtectStrong:
+      // PNaCl does not support ASan in the translator.
+      case Attribute::SanitizeAddress:
+      case Attribute::SanitizeThread:
+      case Attribute::SanitizeMemory:
+
+      // The Language References cites setjmp() as an example of a
+      // function which returns twice, and says ReturnsTwice is
+      // necessary to disable optimizations such as tail calls.
+      // However, in the PNaCl ABI, setjmp() is an intrinsic, and
+      // user-defined functions are not allowed to return twice.
+      case Attribute::ReturnsTwice:
+
+      // NoUnwind is not a hint if it causes unwind info to be
+      // omitted, since this will prevent C++ exceptions from
+      // propagating.  In the future, when PNaCl supports zero-cost
+      // C++ exception handling using unwind info, we might allow
+      // NoUnwind and UWTable.  Alternatively, we might continue to
+      // disallow them, and just generate unwind info for all
+      // functions.
+      case Attribute::NoUnwind:
+      case Attribute::UWTable:
+        break;
+
+      // A few attributes can change program behaviour if removed,
+      // so check for these.
+      case Attribute::ByVal:
+      case Attribute::StructRet:
+      case Attribute::Alignment:
+        Attrs.dump();
+        report_fatal_error(
+            "Attribute should already have been removed by ExpandByVal");
+
+      case Attribute::Naked:
+      case Attribute::Nest:
+        Attrs.dump();
+        report_fatal_error("Unsupported attribute");
+    }
+  }
+}
+
+static void CheckAttributes(AttributeList Attrs) {
+  for (const AttributeSet &Attrs : Attrs) {
+    CheckAttributes(Attrs);
   }
 }
 
@@ -200,7 +203,7 @@ void stripGlobalValueAttrs(GlobalValue *GV) {
 
 void stripFunctionAttrs(DataLayout *DL, Function *F) {
   CheckAttributes(F->getAttributes());
-  F->setAttributes(AttributeSet());
+  F->setAttributes(AttributeList());
   F->setCallingConv(CallingConv::C);
   F->setAlignment(0);
 
@@ -209,7 +212,7 @@ void stripFunctionAttrs(DataLayout *DL, Function *F) {
       CallSite Call(&I);
       if (Call) {
         CheckAttributes(Call.getAttributes());
-        Call.setAttributes(AttributeSet());
+        Call.setAttributes(AttributeList());
         Call.setCallingConv(CallingConv::C);
       } else if (OverflowingBinaryOperator *Op =
                      dyn_cast<OverflowingBinaryOperator>(&I)) {

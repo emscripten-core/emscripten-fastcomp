@@ -199,83 +199,72 @@ static void FixReturn(Function *OldFunc, Function *NewFunc) {
     }
   }
 }
+
 /// In the next two functions, `RetIndex` is the index of the possibly promoted
 /// return.
 /// Ie if the return is promoted, `RetIndex` should be `1`, else `0`.
 static AttributeSet CopyRetAttributes(LLVMContext &C, const DataLayout &DL,
-                                      const AttributeSet From, Type *RetTy,
+                                      const AttributeSet &OldRetAttrs,
+                                      AttributeSet &FnAttrs, Type *RetTy,
                                       const unsigned RetIndex) {
-  AttributeSet NewAttrs;
+  AttributeSet NewRetAttrs;
   if (RetIndex != 0) {
-    NewAttrs = NewAttrs.addAttribute(C, RetIndex, Attribute::StructRet);
-    NewAttrs = NewAttrs.addAttribute(C, RetIndex, Attribute::NonNull);
-    NewAttrs = NewAttrs.addAttribute(C, RetIndex, Attribute::NoCapture);
+    NewRetAttrs = NewRetAttrs.addAttribute(C, Attribute::StructRet);
+    NewRetAttrs = NewRetAttrs.addAttribute(C, Attribute::NonNull);
+    NewRetAttrs = NewRetAttrs.addAttribute(C, Attribute::NoCapture);
+
     if (RetTy->isSized()) {
-      NewAttrs = NewAttrs.addDereferenceableAttr(C, RetIndex,
-                                                 DL.getTypeAllocSize(RetTy));
+      // N.B: Adding an Attribute object to an AttributeSet is an intricate process.
+      // See more information in another comment in this file.
+      Attribute DerefAttr = Attribute::get(C, Attribute::Dereferenceable, DL.getTypeAllocSize(RetTy));
+      NewRetAttrs = NewRetAttrs.addAttributes(C, AttributeSet::get(C, ArrayRef<Attribute>({DerefAttr})));
     }
   } else {
-    NewAttrs = NewAttrs.addAttributes(C, RetIndex, From.getRetAttributes());
+    NewRetAttrs = NewRetAttrs.addAttributes(C, OldRetAttrs);
   }
-  auto FnAttrs = From.getFnAttributes();
   if (RetIndex != 0) {
-    FnAttrs = FnAttrs.removeAttribute(C, AttributeSet::FunctionIndex,
-                                      Attribute::ReadOnly);
-    FnAttrs = FnAttrs.removeAttribute(C, AttributeSet::FunctionIndex,
-                                      Attribute::ReadNone);
+    FnAttrs = FnAttrs.removeAttribute(C, Attribute::ReadOnly);
+    FnAttrs = FnAttrs.removeAttribute(C, Attribute::ReadNone);
   }
-  NewAttrs = NewAttrs.addAttributes(C, AttributeSet::FunctionIndex, FnAttrs);
-  return NewAttrs;
+
+  return NewRetAttrs;
 }
+
 /// Iff the argument in question was promoted, `NewArgTy` should be non-null.
-static AttributeSet CopyArgAttributes(AttributeSet NewAttrs, LLVMContext &C,
+static AttributeSet CopyArgAttributes(LLVMContext &C,
                                       const DataLayout &DL,
-                                      const AttributeSet From,
+                                      const AttributeSet OldAttrs,
                                       const unsigned OldArg, Type *NewArgTy,
                                       const unsigned RetIndex) {
-  const unsigned NewIndex = RetIndex + OldArg + 1;
+  AttributeSet NewAttrs(OldAttrs);
   if (!NewArgTy) {
-    const unsigned OldIndex = OldArg + 1;
-    auto OldAttrs = From.getParamAttributes(OldIndex);
-    if (OldAttrs.getNumSlots() == 0) {
-      return NewAttrs;
-    }
-    // move the params to the new index position:
-    unsigned OldSlot = 0;
-    for (; OldSlot < OldAttrs.getNumSlots(); ++OldSlot) {
-      if (OldAttrs.getSlotIndex(OldSlot) == OldIndex) {
-        break;
-      }
-    }
-    assert(OldSlot != OldAttrs.getNumSlots());
-    AttrBuilder B(AttributeSet(), NewIndex);
-    for (auto II = OldAttrs.begin(OldSlot), IE = OldAttrs.end(OldSlot);
-         II != IE; ++II) {
-      B.addAttribute(*II);
-    }
-    auto Attrs = AttributeSet::get(C, NewIndex, B);
-    NewAttrs = NewAttrs.addAttributes(C, NewIndex, Attrs);
     return NewAttrs;
   } else {
-    NewAttrs = NewAttrs.addAttribute(C, NewIndex, Attribute::NonNull);
-    NewAttrs = NewAttrs.addAttribute(C, NewIndex, Attribute::NoCapture);
-    NewAttrs = NewAttrs.addAttribute(C, NewIndex, Attribute::ReadOnly);
+    NewAttrs = NewAttrs.addAttribute(C, Attribute::NonNull);
+    NewAttrs = NewAttrs.addAttribute(C, Attribute::NoCapture);
+    NewAttrs = NewAttrs.addAttribute(C, Attribute::ReadOnly);
     if (NewArgTy->isSized()) {
-      NewAttrs = NewAttrs.addDereferenceableAttr(C, NewIndex,
-                                                 DL.getTypeAllocSize(NewArgTy));
+      // N.B. We should really be able to directly add an Attribute instance
+      // to NewAttrs, but AttributeSet only allows specifying Kind and StringRef
+      // values, so we are forced to build an array then build a set out of
+      // the array and then add the set to the NewAttrs set :(
+      Attribute DerefAttr = Attribute::get(C, Attribute::Dereferenceable, DL.getTypeAllocSize(NewArgTy));
+      NewAttrs = NewAttrs.addAttributes(C, AttributeSet::get(C, ArrayRef<Attribute>({DerefAttr})));
     }
     return NewAttrs;
   }
 }
+
 // TODO (mtrofin): is this comprehensive?
 template <class TCall>
 void CopyCallAttributesAndMetadata(TCall *Orig, TCall *NewCall) {
   NewCall->setCallingConv(Orig->getCallingConv());
   NewCall->setAttributes(NewCall->getAttributes().addAttributes(
-      Orig->getContext(), AttributeSet::FunctionIndex,
+      Orig->getContext(), AttributeList::FunctionIndex,
       Orig->getAttributes().getFnAttributes()));
   NewCall->takeName(Orig);
 }
+
 static InvokeInst *CreateCallFrom(InvokeInst *Orig, Value *Target,
                                   ArrayRef<Value *> &Args,
                                   IRBuilder<> &Builder) {
@@ -346,6 +335,7 @@ void SimplifyStructRegSignatures::fixCallSite(LLVMContext &Ctx, TCall *OldCall,
   }
   OldCall->eraseFromParent();
 }
+
 template <class TCall>
 TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
     LLVMContext &Ctx, IRBuilder<> &Builder, TCall *OldCall, Value *NewTarget,
@@ -356,26 +346,33 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
                              ->getParent()    // F
                              ->getParent()    // M
                              ->getDataLayout();
-  const AttributeSet OldSet = OldCall->getAttributes();
+  const AttributeList OldAttrs = OldCall->getAttributes();
   unsigned argOffset = ExtraArg ? 1 : 0;
-  const unsigned RetSlot = AttributeSet::ReturnIndex + argOffset;
+  const unsigned RetSlot = AttributeList::ReturnIndex + argOffset;
+
   if (ExtraArg)
     NewArgs.push_back(ExtraArg);
-  AttributeSet NewSet =
-      CopyRetAttributes(Ctx, DL, OldSet, OldCall->getType(), RetSlot);
+
+  AttributeSet NewFnAttrs(OldAttrs.getFnAttributes());
+  AttributeSet NewRetAttrs =
+      CopyRetAttributes(Ctx, DL, OldAttrs.getRetAttributes(),
+                        NewFnAttrs, OldCall->getType(), RetSlot);
+  SmallVector<AttributeSet, TypicalFuncArity> NewParamAttrs;
+
   // Go over the argument list used in the call/invoke, in order to
   // correctly deal with varargs scenarios.
   unsigned NumActualParams = OldCall->getNumArgOperands();
   unsigned VarargMark = NewType->getNumParams();
-  for (unsigned ArgPos = 0; ArgPos < NumActualParams; ArgPos++) {
-    Use &OldArgUse = OldCall->getOperandUse(ArgPos);
+
+  for (unsigned ArgIndex = 0; ArgIndex < NumActualParams; ArgIndex++) {
+    Use &OldArgUse = OldCall->getOperandUse(ArgIndex);
     Value *OldArg = OldArgUse;
     Type *OldArgType = OldArg->getType();
-    unsigned NewArgPos = OldArgUse.getOperandNo() + argOffset;
-    Type *NewArgType = NewArgPos < VarargMark ? NewType->getFunctionParamType(NewArgPos) : nullptr;
+    unsigned NewArgIndex = OldArgUse.getOperandNo() + argOffset;
+    Type *NewArgType = NewArgIndex < VarargMark ? NewType->getFunctionParamType(NewArgIndex) : nullptr;
     Type *InnerNewArgType = nullptr;
     if (OldArgType != NewArgType && shouldPromote(OldArgType)) {
-      if (NewArgPos >= VarargMark) {
+      if (NewArgIndex >= VarargMark) {
         errs() << *OldCall << '\n';
         report_fatal_error("Aggregate register vararg is not supported");
       }
@@ -399,8 +396,11 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
     } else {
       NewArgs.push_back(OldArg);
     }
-    NewSet = CopyArgAttributes(NewSet, Ctx, DL, OldSet, ArgPos, InnerNewArgType,
-                               RetSlot);
+
+    auto OldParamAttrs = OldAttrs.getParamAttributes(ArgIndex);
+    AttributeSet NewArgAttrs = CopyArgAttributes(Ctx, DL,
+         OldParamAttrs, ArgIndex, InnerNewArgType, RetSlot);
+    NewParamAttrs.push_back(NewArgAttrs);
   }
 
   if (isa<Instruction>(NewTarget)) {
@@ -414,9 +414,12 @@ TCall *SimplifyStructRegSignatures::fixCallTargetAndArguments(
 
   ArrayRef<Value *> ArrRef = NewArgs;
   TCall *NewCall = CreateCallFrom(OldCall, NewTarget, ArrRef, Builder);
-  NewCall->setAttributes(NewSet);
+  AttributeList NewAttrs = AttributeList::get(Ctx, NewFnAttrs, NewRetAttrs,
+                                              NewParamAttrs);
+  NewCall->setAttributes(NewAttrs);
   return NewCall;
 }
+
 void
 SimplifyStructRegSignatures::scheduleInstructionsForCleanup(Function *NewFunc) {
   for (auto &BBIter : NewFunc->getBasicBlockList()) {
@@ -434,16 +437,22 @@ SimplifyStructRegSignatures::scheduleInstructionsForCleanup(Function *NewFunc) {
     }
   }
 }
+
 // Change function body in the light of type changes.
 void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
                                                   Function *OldFunc,
                                                   Function *NewFunc) {
   const DataLayout &DL = OldFunc->getParent()->getDataLayout();
   bool returnWasFixed = shouldPromote(OldFunc->getReturnType());
-  const AttributeSet OldSet = OldFunc->getAttributes();
-  const unsigned RetSlot = AttributeSet::ReturnIndex + (returnWasFixed ? 1 : 0);
-  AttributeSet NewSet =
-      CopyRetAttributes(Ctx, DL, OldSet, OldFunc->getReturnType(), RetSlot);
+  const AttributeList OldAttrs = OldFunc->getAttributes();
+  const unsigned RetSlot = AttributeList::ReturnIndex + (returnWasFixed ? 1 : 0);
+
+  AttributeSet NewFnAttrs(OldAttrs.getFnAttributes());
+  AttributeSet NewRetAttrs =
+      CopyRetAttributes(Ctx, DL, OldAttrs.getRetAttributes(),
+                        NewFnAttrs, OldFunc->getReturnType(), RetSlot);
+  SmallVector<AttributeSet, TypicalFuncArity> NewParamAttrs;
+
   Instruction *InsPoint = &*NewFunc->begin()->begin();
   auto NewArgIter = NewFunc->arg_begin();
   // Advance one more if we used to return a struct register.
@@ -464,10 +473,16 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
     if (IsAggregateToPtr) {
       Inner = NewArg->getType()->getPointerElementType();
     }
-    NewSet =
-        CopyArgAttributes(NewSet, Ctx, DL, OldSet, ArgIndex, Inner, RetSlot);
+
+    auto OldParamAttrs = OldAttrs.getParamAttributes(ArgIndex);
+    AttributeSet NewArgAttrs =
+        CopyArgAttributes(Ctx, DL, OldParamAttrs, ArgIndex, Inner, RetSlot);
+    NewParamAttrs.push_back(NewArgAttrs);
   }
-  NewFunc->setAttributes(NewSet);
+
+  AttributeList NewAttrs = AttributeList::get(Ctx, NewFnAttrs, NewRetAttrs,
+                                              NewParamAttrs);
+  NewFunc->setAttributes(NewAttrs);
   // Now fix instruction types. We know that each value could only possibly be
   // of a simplified type. At the end of this, call sites will be invalid, but
   // we handle that afterwards, to make sure we have all the functions changed
@@ -497,6 +512,7 @@ void SimplifyStructRegSignatures::fixFunctionBody(LLVMContext &Ctx,
   if (returnWasFixed)
     FixReturn(OldFunc, NewFunc);
 }
+
 // Ensure function is simplified, returning true if the function
 // had to be changed.
 bool SimplifyStructRegSignatures::simplifyFunction(

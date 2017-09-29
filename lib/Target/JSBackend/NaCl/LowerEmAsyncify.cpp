@@ -590,10 +590,22 @@ void LowerEmAsyncify::transformAsyncFunction(Function &F, Instructions const& As
     // the callback function does not have any return value
     // so clear all the attributes for return
     {
-      AttributeSet Attrs = CurCallbackFunc->getAttributes();
-      CurCallbackFunc->setAttributes(
-        Attrs.removeAttributes(TheModule->getContext(), AttributeSet::ReturnIndex, Attrs.getRetAttributes())
-      );
+      AttributeList OldAttrs = CurCallbackFunc->getAttributes();
+
+      AttributeSet NewRetAttrs = OldAttrs.getRetAttributes().removeAttributes(TheModule->getContext(),
+                                                                              OldAttrs.getRetAttributes());
+
+      // Sadly, there's no easier way to copy this.
+      // We need the parameters as an array for the AttributeList::get function.
+      SmallVector<AttributeSet, 8> OldParamAttrs;
+      for (size_t i=0; i<CurCallbackFunc->arg_size(); ++i) {
+        OldParamAttrs.push_back(OldAttrs.getParamAttributes(i));
+      }
+
+      AttributeList NewAttrs = AttributeList::get(TheModule->getContext(),
+          OldAttrs.getFnAttributes(), NewRetAttrs, OldParamAttrs);
+
+      CurCallbackFunc->setAttributes(NewAttrs);
     }
 
     // in the callback function, we never allocate a new async frame

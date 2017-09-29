@@ -285,18 +285,18 @@ void FunctionConverter::eraseReplacedInstructions() {
 
 // Remove attributes that only apply to pointer arguments.  Returns
 // the updated AttributeSet.
-static AttributeSet RemovePointerAttrs(LLVMContext &Context,
-                                       AttributeSet Attrs) {
-  SmallVector<AttributeSet, 8> AttrList;
-  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
-    unsigned Index = Attrs.getSlotIndex(Slot);
+static AttributeList RemovePointerAttrs(LLVMContext &Context,
+                                        AttributeList Attrs) {
+  SmallVector<AttributeList, 8> AttrList;
+  for (unsigned Index = Attrs.index_begin(), e = Attrs.index_end();
+       Index != e; ++Index) {
+    AttributeSet ArgAttrs = Attrs.getAttributes(Index);
     AttrBuilder AB;
-    for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
-         Attr != E; ++Attr) {
-      if (!Attr->isEnumAttribute()) {
+    for (const Attribute &Attr : ArgAttrs) {
+      if (!Attr.isEnumAttribute()) {
         continue;
       }
-      switch (Attr->getKindAsEnum()) {
+      switch (Attr.getKindAsEnum()) {
         // ByVal and StructRet should already have been removed by the
         // ExpandByVal pass.
         case Attribute::ByVal:
@@ -318,12 +318,12 @@ static AttributeSet RemovePointerAttrs(LLVMContext &Context,
         case Attribute::DereferenceableOrNull:
           break;
         default:
-          AB.addAttribute(*Attr);
+          AB.addAttribute(Attr);
       }
     }
-    AttrList.push_back(AttributeSet::get(Context, Index, AB));
+    AttrList.push_back(AttributeList::get(Context, Index, AB));
   }
-  return AttributeSet::get(Context, AttrList);
+  return AttributeList::get(Context, AttrList);
 }
 
 static void ConvertInstruction(DataLayout *DL, Type *IntPtrType,
