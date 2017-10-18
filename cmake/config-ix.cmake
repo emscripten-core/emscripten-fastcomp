@@ -9,6 +9,7 @@ include(CheckLibraryExists)
 include(CheckSymbolExists)
 include(CheckFunctionExists)
 include(CheckCXXSourceCompiles)
+include(CheckCCompilerFlag)
 include(TestBigEndian)
 
 include(CheckCompilerVersion)
@@ -155,6 +156,14 @@ if(HAVE_LIBXAR)
 endif()
 
 # function checks
+
+# Prevent check_symbol_exists from using API that is not supported for a given
+# deployment target.
+check_c_compiler_flag("-Werror=unguarded-availability-new" "C_SUPPORTS_WERROR_UNGUARDED_AVAILABILITY_NEW")
+if(C_SUPPORTS_WERROR_UNGUARDED_AVAILABILITY_NEW)
+  set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -Werror=unguarded-availability-new")
+endif()
+
 check_symbol_exists(arc4random "stdlib.h" HAVE_DECL_ARC4RANDOM)
 check_symbol_exists(backtrace "execinfo.h" HAVE_BACKTRACE)
 check_symbol_exists(_Unwind_Backtrace "unwind.h" HAVE__UNWIND_BACKTRACE)
