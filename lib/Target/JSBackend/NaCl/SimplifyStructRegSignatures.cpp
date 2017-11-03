@@ -233,8 +233,7 @@ static AttributeList CopyArgAttributes(AttributeList NewAttrs, LLVMContext &C,
                                       const unsigned RetIndex) {
   const unsigned NewIndex = RetIndex + OldArg + 1;
   if (!NewArgTy) {
-    const unsigned OldIndex = OldArg + 1;
-    AttributeSet OldAttrs = From.getParamAttributes(OldIndex);
+    AttributeSet OldAttrs = From.getParamAttributes(OldArg);
     if (OldAttrs.getNumAttributes() == 0) {
       return NewAttrs;
     }

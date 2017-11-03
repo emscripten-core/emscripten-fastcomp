@@ -230,12 +230,12 @@ static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
   // We need to recreate the attribute set, with the right indexes
   AttributeList NewAttrs;
   unsigned NumArgs = F->arg_size();
-  for (unsigned i = 1, j = 1; i < NumArgs+1; i++, j++, AI++) {
+  for (unsigned i = 0, j = 1; i < NumArgs; i++, j++, AI++) {
     if (isIllegal(AI->getType())) {
       j++;
       continue;
     }
-    if (!Attrs.hasAttributes(i)) continue;
+    if (!Attrs.hasAttributes(i+1)) continue;
     AttributeSet ParamAttrs = Attrs.getParamAttributes(i);
     AttrBuilder AB;
     for (Attribute Attr : ParamAttrs) {

@@ -189,8 +189,7 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   SmallVector<Type *, 8> VarArgsTypes;
   for (unsigned I = 0, E = FuncType->getNumParams(); I < E; ++I) {
     FixedArgs.push_back(Call->getArgOperand(I));
-    // AttributeSets use 1-based indexing.
-    ArgAttrs.push_back(Call->getAttributes().getParamAttributes(I + 1));
+    ArgAttrs.push_back(Call->getAttributes().getParamAttributes(I));
   }
   for (unsigned I = FuncType->getNumParams(), E = Call->getNumArgOperands();
        I < E; ++I) {
