@@ -11,7 +11,6 @@
 ///
 //===----------------------------------------------------------------------===//
 
-#include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/AliasAnalysis.h"
@@ -19,6 +18,7 @@
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/TargetFolder.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
@@ -27,6 +27,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Transforms/Scalar.h"
 
 using namespace llvm;
 
@@ -53,18 +54,20 @@ struct LoadPOPPair {
 class LoadCombine : public BasicBlockPass {
   LLVMContext *C;
   AliasAnalysis *AA;
+  DominatorTree *DT;
 
 public:
   LoadCombine() : BasicBlockPass(ID), C(nullptr), AA(nullptr) {
     initializeLoadCombinePass(*PassRegistry::getPassRegistry());
   }
-  
+
   using llvm::Pass::doInitialization;
   bool doInitialization(Function &) override;
   bool runOnBasicBlock(BasicBlock &BB) override;
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.setPreservesCFG();
     AU.addRequired<AAResultsWrapperPass>();
+    AU.addRequired<DominatorTreeWrapperPass>();
     AU.addPreserved<GlobalsAAWrapperPass>();
   }
 
@@ -225,7 +228,7 @@ bool LoadCombine::combineLoads(SmallVectorImpl<LoadPOPPair> &Loads) {
     L.Load->replaceAllUsesWith(V);
   }
 
-  NumLoadsCombined = NumLoadsCombined + Loads.size();
+  NumLoadsCombined += Loads.size();
   return true;
 }
 
@@ -234,6 +237,14 @@ bool LoadCombine::runOnBasicBlock(BasicBlock &BB) {
     return false;
 
   AA = &getAnalysis<AAResultsWrapperPass>().getAAResults();
+  DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
+
+  // Skip analysing dead blocks (not forward reachable from function entry).
+  if (!DT->isReachableFromEntry(&BB)) {
+    DEBUG(dbgs() << "LC: skipping unreachable " << BB.getName() <<
+          " in " << BB.getParent()->getName() << "\n");
+    return false;
+  }
 
   IRBuilder<TargetFolder> TheBuilder(
       BB.getContext(), TargetFolder(BB.getModule()->getDataLayout()));
@@ -245,11 +256,15 @@ bool LoadCombine::runOnBasicBlock(BasicBlock &BB) {
   bool Combined = false;
   unsigned Index = 0;
   for (auto &I : BB) {
-    if (I.mayThrow() || (I.mayWriteToMemory() && AST.containsUnknown(&I))) {
+    if (I.mayThrow() || AST.containsUnknown(&I)) {
       if (combineLoads(LoadMap))
         Combined = true;
       LoadMap.clear();
       AST.clear();
+      continue;
+    }
+    if (I.mayWriteToMemory()) {
+      AST.add(&I);
       continue;
     }
     LoadInst *LI = dyn_cast<LoadInst>(&I);

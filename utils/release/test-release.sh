@@ -36,7 +36,9 @@ do_libs="yes"
 do_libunwind="yes"
 do_test_suite="yes"
 do_openmp="yes"
+do_lld="yes"
 do_lldb="no"
+do_polly="yes"
 BuildDir="`pwd`"
 ExtraConfigureFlags=""
 ExportBranch=""
@@ -63,8 +65,10 @@ function usage() {
     echo " -no-libunwind        Disable check-out & build libunwind"
     echo " -no-test-suite       Disable check-out & build test-suite"
     echo " -no-openmp           Disable check-out & build libomp"
+    echo " -no-lld              Disable check-out & build lld"
     echo " -lldb                Enable check-out & build lldb"
     echo " -no-lldb             Disable check-out & build lldb (default)"
+    echo " -no-polly            Disable check-out & build Polly"
 }
 
 while [ $# -gt 0 ]; do
@@ -140,11 +144,17 @@ while [ $# -gt 0 ]; do
         -no-openmp )
             do_openmp="no"
             ;;
+        -no-lld )
+            do_lld="no"
+            ;;
         -lldb )
             do_lldb="yes"
             ;;
         -no-lldb )
             do_lldb="no"
+            ;;
+        -no-polly )
+            do_polly="no"
             ;;
         -help | --help | -h | --h | -\? )
             usage
@@ -158,13 +168,6 @@ while [ $# -gt 0 ]; do
     esac
     shift
 done
-
-if [ "$do_test_suite" = "yes" ]; then
-  # See llvm.org/PR26146.
-  echo Skipping test-suite build when using CMake.
-  echo It will still be exported.
-  do_test_suite="export-only"
-fi
 
 # Check required arguments.
 if [ -z "$Release" ]; then
@@ -216,8 +219,14 @@ esac
 if [ $do_openmp = "yes" ]; then
   projects="$projects openmp"
 fi
+if [ $do_lld = "yes" ]; then
+  projects="$projects lld"
+fi
 if [ $do_lldb = "yes" ]; then
   projects="$projects lldb"
+fi
+if [ $do_polly = "yes" ]; then
+  projects="$projects polly"
 fi
 
 # Go to the build directory (may be different from CWD)
@@ -285,7 +294,7 @@ function export_sources() {
         cfe)
             projsrc=llvm.src/tools/clang
             ;;
-        lldb)
+        lld|lldb|polly)
             projsrc=llvm.src/tools/$proj
             ;;
         clang-tools-extra)
@@ -295,11 +304,7 @@ function export_sources() {
             projsrc=llvm.src/projects/$proj
             ;;
         test-suite)
-            if [ $do_test_suite = 'yes' ]; then
-              projsrc=llvm.src/projects/$proj
-            else
-              projsrc=$proj.src
-            fi
+            projsrc=$proj.src
             ;;
         *)
             echo "error: unknown project $proj"
@@ -397,6 +402,23 @@ function test_llvmCore() {
       deferred_error $Phase $Flavor "check-all failed"
     fi
 
+    if [ $do_test_suite = 'yes' ]; then
+      SandboxDir="$BuildDir/sandbox"
+      Lit=$SandboxDir/bin/lit
+      TestSuiteBuildDir="$BuildDir/test-suite-build"
+      TestSuiteSrcDir="$BuildDir/test-suite.src"
+
+      virtualenv $SandboxDir
+      $SandboxDir/bin/python $BuildDir/llvm.src/utils/lit/setup.py install
+      mkdir -p $TestSuiteBuildDir
+      cd $TestSuiteBuildDir
+      env CC="$c_compiler" CXX="$cxx_compiler" \
+          cmake $TestSuiteSrcDir -DTEST_SUITE_LIT=$Lit
+      if ! ( ${MAKE} -j $NumJobs -k check \
+          2>&1 | tee $LogDir/llvm.check-Phase$Phase-$Flavor.log ) ; then
+        deferred_error $Phase $Flavor "test suite failed"
+      fi
+    fi
     cd $BuildDir
 }
 
@@ -523,6 +545,8 @@ for Flavor in $Flavors ; do
 
     ########################################################################
     # Testing: Test phase 3
+    c_compiler=$llvmCore_phase3_destdir/usr/local/bin/clang
+    cxx_compiler=$llvmCore_phase3_destdir/usr/local/bin/clang++
     echo "# Testing - built with clang"
     test_llvmCore 3 $Flavor $llvmCore_phase3_objdir
 
@@ -548,17 +572,17 @@ done
 
 ) 2>&1 | tee $LogDir/testing.$Release-$RC.log
 
+if [ "$use_gzip" = "yes" ]; then
+  echo "# Packaging the release as $Package.tar.gz"
+else
+  echo "# Packaging the release as $Package.tar.xz"
+fi
 package_release
 
 set +e
 
 # Woo hoo!
 echo "### Testing Finished ###"
-if [ "$use_gzip" = "yes" ]; then
-  echo "### Package: $Package.tar.gz"
-else
-  echo "### Package: $Package.tar.xz"
-fi
 echo "### Logs: $LogDir"
 
 echo "### Errors:"

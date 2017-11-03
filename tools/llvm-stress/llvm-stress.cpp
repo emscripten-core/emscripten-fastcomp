@@ -28,6 +28,7 @@
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include <algorithm>
+#include <random>
 #include <vector>
 
 namespace llvm {
@@ -113,6 +114,12 @@ public:
     return  Rand64() % y;
   }
 
+  /// Make this like a C++11 random device
+  typedef uint32_t result_type;
+  uint32_t operator()() { return Rand32(); }
+  static constexpr result_type min() { return 0; }
+  static constexpr result_type max() { return 0x7ffff; }
+  
 private:
   unsigned Seed;
 };
@@ -375,6 +382,7 @@ struct ConstModifier: public Modifier {
       switch (Ran->Rand() % 2) {
       case 0: if (Ty->getScalarType()->isIntegerTy())
                 return PT->push_back(ConstantVector::getAllOnesValue(Ty));
+              break;
       case 1: if (Ty->getScalarType()->isIntegerTy())
                 return PT->push_back(ConstantVector::getNullValue(Ty));
       }
@@ -397,15 +405,15 @@ struct ConstModifier: public Modifier {
 
     if (Ty->isIntegerTy()) {
       switch (Ran->Rand() % 7) {
-      case 0: if (Ty->isIntegerTy())
-                return PT->push_back(ConstantInt::get(Ty,
-                  APInt::getAllOnesValue(Ty->getPrimitiveSizeInBits())));
-      case 1: if (Ty->isIntegerTy())
-                return PT->push_back(ConstantInt::get(Ty,
-                  APInt::getNullValue(Ty->getPrimitiveSizeInBits())));
+      case 0:
+        return PT->push_back(ConstantInt::get(
+            Ty, APInt::getAllOnesValue(Ty->getPrimitiveSizeInBits())));
+      case 1:
+        return PT->push_back(ConstantInt::get(
+            Ty, APInt::getNullValue(Ty->getPrimitiveSizeInBits())));
       case 2: case 3: case 4: case 5:
-      case 6: if (Ty->isIntegerTy())
-                PT->push_back(ConstantInt::get(Ty, Ran->Rand()));
+      case 6:
+        PT->push_back(ConstantInt::get(Ty, Ran->Rand()));
       }
     }
 
@@ -417,7 +425,9 @@ struct AllocaModifier: public Modifier {
 
   void Act() override {
     Type *Tp = pickType();
-    PT->push_back(new AllocaInst(Tp, "A", BB->getFirstNonPHI()));
+    const DataLayout &DL = BB->getModule()->getDataLayout();
+    PT->push_back(new AllocaInst(Tp, DL.getAllocaAddrSpace(),
+                                 "A", BB->getFirstNonPHI()));
   }
 };
 
@@ -662,7 +672,7 @@ static void IntroduceControlFlow(Function *F, Random &R) {
       BoolInst.push_back(&Instr);
   }
 
-  std::random_shuffle(BoolInst.begin(), BoolInst.end(), R);
+  std::shuffle(BoolInst.begin(), BoolInst.end(), R);
 
   for (auto *Instr : BoolInst) {
     BasicBlock *Curr = Instr->getParent();

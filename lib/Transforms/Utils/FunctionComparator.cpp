@@ -15,8 +15,8 @@
 #include "llvm/Transforms/Utils/FunctionComparator.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/IR/CallSite.h"
-#include "llvm/IR/Instructions.h"
 #include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -74,14 +74,16 @@ int FunctionComparator::cmpMem(StringRef L, StringRef R) const {
   return L.compare(R);
 }
 
-int FunctionComparator::cmpAttrs(const AttributeSet L,
-                                 const AttributeSet R) const {
-  if (int Res = cmpNumbers(L.getNumSlots(), R.getNumSlots()))
+int FunctionComparator::cmpAttrs(const AttributeList L,
+                                 const AttributeList R) const {
+  if (int Res = cmpNumbers(L.getNumAttrSets(), R.getNumAttrSets()))
     return Res;
 
-  for (unsigned i = 0, e = L.getNumSlots(); i != e; ++i) {
-    AttributeSet::iterator LI = L.begin(i), LE = L.end(i), RI = R.begin(i),
-                           RE = R.end(i);
+  for (unsigned i = L.index_begin(), e = L.index_end(); i != e; ++i) {
+    AttributeSet LAS = L.getAttributes(i);
+    AttributeSet RAS = R.getAttributes(i);
+    AttributeSet::iterator LI = LAS.begin(), LE = LAS.end();
+    AttributeSet::iterator RI = RAS.begin(), RE = RAS.end();
     for (; LI != LE && RI != RE; ++LI, ++RI) {
       Attribute LA = *LI;
       Attribute RA = *RI;

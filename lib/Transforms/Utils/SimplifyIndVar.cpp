@@ -35,6 +35,9 @@ using namespace llvm;
 STATISTIC(NumElimIdentity, "Number of IV identities eliminated");
 STATISTIC(NumElimOperand,  "Number of IV operands folded into a use");
 STATISTIC(NumElimRem     , "Number of IV remainder operations eliminated");
+STATISTIC(
+    NumSimplifiedSDiv,
+    "Number of IV signed division operations converted to unsigned division");
 STATISTIC(NumElimCmp     , "Number of IV comparisons eliminated");
 
 namespace {
@@ -48,13 +51,13 @@ namespace {
     ScalarEvolution  *SE;
     DominatorTree    *DT;
 
-    SmallVectorImpl<WeakVH> &DeadInsts;
+    SmallVectorImpl<WeakTrackingVH> &DeadInsts;
 
     bool Changed;
 
   public:
     SimplifyIndvar(Loop *Loop, ScalarEvolution *SE, DominatorTree *DT,
-                   LoopInfo *LI,SmallVectorImpl<WeakVH> &Dead)
+                   LoopInfo *LI, SmallVectorImpl<WeakTrackingVH> &Dead)
         : L(Loop), LI(LI), SE(SE), DT(DT), DeadInsts(Dead), Changed(false) {
       assert(LI && "IV simplification requires LoopInfo");
     }
@@ -75,6 +78,7 @@ namespace {
     void eliminateIVComparison(ICmpInst *ICmp, Value *IVOperand);
     void eliminateIVRemainder(BinaryOperator *Rem, Value *IVOperand,
                               bool IsSigned);
+    bool eliminateSDiv(BinaryOperator *SDiv);
     bool strengthenOverflowingOperation(BinaryOperator *OBO, Value *IVOperand);
   };
 }
@@ -265,6 +269,33 @@ void SimplifyIndvar::eliminateIVComparison(ICmpInst *ICmp, Value *IVOperand) {
   Changed = true;
 }
 
+bool SimplifyIndvar::eliminateSDiv(BinaryOperator *SDiv) {
+  // Get the SCEVs for the ICmp operands.
+  auto *N = SE->getSCEV(SDiv->getOperand(0));
+  auto *D = SE->getSCEV(SDiv->getOperand(1));
+
+  // Simplify unnecessary loops away.
+  const Loop *L = LI->getLoopFor(SDiv->getParent());
+  N = SE->getSCEVAtScope(N, L);
+  D = SE->getSCEVAtScope(D, L);
+
+  // Replace sdiv by udiv if both of the operands are non-negative
+  if (SE->isKnownNonNegative(N) && SE->isKnownNonNegative(D)) {
+    auto *UDiv = BinaryOperator::Create(
+        BinaryOperator::UDiv, SDiv->getOperand(0), SDiv->getOperand(1),
+        SDiv->getName() + ".udiv", SDiv);
+    UDiv->setIsExact(SDiv->isExact());
+    SDiv->replaceAllUsesWith(UDiv);
+    DEBUG(dbgs() << "INDVARS: Simplified sdiv: " << *SDiv << '\n');
+    ++NumSimplifiedSDiv;
+    Changed = true;
+    DeadInsts.push_back(SDiv);
+    return true;
+  }
+
+  return false;
+}
+
 /// SimplifyIVUsers helper for eliminating useless
 /// remainder operations operating on an induction variable.
 void SimplifyIndvar::eliminateIVRemainder(BinaryOperator *Rem,
@@ -321,7 +352,7 @@ bool SimplifyIndvar::eliminateOverflowIntrinsic(CallInst *CI) {
     return false;
 
   typedef const SCEV *(ScalarEvolution::*OperationFunctionTy)(
-      const SCEV *, const SCEV *, SCEV::NoWrapFlags);
+      const SCEV *, const SCEV *, SCEV::NoWrapFlags, unsigned);
   typedef const SCEV *(ScalarEvolution::*ExtensionFunctionTy)(
       const SCEV *, Type *);
 
@@ -375,10 +406,11 @@ bool SimplifyIndvar::eliminateOverflowIntrinsic(CallInst *CI) {
     IntegerType::get(NarrowTy->getContext(), NarrowTy->getBitWidth() * 2);
 
   const SCEV *A =
-      (SE->*Extension)((SE->*Operation)(LHS, RHS, SCEV::FlagAnyWrap), WideTy);
+      (SE->*Extension)((SE->*Operation)(LHS, RHS, SCEV::FlagAnyWrap, 0u),
+                       WideTy);
   const SCEV *B =
       (SE->*Operation)((SE->*Extension)(LHS, WideTy),
-                       (SE->*Extension)(RHS, WideTy), SCEV::FlagAnyWrap);
+                       (SE->*Extension)(RHS, WideTy), SCEV::FlagAnyWrap, 0u);
 
   if (A != B)
     return false;
@@ -426,12 +458,15 @@ bool SimplifyIndvar::eliminateIVUser(Instruction *UseInst,
     eliminateIVComparison(ICmp, IVOperand);
     return true;
   }
-  if (BinaryOperator *Rem = dyn_cast<BinaryOperator>(UseInst)) {
-    bool IsSigned = Rem->getOpcode() == Instruction::SRem;
-    if (IsSigned || Rem->getOpcode() == Instruction::URem) {
-      eliminateIVRemainder(Rem, IVOperand, IsSigned);
+  if (BinaryOperator *Bin = dyn_cast<BinaryOperator>(UseInst)) {
+    bool IsSRem = Bin->getOpcode() == Instruction::SRem;
+    if (IsSRem || Bin->getOpcode() == Instruction::URem) {
+      eliminateIVRemainder(Bin, IVOperand, IsSRem);
       return true;
     }
+
+    if (Bin->getOpcode() == Instruction::SDiv)
+      return eliminateSDiv(Bin);
   }
 
   if (auto *CI = dyn_cast<CallInst>(UseInst))
@@ -496,8 +531,7 @@ bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
     return false;
 
   const SCEV *(ScalarEvolution::*GetExprForBO)(const SCEV *, const SCEV *,
-                                               SCEV::NoWrapFlags);
-
+                                               SCEV::NoWrapFlags, unsigned);
   switch (BO->getOpcode()) {
   default:
     return false;
@@ -526,7 +560,7 @@ bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
     const SCEV *ExtendAfterOp = SE->getZeroExtendExpr(SE->getSCEV(BO), WideTy);
     const SCEV *OpAfterExtend = (SE->*GetExprForBO)(
       SE->getZeroExtendExpr(LHS, WideTy), SE->getZeroExtendExpr(RHS, WideTy),
-      SCEV::FlagAnyWrap);
+      SCEV::FlagAnyWrap, 0u);
     if (ExtendAfterOp == OpAfterExtend) {
       BO->setHasNoUnsignedWrap();
       SE->forgetValue(BO);
@@ -538,7 +572,7 @@ bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
     const SCEV *ExtendAfterOp = SE->getSignExtendExpr(SE->getSCEV(BO), WideTy);
     const SCEV *OpAfterExtend = (SE->*GetExprForBO)(
       SE->getSignExtendExpr(LHS, WideTy), SE->getSignExtendExpr(RHS, WideTy),
-      SCEV::FlagAnyWrap);
+      SCEV::FlagAnyWrap, 0u);
     if (ExtendAfterOp == OpAfterExtend) {
       BO->setHasNoSignedWrap();
       SE->forgetValue(BO);
@@ -667,7 +701,7 @@ void IVVisitor::anchor() { }
 /// Simplify instructions that use this induction variable
 /// by using ScalarEvolution to analyze the IV's recurrence.
 bool simplifyUsersOfIV(PHINode *CurrIV, ScalarEvolution *SE, DominatorTree *DT,
-                       LoopInfo *LI, SmallVectorImpl<WeakVH> &Dead,
+                       LoopInfo *LI, SmallVectorImpl<WeakTrackingVH> &Dead,
                        IVVisitor *V) {
   SimplifyIndvar SIV(LI->getLoopFor(CurrIV->getParent()), SE, DT, LI, Dead);
   SIV.simplifyUsers(CurrIV, V);
@@ -677,7 +711,7 @@ bool simplifyUsersOfIV(PHINode *CurrIV, ScalarEvolution *SE, DominatorTree *DT,
 /// Simplify users of induction variables within this
 /// loop. This does not actually change or add IVs.
 bool simplifyLoopIVs(Loop *L, ScalarEvolution *SE, DominatorTree *DT,
-                     LoopInfo *LI, SmallVectorImpl<WeakVH> &Dead) {
+                     LoopInfo *LI, SmallVectorImpl<WeakTrackingVH> &Dead) {
   bool Changed = false;
   for (BasicBlock::iterator I = L->getHeader()->begin(); isa<PHINode>(I); ++I) {
     Changed |= simplifyUsersOfIV(cast<PHINode>(I), SE, DT, LI, Dead);

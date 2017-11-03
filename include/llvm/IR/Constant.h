@@ -40,8 +40,6 @@ class APInt;
 /// don't have to worry about the lifetime of the objects.
 /// @brief LLVM Constant Representation
 class Constant : public User {
-  void anchor() override;
-
 protected:
   Constant(Type *ty, ValueTy vty, Use *Ops, unsigned NumOps)
     : User(ty, vty, Ops, NumOps) {}
@@ -152,12 +150,13 @@ public:
   /// hanging off of the globals.
   void removeDeadConstantUsers() const;
 
-  Constant *stripPointerCasts() {
+  const Constant *stripPointerCasts() const {
     return cast<Constant>(Value::stripPointerCasts());
   }
 
-  const Constant *stripPointerCasts() const {
-    return const_cast<Constant*>(this)->stripPointerCasts();
+  Constant *stripPointerCasts() {
+    return const_cast<Constant*>(
+                      static_cast<const Constant *>(this)->stripPointerCasts());
   }
 };
 

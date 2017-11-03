@@ -22,8 +22,11 @@
 
 namespace llvm {
 
+class AArch64RegisterBankInfo;
+class AArch64Subtarget;
 class AArch64TargetMachine;
 class FunctionPass;
+class InstructionSelector;
 class MachineFunctionPass;
 
 FunctionPass *createAArch64DeadRegisterDefinitions();
@@ -38,17 +41,18 @@ FunctionPass *createAArch64LoadStoreOptimizationPass();
 FunctionPass *createAArch64VectorByElementOptPass();
 ModulePass *createAArch64PromoteConstantPass();
 FunctionPass *createAArch64ConditionOptimizerPass();
-FunctionPass *createAArch64AddressTypePromotionPass();
 FunctionPass *createAArch64A57FPLoadBalancing();
 FunctionPass *createAArch64A53Fix835769();
 
 FunctionPass *createAArch64CleanupLocalDynamicTLSPass();
 
 FunctionPass *createAArch64CollectLOHPass();
+InstructionSelector *
+createAArch64InstructionSelector(const AArch64TargetMachine &,
+                                 AArch64Subtarget &, AArch64RegisterBankInfo &);
 
 void initializeAArch64A53Fix835769Pass(PassRegistry&);
 void initializeAArch64A57FPLoadBalancingPass(PassRegistry&);
-void initializeAArch64AddressTypePromotionPass(PassRegistry&);
 void initializeAArch64AdvSIMDScalarPass(PassRegistry&);
 void initializeAArch64CollectLOHPass(PassRegistry&);
 void initializeAArch64ConditionalComparesPass(PassRegistry&);

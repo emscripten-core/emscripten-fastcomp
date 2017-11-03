@@ -1,5 +1,14 @@
 // RUN: not llvm-mc -triple aarch64-elf -filetype=obj %s -o /dev/null 2>&1 | FileCheck %s
 
+  .data
+b:
+  .fill 300
+e:
+  .byte e - b
+  // CHECK: error: value evaluated as 300 is out of range.
+  // CHECK-NEXT: .byte e - b
+  // CHECK-NEXT:       ^
+
   .section sec_x
 start:
   .space 5000
@@ -63,9 +72,9 @@ end_across_sec:
 
   add w0, w1, #(sec_y - sec_x)
   cmp w0, #(sec_y - sec_x)
-  // CHECK: error: symbol 'sec_x' can not be undefined in a subtraction expression
+  // CHECK: error: Cannot represent a difference across sections
   // CHECK-NEXT: add w0, w1, #(sec_y - sec_x)
   // CHECK-NEXT: ^
-  // CHECK: error: symbol 'sec_x' can not be undefined in a subtraction expression
+  // CHECK: error: Cannot represent a difference across sections
   // CHECK-NEXT: cmp w0, #(sec_y - sec_x)
   // CHECK-NEXT: ^

@@ -7,9 +7,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/MC/MCAsmBackend.h"
 #include "MCTargetDesc/SparcFixupKinds.h"
 #include "MCTargetDesc/SparcMCTargetDesc.h"
+#include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixupKindInfo.h"
@@ -274,7 +274,8 @@ namespace {
       SparcAsmBackend(T), OSType(OSType) { }
 
     void applyFixup(const MCFixup &Fixup, char *Data, unsigned DataSize,
-                    uint64_t Value, bool IsPCRel) const override {
+                    uint64_t Value, bool IsPCRel,
+                    MCContext &Ctx) const override {
 
       Value = adjustFixupValue(Fixup.getKind(), Value);
       if (!Value) return;           // Doesn't change encoding.

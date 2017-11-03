@@ -7,8 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "gtest/gtest.h"
 #include "llvm/Support/MathExtras.h"
+#include "gtest/gtest.h"
 
 using namespace llvm;
 
@@ -64,6 +64,31 @@ TEST(MathExtras, countLeadingZeros) {
   for (unsigned i = 0; i <= 62; ++i) {
     EXPECT_EQ(63 - i, countLeadingZeros(1ULL << i));
   }
+}
+
+TEST(MathExtras, onesMask) {
+  EXPECT_EQ(0U, maskLeadingOnes<uint8_t>(0));
+  EXPECT_EQ(0U, maskTrailingOnes<uint8_t>(0));
+  EXPECT_EQ(0U, maskLeadingOnes<uint16_t>(0));
+  EXPECT_EQ(0U, maskTrailingOnes<uint16_t>(0));
+  EXPECT_EQ(0U, maskLeadingOnes<uint32_t>(0));
+  EXPECT_EQ(0U, maskTrailingOnes<uint32_t>(0));
+  EXPECT_EQ(0U, maskLeadingOnes<uint64_t>(0));
+  EXPECT_EQ(0U, maskTrailingOnes<uint64_t>(0));
+
+  EXPECT_EQ(0x00000003U, maskTrailingOnes<uint32_t>(2U));
+  EXPECT_EQ(0xC0000000U, maskLeadingOnes<uint32_t>(2U));
+
+  EXPECT_EQ(0x000007FFU, maskTrailingOnes<uint32_t>(11U));
+  EXPECT_EQ(0xFFE00000U, maskLeadingOnes<uint32_t>(11U));
+
+  EXPECT_EQ(0xFFFFFFFFU, maskTrailingOnes<uint32_t>(32U));
+  EXPECT_EQ(0xFFFFFFFFU, maskLeadingOnes<uint32_t>(32U));
+  EXPECT_EQ(0xFFFFFFFFFFFFFFFFULL, maskTrailingOnes<uint64_t>(64U));
+  EXPECT_EQ(0xFFFFFFFFFFFFFFFFULL, maskLeadingOnes<uint64_t>(64U));
+
+  EXPECT_EQ(0x0000FFFFFFFFFFFFULL, maskTrailingOnes<uint64_t>(48U));
+  EXPECT_EQ(0xFFFFFFFFFFFF0000ULL, maskLeadingOnes<uint64_t>(48U));
 }
 
 TEST(MathExtras, findFirstSet) {

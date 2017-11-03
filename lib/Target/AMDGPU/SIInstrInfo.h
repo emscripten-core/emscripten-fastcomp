@@ -69,6 +69,9 @@ private:
                             MachineInstr &Inst) const;
   void splitScalar64BitBFE(SmallVectorImpl<MachineInstr *> &Worklist,
                            MachineInstr &Inst) const;
+  void movePackToVALU(SmallVectorImpl<MachineInstr *> &Worklist,
+                      MachineRegisterInfo &MRI,
+                      MachineInstr &Inst) const;
 
   void addUsersToMoveToVALUWorklist(
     unsigned Reg, MachineRegisterInfo &MRI,
@@ -140,6 +143,23 @@ public:
                                     RegScavenger *RS, unsigned TmpReg,
                                     unsigned Offset, unsigned Size) const;
 
+  void materializeImmediate(MachineBasicBlock &MBB,
+                            MachineBasicBlock::iterator MI,
+                            const DebugLoc &DL,
+                            unsigned DestReg,
+                            int64_t Value) const;
+
+  const TargetRegisterClass *getPreferredSelectRegClass(
+                               unsigned Size) const;
+
+  unsigned insertNE(MachineBasicBlock *MBB,
+                    MachineBasicBlock::iterator I, const DebugLoc &DL,
+                    unsigned SrcReg, int Value)  const;
+
+  unsigned insertEQ(MachineBasicBlock *MBB,
+                    MachineBasicBlock::iterator I, const DebugLoc &DL,
+                    unsigned SrcReg, int Value)  const;
+
   void storeRegToStackSlot(MachineBasicBlock &MBB,
                            MachineBasicBlock::iterator MI, unsigned SrcReg,
                            bool isKill, int FrameIndex,
@@ -190,7 +210,7 @@ public:
   bool analyzeBranch(MachineBasicBlock &MBB, MachineBasicBlock *&TBB,
                      MachineBasicBlock *&FBB,
                      SmallVectorImpl<MachineOperand> &Cond,
-                     bool AllowModify) const override;
+                     bool AllowModify = false) const override;
 
   unsigned removeBranch(MachineBasicBlock &MBB,
                         int *BytesRemoved = nullptr) const override;
@@ -203,9 +223,28 @@ public:
   bool reverseBranchCondition(
     SmallVectorImpl<MachineOperand> &Cond) const override;
 
+
+  bool canInsertSelect(const MachineBasicBlock &MBB,
+                       ArrayRef<MachineOperand> Cond,
+                       unsigned TrueReg, unsigned FalseReg,
+                       int &CondCycles,
+                       int &TrueCycles, int &FalseCycles) const override;
+
+  void insertSelect(MachineBasicBlock &MBB,
+                    MachineBasicBlock::iterator I, const DebugLoc &DL,
+                    unsigned DstReg, ArrayRef<MachineOperand> Cond,
+                    unsigned TrueReg, unsigned FalseReg) const override;
+
+  void insertVectorSelect(MachineBasicBlock &MBB,
+                          MachineBasicBlock::iterator I, const DebugLoc &DL,
+                          unsigned DstReg, ArrayRef<MachineOperand> Cond,
+                          unsigned TrueReg, unsigned FalseReg) const;
+
   bool
   areMemAccessesTriviallyDisjoint(MachineInstr &MIa, MachineInstr &MIb,
                                   AliasAnalysis *AA = nullptr) const override;
+
+  bool isFoldableCopy(const MachineInstr &MI) const;
 
   bool FoldImmediate(MachineInstr &UseMI, MachineInstr &DefMI, unsigned Reg,
                      MachineRegisterInfo *MRI) const final;
@@ -306,6 +345,14 @@ public:
 
   bool isVOP3(uint16_t Opcode) const {
     return get(Opcode).TSFlags & SIInstrFlags::VOP3;
+  }
+
+  static bool isSDWA(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::SDWA;
+  }
+
+  bool isSDWA(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::SDWA;
   }
 
   static bool isVOPC(const MachineInstr &MI) {
@@ -420,6 +467,22 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::DPP;
   }
 
+  static bool isVOP3P(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::VOP3P;
+  }
+
+  bool isVOP3P(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::VOP3P;
+  }
+
+  static bool isVINTRP(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::VINTRP;
+  }
+
+  bool isVINTRP(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::VINTRP;
+  }
+
   static bool isScalarUnit(const MachineInstr &MI) {
     return MI.getDesc().TSFlags & (SIInstrFlags::SALU | SIInstrFlags::SMRD);
   }
@@ -454,34 +517,20 @@ public:
     return get(Opcode).TSFlags & SIInstrFlags::FIXED_SIZE;
   }
 
+  static bool hasFPClamp(const MachineInstr &MI) {
+    return MI.getDesc().TSFlags & SIInstrFlags::HasFPClamp;
+  }
+
+  bool hasFPClamp(uint16_t Opcode) const {
+    return get(Opcode).TSFlags & SIInstrFlags::HasFPClamp;
+  }
+
   bool isVGPRCopy(const MachineInstr &MI) const {
     assert(MI.isCopy());
     unsigned Dest = MI.getOperand(0).getReg();
     const MachineFunction &MF = *MI.getParent()->getParent();
     const MachineRegisterInfo &MRI = MF.getRegInfo();
     return !RI.isSGPRReg(MRI, Dest);
-  }
-
-  static int operandBitWidth(uint8_t OperandType) {
-    switch (OperandType) {
-    case AMDGPU::OPERAND_REG_IMM_INT32:
-    case AMDGPU::OPERAND_REG_IMM_FP32:
-    case AMDGPU::OPERAND_REG_INLINE_C_INT32:
-    case AMDGPU::OPERAND_REG_INLINE_C_FP32:
-      return 32;
-    case AMDGPU::OPERAND_REG_IMM_INT64:
-    case AMDGPU::OPERAND_REG_IMM_FP64:
-    case AMDGPU::OPERAND_REG_INLINE_C_INT64:
-    case AMDGPU::OPERAND_REG_INLINE_C_FP64:
-      return 64;
-    case AMDGPU::OPERAND_REG_INLINE_C_INT16:
-    case AMDGPU::OPERAND_REG_INLINE_C_FP16:
-    case AMDGPU::OPERAND_REG_IMM_INT16:
-    case AMDGPU::OPERAND_REG_IMM_FP16:
-      return 16;
-    default:
-      llvm_unreachable("unexpected operand type");
-    }
   }
 
   bool isInlineConstant(const APInt &Imm) const;
@@ -571,6 +620,7 @@ public:
 
   bool hasModifiersSet(const MachineInstr &MI,
                        unsigned OpName) const;
+  bool hasAnyModifiersSet(const MachineInstr &MI) const;
 
   bool verifyInstruction(const MachineInstr &MI,
                          StringRef &ErrInfo) const override;
@@ -598,13 +648,13 @@ public:
       return 4;
     }
 
-    return RI.getRegClass(OpInfo.RegClass)->getSize();
+    return RI.getRegSizeInBits(*RI.getRegClass(OpInfo.RegClass)) / 8;
   }
 
   /// \brief This form should usually be preferred since it handles operands
   /// with unknown register classes.
   unsigned getOpSize(const MachineInstr &MI, unsigned OpNo) const {
-    return getOpRegClass(MI, OpNo)->getSize();
+    return RI.getRegSizeInBits(*getOpRegClass(MI, OpNo)) / 8;
   }
 
   /// \returns true if it is legal for the operand at index \p OpNo
@@ -677,6 +727,7 @@ public:
   void insertNoop(MachineBasicBlock &MBB,
                   MachineBasicBlock::iterator MI) const override;
 
+  void insertReturn(MachineBasicBlock &MBB) const;
   /// \brief Return the number of wait states that result from executing this
   /// instruction.
   unsigned getNumWaitStates(const MachineInstr &MI) const;
@@ -722,6 +773,14 @@ public:
 
   bool mayAccessFlatAddressSpace(const MachineInstr &MI) const;
 
+  bool isNonUniformBranchInstr(MachineInstr &Instr) const;
+
+  void convertNonUniformIfRegion(MachineBasicBlock *IfEntry,
+                                 MachineBasicBlock *IfEnd) const;
+
+  void convertNonUniformLoopRegion(MachineBasicBlock *LoopEntry,
+                                   MachineBasicBlock *LoopEnd) const;
+
   ArrayRef<std::pair<int, const char *>>
   getSerializableTargetIndices() const override;
 
@@ -731,6 +790,17 @@ public:
 
   ScheduleHazardRecognizer *
   CreateTargetPostRAHazardRecognizer(const MachineFunction &MF) const override;
+
+  bool isBasicBlockPrologue(const MachineInstr &MI) const override;
+
+  /// \brief Return a partially built integer add instruction without carry.
+  /// Caller must add source operands.
+  /// For pre-GFX9 it will generate unused carry destination operand.
+  /// TODO: After GFX9 it should return a no-carry operation.
+  MachineInstrBuilder getAddNoCarry(MachineBasicBlock &MBB,
+                                    MachineBasicBlock::iterator I,
+                                    const DebugLoc &DL,
+                                    unsigned DestReg) const;
 };
 
 namespace AMDGPU {
@@ -739,6 +809,9 @@ namespace AMDGPU {
 
   LLVM_READONLY
   int getVOPe32(uint16_t Opcode);
+
+  LLVM_READONLY
+  int getSDWAOp(uint16_t Opcode);
 
   LLVM_READONLY
   int getCommuteRev(uint16_t Opcode);

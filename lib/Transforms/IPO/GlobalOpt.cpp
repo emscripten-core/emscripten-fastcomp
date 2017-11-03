@@ -239,7 +239,7 @@ static bool CleanupConstantGlobalUsers(Value *V, Constant *Init,
   // we delete a constant array, we may also be holding pointer to one of its
   // elements (or an element of one of its elements if we're dealing with an
   // array of arrays) in the worklist.
-  SmallVector<WeakVH, 8> WorkList(V->user_begin(), V->user_end());
+  SmallVector<WeakTrackingVH, 8> WorkList(V->user_begin(), V->user_end());
   while (!WorkList.empty()) {
     Value *UV = WorkList.pop_back_val();
     if (!UV)
@@ -1847,7 +1847,9 @@ static void makeAllConstantUsesInstructions(Constant *C) {
       NewU->insertBefore(UI);
       UI->replaceUsesOfWith(U, NewU);
     }
-    U->dropAllReferences();
+    // We've replaced all the uses, so destroy the constant. (destroyConstant
+    // will update value handles and metadata.)
+    U->destroyConstant();
   }
 }
 
@@ -1874,12 +1876,14 @@ static bool processInternalGlobal(
       GS.AccessingFunction->doesNotRecurse() &&
       isPointerValueDeadOnEntryToFunction(GS.AccessingFunction, GV,
                                           LookupDomTree)) {
+    const DataLayout &DL = GV->getParent()->getDataLayout();
+
     DEBUG(dbgs() << "LOCALIZING GLOBAL: " << *GV << "\n");
     Instruction &FirstI = const_cast<Instruction&>(*GS.AccessingFunction
                                                    ->getEntryBlock().begin());
     Type *ElemTy = GV->getValueType();
     // FIXME: Pass Global's alignment when globals have alignment
-    AllocaInst *Alloca = new AllocaInst(ElemTy, nullptr,
+    AllocaInst *Alloca = new AllocaInst(ElemTy, DL.getAllocaAddrSpace(), nullptr,
                                         GV->getName(), &FirstI);
     if (!isa<UndefValue>(GV->getInitializer()))
       new StoreInst(GV->getInitializer(), Alloca, &FirstI);
@@ -2033,16 +2037,11 @@ static void ChangeCalleesToFastCall(Function *F) {
   }
 }
 
-static AttributeSet StripNest(LLVMContext &C, const AttributeSet &Attrs) {
-  for (unsigned i = 0, e = Attrs.getNumSlots(); i != e; ++i) {
-    unsigned Index = Attrs.getSlotIndex(i);
-    if (!Attrs.getSlotAttributes(i).hasAttribute(Index, Attribute::Nest))
-      continue;
-
-    // There can be only one.
-    return Attrs.removeAttribute(C, Index, Attribute::Nest);
-  }
-
+static AttributeList StripNest(LLVMContext &C, AttributeList Attrs) {
+  // There can be at most one attribute set with a nest attribute.
+  unsigned NestIndex;
+  if (Attrs.hasAttrSomewhere(Attribute::Nest, &NestIndex))
+    return Attrs.removeAttribute(C, NestIndex, Attribute::Nest);
   return Attrs;
 }
 
@@ -2443,7 +2442,7 @@ OptimizeGlobalAliases(Module &M,
 }
 
 static Function *FindCXAAtExit(Module &M, TargetLibraryInfo *TLI) {
-  LibFunc::Func F = LibFunc::cxa_atexit;
+  LibFunc F = LibFunc_cxa_atexit;
   if (!TLI->has(F))
     return nullptr;
 
@@ -2452,7 +2451,7 @@ static Function *FindCXAAtExit(Module &M, TargetLibraryInfo *TLI) {
     return nullptr;
 
   // Make sure that the function has the correct prototype.
-  if (!TLI->getLibFunc(*Fn, F) || F != LibFunc::cxa_atexit)
+  if (!TLI->getLibFunc(*Fn, F) || F != LibFunc_cxa_atexit)
     return nullptr;
 
   return Fn;

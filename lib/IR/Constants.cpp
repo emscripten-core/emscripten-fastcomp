@@ -30,16 +30,12 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 #include <algorithm>
-#include <cstdarg>
+
 using namespace llvm;
 
 //===----------------------------------------------------------------------===//
 //                              Constant Class
 //===----------------------------------------------------------------------===//
-
-void Constant::anchor() { }
-
-void ConstantData::anchor() {}
 
 bool Constant::isNegativeZeroValue() const {
   // Floating point values have an explicit -0.0 value.
@@ -131,7 +127,7 @@ bool Constant::isOneValue() const {
 
   // Check for FP which are bitcasted from 1 integers
   if (const ConstantFP *CFP = dyn_cast<ConstantFP>(this))
-    return CFP->getValueAPF().bitcastToAPInt() == 1;
+    return CFP->getValueAPF().bitcastToAPInt().isOneValue();
 
   // Check for constant vectors which are splats of 1 values.
   if (const ConstantVector *CV = dyn_cast<ConstantVector>(this))
@@ -496,8 +492,6 @@ void Constant::removeDeadConstantUsers() const {
 //                                ConstantInt
 //===----------------------------------------------------------------------===//
 
-void ConstantInt::anchor() { }
-
 ConstantInt::ConstantInt(IntegerType *Ty, const APInt &V)
     : ConstantData(Ty, ConstantIntVal), Val(V) {
   assert(V.getBitWidth() == Ty->getBitWidth() && "Invalid constant for type");
@@ -518,27 +512,19 @@ ConstantInt *ConstantInt::getFalse(LLVMContext &Context) {
 }
 
 Constant *ConstantInt::getTrue(Type *Ty) {
-  VectorType *VTy = dyn_cast<VectorType>(Ty);
-  if (!VTy) {
-    assert(Ty->isIntegerTy(1) && "True must be i1 or vector of i1.");
-    return ConstantInt::getTrue(Ty->getContext());
-  }
-  assert(VTy->getElementType()->isIntegerTy(1) &&
-         "True must be vector of i1 or i1.");
-  return ConstantVector::getSplat(VTy->getNumElements(),
-                                  ConstantInt::getTrue(Ty->getContext()));
+  assert(Ty->getScalarType()->isIntegerTy(1) && "Type not i1 or vector of i1.");
+  ConstantInt *TrueC = ConstantInt::getTrue(Ty->getContext());
+  if (auto *VTy = dyn_cast<VectorType>(Ty))
+    return ConstantVector::getSplat(VTy->getNumElements(), TrueC);
+  return TrueC;
 }
 
 Constant *ConstantInt::getFalse(Type *Ty) {
-  VectorType *VTy = dyn_cast<VectorType>(Ty);
-  if (!VTy) {
-    assert(Ty->isIntegerTy(1) && "False must be i1 or vector of i1.");
-    return ConstantInt::getFalse(Ty->getContext());
-  }
-  assert(VTy->getElementType()->isIntegerTy(1) &&
-         "False must be vector of i1 or i1.");
-  return ConstantVector::getSplat(VTy->getNumElements(),
-                                  ConstantInt::getFalse(Ty->getContext()));
+  assert(Ty->getScalarType()->isIntegerTy(1) && "Type not i1 or vector of i1.");
+  ConstantInt *FalseC = ConstantInt::getFalse(Ty->getContext());
+  if (auto *VTy = dyn_cast<VectorType>(Ty))
+    return ConstantVector::getSplat(VTy->getNumElements(), FalseC);
+  return FalseC;
 }
 
 // Get a ConstantInt from an APInt.
@@ -617,8 +603,6 @@ static const fltSemantics *TypeToFloatSemantics(Type *Ty) {
   assert(Ty->isPPC_FP128Ty() && "Unknown FP format");
   return &APFloat::PPCDoubleDouble();
 }
-
-void ConstantFP::anchor() { }
 
 Constant *ConstantFP::get(Type *Ty, double V) {
   LLVMContext &Context = Ty->getContext();
@@ -974,16 +958,6 @@ Constant *ConstantStruct::get(StructType *ST, ArrayRef<Constant*> V) {
   return ST->getContext().pImpl->StructConstants.getOrCreate(ST, V);
 }
 
-Constant *ConstantStruct::get(StructType *T, ...) {
-  va_list ap;
-  SmallVector<Constant*, 8> Values;
-  va_start(ap, T);
-  while (Constant *Val = va_arg(ap, llvm::Constant*))
-    Values.push_back(Val);
-  va_end(ap);
-  return get(T, Values);
-}
-
 ConstantVector::ConstantVector(VectorType *T, ArrayRef<Constant *> V)
     : ConstantAggregate(T, ConstantVectorVal, V) {
   assert(V.size() == T->getNumElements() &&
@@ -1027,7 +1001,7 @@ Constant *ConstantVector::getImpl(ArrayRef<Constant*> V) {
     return getSequenceIfElementsMatch<ConstantDataVector>(C, V);
 
   // Otherwise, the element type isn't compatible with ConstantDataVector, or
-  // the operand list constants a ConstantExpr or something else strange.
+  // the operand list contains a ConstantExpr or something else strange.
   return nullptr;
 }
 
@@ -1183,21 +1157,14 @@ bool ConstantInt::isValueValidForType(Type *Ty, uint64_t Val) {
   unsigned NumBits = Ty->getIntegerBitWidth(); // assert okay
   if (Ty->isIntegerTy(1))
     return Val == 0 || Val == 1;
-  if (NumBits >= 64)
-    return true; // always true, has to fit in largest type
-  uint64_t Max = (1ll << NumBits) - 1;
-  return Val <= Max;
+  return isUIntN(NumBits, Val);
 }
 
 bool ConstantInt::isValueValidForType(Type *Ty, int64_t Val) {
   unsigned NumBits = Ty->getIntegerBitWidth();
   if (Ty->isIntegerTy(1))
     return Val == 0 || Val == 1 || Val == -1;
-  if (NumBits >= 64)
-    return true; // always true, has to fit in largest type
-  int64_t Min = -(1ll << (NumBits-1));
-  int64_t Max = (1ll << (NumBits-1)) - 1;
-  return (Val >= Min && Val <= Max);
+  return isIntN(NumBits, Val);
 }
 
 bool ConstantFP::isValueValidForType(Type *Ty, const APFloat& Val) {
@@ -1818,8 +1785,7 @@ Constant *ConstantExpr::getSizeOf(Type* Ty) {
 Constant *ConstantExpr::getAlignOf(Type* Ty) {
   // alignof is implemented as: (i64) gep ({i1,Ty}*)null, 0, 1
   // Note that a non-inbounds gep is used, as null isn't within any object.
-  Type *AligningTy = 
-    StructType::get(Type::getInt1Ty(Ty->getContext()), Ty, nullptr);
+  Type *AligningTy = StructType::get(Type::getInt1Ty(Ty->getContext()), Ty);
   Constant *NullPtr = Constant::getNullValue(AligningTy->getPointerTo(0));
   Constant *Zero = ConstantInt::get(Type::getInt64Ty(Ty->getContext()), 0);
   Constant *One = ConstantInt::get(Type::getInt32Ty(Ty->getContext()), 1);
@@ -2285,9 +2251,6 @@ Type *GetElementPtrConstantExpr::getResultElementType() const {
 //===----------------------------------------------------------------------===//
 //                       ConstantData* implementations
 
-void ConstantDataArray::anchor() {}
-void ConstantDataVector::anchor() {}
-
 Type *ConstantDataSequential::getElementType() const {
   return getType()->getElementType();
 }
@@ -2646,8 +2609,8 @@ Constant *ConstantDataSequential::getElementAsConstant(unsigned Elt) const {
   return ConstantInt::get(getElementType(), getElementAsInteger(Elt));
 }
 
-bool ConstantDataSequential::isString() const {
-  return isa<ArrayType>(getType()) && getElementType()->isIntegerTy(8);
+bool ConstantDataSequential::isString(unsigned CharSize) const {
+  return isa<ArrayType>(getType()) && getElementType()->isIntegerTy(CharSize);
 }
 
 bool ConstantDataSequential::isCString() const {

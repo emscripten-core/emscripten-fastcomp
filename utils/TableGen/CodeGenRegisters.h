@@ -308,13 +308,13 @@ namespace llvm {
 
   public:
     unsigned EnumValue;
-    std::string Namespace;
+    StringRef Namespace;
     SmallVector<MVT::SimpleValueType, 4> VTs;
     unsigned SpillSize;
     unsigned SpillAlignment;
     int CopyCost;
     bool Allocatable;
-    std::string AltOrderSelect;
+    StringRef AltOrderSelect;
     uint8_t AllocationPriority;
     /// Contains the combination of the lane masks of all subregisters.
     LaneBitmask LaneMask;
@@ -735,6 +735,10 @@ namespace llvm {
     // LaneMask is contained in CoveringLanes will be completely covered by
     // another sub-register with the same or larger lane mask.
     LaneBitmask CoveringLanes;
+
+    // Helper function for printing debug information. Handles artificial
+    // (non-native) reg units.
+    void printRegUnitName(unsigned Unit) const;
   };
 
 } // end namespace llvm

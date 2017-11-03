@@ -11,19 +11,10 @@
 
 #include "llvm/DebugInfo/CodeView/CodeViewError.h"
 #include "llvm/DebugInfo/CodeView/SymbolVisitorCallbacks.h"
-#include "llvm/DebugInfo/MSF/ByteStream.h"
+#include "llvm/Support/BinaryByteStream.h"
 
 using namespace llvm;
 using namespace llvm::codeview;
-
-template <typename T>
-static Error takeObject(ArrayRef<uint8_t> &Data, const T *&Res) {
-  if (Data.size() < sizeof(*Res))
-    return llvm::make_error<CodeViewError>(cv_error_code::insufficient_buffer);
-  Res = reinterpret_cast<const T *>(Data.data());
-  Data = Data.drop_front(sizeof(*Res));
-  return Error::success();
-}
 
 CVSymbolVisitor::CVSymbolVisitor(SymbolVisitorCallbacks &Callbacks)
     : Callbacks(Callbacks) {}
@@ -55,7 +46,7 @@ Error CVSymbolVisitor::visitSymbolRecord(CVSymbol &Record) {
   }
 #define SYMBOL_RECORD_ALIAS(EnumName, EnumVal, Name, AliasName)                \
   SYMBOL_RECORD(EnumVal, EnumVal, AliasName)
-#include "llvm/DebugInfo/CodeView/CVSymbolTypes.def"
+#include "llvm/DebugInfo/CodeView/CodeViewSymbols.def"
   }
 
   if (auto EC = Callbacks.visitSymbolEnd(Record))

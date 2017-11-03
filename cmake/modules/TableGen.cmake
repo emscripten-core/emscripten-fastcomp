@@ -23,16 +23,33 @@ function(tablegen project ofn)
     set(LLVM_TARGET_DEFINITIONS_ABSOLUTE
       ${CMAKE_CURRENT_SOURCE_DIR}/${LLVM_TARGET_DEFINITIONS})
   endif()
+  if (LLVM_ENABLE_DAGISEL_COV)
+    list(FIND ARGN "-gen-dag-isel" idx)
+    if( NOT idx EQUAL -1 )
+      list(APPEND LLVM_TABLEGEN_FLAGS "-instrument-coverage")
+    endif()
+  endif()
+
+  # We need both _TABLEGEN_TARGET and _TABLEGEN_EXE in the  DEPENDS list
+  # (both the target and the file) to have .inc files rebuilt on
+  # a tablegen change, as cmake does not propagate file-level dependencies
+  # of custom targets. See the following ticket for more information:
+  # https://cmake.org/Bug/view.php?id=15858
+  # The dependency on both, the target and the file, produces the same
+  # dependency twice in the result file when
+  # ("${${project}_TABLEGEN_TARGET}" STREQUAL "${${project}_TABLEGEN_EXE}")
+  # but lets us having smaller and cleaner code here.
   add_custom_command(OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${ofn}.tmp
     # Generate tablegen output in a temporary file.
     COMMAND ${${project}_TABLEGEN_EXE} ${ARGN} -I ${CMAKE_CURRENT_SOURCE_DIR}
-    ${LLVM_TABLEGEN_FLAGS} 
+    ${LLVM_TABLEGEN_FLAGS}
     ${LLVM_TARGET_DEFINITIONS_ABSOLUTE}
     -o ${CMAKE_CURRENT_BINARY_DIR}/${ofn}.tmp
     # The file in LLVM_TARGET_DEFINITIONS may be not in the current
     # directory and local_tds may not contain it, so we must
     # explicitly list it here:
-    DEPENDS ${${project}_TABLEGEN_TARGET} ${local_tds} ${global_tds}
+    DEPENDS ${${project}_TABLEGEN_TARGET} ${${project}_TABLEGEN_EXE}
+      ${local_tds} ${global_tds}
     ${LLVM_TARGET_DEFINITIONS_ABSOLUTE}
     COMMENT "Building ${ofn}..."
     )
@@ -87,12 +104,13 @@ macro(add_tablegen target project)
   set(${target}_OLD_LLVM_LINK_COMPONENTS ${LLVM_LINK_COMPONENTS})
   set(LLVM_LINK_COMPONENTS ${LLVM_LINK_COMPONENTS} TableGen)
 
-  if(NOT XCODE)
+  # CMake-3.9 doesn't let compilation units depend on their dependent libraries.
+  if(NOT (CMAKE_GENERATOR STREQUAL "Ninja" AND NOT CMAKE_VERSION VERSION_LESS 3.9) AND NOT XCODE)
     # FIXME: It leaks to user, callee of add_tablegen.
     set(LLVM_ENABLE_OBJLIB ON)
   endif()
 
-  add_llvm_utility(${target} ${ARGN})
+  add_llvm_executable(${target} DISABLE_LLVM_LINK_LLVM_DYLIB ${ARGN})
   set(LLVM_LINK_COMPONENTS ${${target}_OLD_LLVM_LINK_COMPONENTS})
 
   set(${project}_TABLEGEN "${target}" CACHE
