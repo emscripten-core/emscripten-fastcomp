@@ -69,13 +69,14 @@ INITIALIZE_PASS(ExpandByVal, "expand-byval",
 // removeAttribute() currently does not work on Attribute::Alignment
 // (it fails with an assertion error), so we have to take a more
 // convoluted route to removing this attribute by recreating the
-// AttributeSet.
-AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
-  SmallVector<AttributeSet, 8> AttrList;
-  for (unsigned Slot = 0; Slot < Attrs.getNumSlots(); ++Slot) {
-    unsigned Index = Attrs.getSlotIndex(Slot);
+// AttributeList.
+AttributeList RemoveAttrs(LLVMContext &Context, AttributeList Attrs) {
+  SmallVector<AttributeList, 8> AttrList;
+  for (unsigned Index = Attrs.index_begin(), e = Attrs.index_end(); Index != e; ++Index) {
+    AttributeSet AttrSet = Attrs.getAttributes(Index);
+    if (!AttrSet.hasAttributes()) continue;
     AttrBuilder AB;
-    for (AttributeSet::iterator Attr = Attrs.begin(Slot), E = Attrs.end(Slot);
+    for (AttributeSet::iterator Attr = AttrSet.begin(), E = AttrSet.end();
          Attr != E; ++Attr) {
       if (Attr->isEnumAttribute() &&
           Attr->getKindAsEnum() != Attribute::ByVal &&
@@ -92,9 +93,9 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
         AB.addAttribute(Attribute::get(Context, Attribute::NoAlias));
       }
     }
-    AttrList.push_back(AttributeSet::get(Context, Index, AB));
+    AttrList.push_back(AttributeList::get(Context, Index, AB));
   }
-  return AttributeSet::get(Context, AttrList);
+  return AttributeList::get(Context, AttrList);
 }
 
 // ExpandCall() can take a CallInst or an InvokeInst.  It returns
@@ -102,7 +103,7 @@ AttributeSet RemoveAttrs(LLVMContext &Context, AttributeSet Attrs) {
 template <class InstType>
 static bool ExpandCall(DataLayout *DL, InstType *Call) {
   bool Modify = false;
-  AttributeSet Attrs = Call->getAttributes();
+  AttributeList Attrs = Call->getAttributes();
   for (unsigned ArgIdx = 0; ArgIdx < Call->getNumArgOperands(); ++ArgIdx) {
     unsigned AttrIdx = ArgIdx + 1;
 
@@ -133,7 +134,7 @@ static bool ExpandCall(DataLayout *DL, InstType *Call) {
                    DL->getABITypeAlignment(ArgType));
 
       // Make a copy of the byval argument.
-      Instruction *CopyBuf = new AllocaInst(ArgType, 0, Alignment,
+      Instruction *CopyBuf = new AllocaInst(ArgType, DL->getAllocaAddrSpace(), 0, Alignment,
                                             ArgPtr->getName() + ".byval_copy");
       Function *Func = Call->getParent()->getParent();
       Func->getEntryBlock().getInstList().push_front(CopyBuf);
@@ -180,7 +181,7 @@ bool ExpandByVal::runOnModule(Module &M) {
   DataLayout DL(&M);
 
   for (Module::iterator Func = M.begin(), E = M.end(); Func != E; ++Func) {
-    AttributeSet NewAttrs = RemoveAttrs(Func->getContext(),
+    AttributeList NewAttrs = RemoveAttrs(Func->getContext(),
                                         Func->getAttributes());
     Modified |= (NewAttrs != Func->getAttributes());
     Func->setAttributes(NewAttrs);
