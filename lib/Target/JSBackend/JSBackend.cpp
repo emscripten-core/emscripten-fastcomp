@@ -1281,11 +1281,20 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
-  if (OnlyWebAssembly) {
+  // If the operation is volatile, we'd like to generate an atomic operation for it to make sure it is "observed" in all cases
+  // and never optimized out, but if the operation is unaligned, that won't be possible since atomic operations can only
+  // run on aligned addresses. In such case, fall back to generating a regular operation, but issue a warning.
+  bool FallbackUnalignedVolatileOperation = OnlyWebAssembly && EnablePthreads && cast<LoadInst>(I)->isVolatile() && !Aligned;
+  if (OnlyWebAssembly && (!EnablePthreads || !cast<LoadInst>(I)->isVolatile() || FallbackUnalignedVolatileOperation)) {
     if (isAbsolute(P)) {
       // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
       JSWriter::getAssign(I); // ensure the variable is defined, even if it isn't used
       return "abort() /* segfault, load from absolute addr */";
+    }
+    if (FallbackUnalignedVolatileOperation) {
+      errs() << "emcc: warning: unable to implement unaligned volatile load as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
     }
     if (T->isIntegerTy() || T->isPointerTy()) {
       switch (Bytes) {
@@ -1424,23 +1433,34 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
+  // If the operation is volatile, we'd like to generate an atomic operation for it to make sure it is "observed" in all cases
+  // and never optimized out, but if the operation is unaligned, that won't be possible since atomic operations can only
+  // run on aligned addresses. In such case, fall back to generating a regular operation, but issue a warning.
+  bool FallbackUnalignedVolatileOperation = OnlyWebAssembly && EnablePthreads && cast<StoreInst>(I)->isVolatile() && !Aligned;
   if (OnlyWebAssembly) {
     if (Alignment == 536870912) {
       return "abort() /* segfault */";
     }
-    if (T->isIntegerTy() || T->isPointerTy()) {
-      switch (Bytes) {
-        case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
-        case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        default: llvm_unreachable("invalid wasm-only int load size");
-      }
-    } else {
-      switch (Bytes) {
-        case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        default: llvm_unreachable("invalid wasm-only float load size");
+    if (FallbackUnalignedVolatileOperation) {
+      errs() << "emcc: warning: unable to implement unaligned volatile store as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
+    if (!EnablePthreads || !cast<StoreInst>(I)->isVolatile() || FallbackUnalignedVolatileOperation) {
+      if (T->isIntegerTy() || T->isPointerTy()) {
+        switch (Bytes) {
+          case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
+          case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          default: llvm_unreachable("invalid wasm-only int load size");
+        }
+      } else {
+        switch (Bytes) {
+          case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          default: llvm_unreachable("invalid wasm-only float load size");
+        }
       }
     }
   }
