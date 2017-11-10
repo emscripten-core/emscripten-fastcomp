@@ -844,7 +844,7 @@ namespace {
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
     void generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code);
-    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend);
+    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend, bool reinterpret);
     void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
@@ -1756,7 +1756,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     } else {
       VectorType *IntTy = VectorType::getInteger(C->getType());
       checkVectorType(IntTy);
-      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', true);
+      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', /*signExtend=*/true, /*reinterpret=*/true);
     }
   }
 
@@ -1787,7 +1787,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
       c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
     }
 
-    return getSIMDCast(IntTy, C->getType(), c + ")", true);
+    return getSIMDCast(IntTy, C->getType(), c + ")", /*signExtend=*/true, /*reinterpret=*/true);
   }
 }
 
@@ -1953,7 +1953,9 @@ std::string castIntVecToBoolVec(int numElems, const std::string &str)
   return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
 }
 
-std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend)
+// Generates a conversion from the given vector type to the other vector type.
+// reinterpret: If true, generates a conversion that reinterprets the bits. If false, generates an actual type conversion operator.
+std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend, bool reinterpret)
 {
   bool toInt = toType->getElementType()->isIntegerTy();
   bool fromInt = fromType->getElementType()->isIntegerTy();
@@ -1978,7 +1980,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     error("Invalid SIMD cast between items of different bit sizes!");
   }
 
-  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + "Bits(" + valueStr + ")";
+  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + (reinterpret ? "Bits(" : "(") + valueStr + ")";
 }
 
 void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
@@ -2049,8 +2051,8 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Emit a fully-general shuffle.
   Code << "SIMD_" << SIMDType(SVI->getType()) << "_shuffle(";
 
-  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, true) << ", "
-       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, true) << ", ";
+  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, /*signExtend=*/true, /*reinterpret=*/true) << ", "
+       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, /*signExtend=*/true, /*reinterpret=*/true) << ", ";
 
   SmallVector<int, 16> Indices;
   SVI->getShuffleMask(Indices);
@@ -2334,12 +2336,12 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), true /* signExtend */);
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), /*signExtend=*/true, /*reinterpret=*/true);
         break;
       case Instruction::ZExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), false /* signExtend */);
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), /*signExtend=*/false, /*reinterpret=*/true);
         break;
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
@@ -2383,7 +2385,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::BitCast: {
       case Instruction::SIToFP:
         Code << getAssignIfNeeded(I);
-        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), true);
+        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), /*signExtend=*/true, /*reinterpret=*/Operator::getOpcode(I)==Instruction::BitCast);
         break;
       }
       case Instruction::Load: {
