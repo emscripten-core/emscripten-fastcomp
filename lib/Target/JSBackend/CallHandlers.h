@@ -712,15 +712,17 @@ DEF_CALL_HANDLER(llvm_copysign_f64, {
 
 // EM_ASM support
 
-std::string handleAsmConst(const Instruction *CI) {
+// callType is one of "", "sync_on_main_thread_" or "async_on_main_thread_" and specifies
+// in which thread's context the EM_ASM block will be executed in.
+std::string handleAsmConst(const Instruction *CI, std::string callType = "") {
   unsigned Num = getNumArgOperands(CI);
   std::string Sig;
   Sig += getFunctionSignatureLetter(CI->getType());
   for (unsigned i = 1; i < Num; i++) {
     Sig += getFunctionSignatureLetter(CI->getOperand(i)->getType());
   }
-  std::string func = "emscripten_asm_const_" + Sig;
-  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), Sig));
+  std::string func = "emscripten_asm_const_" + callType + Sig;
+  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), callType, Sig));
   for (unsigned i = 1; i < Num; i++) {
     ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }
@@ -738,6 +740,24 @@ DEF_CALL_HANDLER(emscripten_asm_const_int, {
 DEF_CALL_HANDLER(emscripten_asm_const_double, {
   Declares.insert("emscripten_asm_const_double");
   return getAssign(CI) + getCast(handleAsmConst(CI), Type::getDoubleTy(CI->getContext()));
+})
+
+DEF_CALL_HANDLER(emscripten_asm_const_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_sync_on_main_thread");
+  return handleAsmConst(CI, "sync_on_main_thread_");
+})
+DEF_CALL_HANDLER(emscripten_asm_const_int_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_int_sync_on_main_thread");
+  return getAssign(CI) + getCast(handleAsmConst(CI, "sync_on_main_thread_"), Type::getInt32Ty(CI->getContext()));
+})
+DEF_CALL_HANDLER(emscripten_asm_const_double_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_double_sync_on_main_thread");
+  return getAssign(CI) + getCast(handleAsmConst(CI, "sync_on_main_thread_"), Type::getDoubleTy(CI->getContext()));
+})
+
+DEF_CALL_HANDLER(emscripten_asm_const_async_on_main_thread, {
+  Declares.insert("emscripten_asm_const_async_on_main_thread");
+  return handleAsmConst(CI, "async_on_main_thread_");
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
@@ -2077,6 +2097,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_asm_const);
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
+
+  SETUP_CALL_HANDLER(emscripten_asm_const_sync_on_main_thread);
+  SETUP_CALL_HANDLER(emscripten_asm_const_int_sync_on_main_thread);
+  SETUP_CALL_HANDLER(emscripten_asm_const_double_sync_on_main_thread);
+
+  SETUP_CALL_HANDLER(emscripten_asm_const_async_on_main_thread);
 
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u16);
