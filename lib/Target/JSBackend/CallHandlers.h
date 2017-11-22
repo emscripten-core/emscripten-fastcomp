@@ -358,6 +358,17 @@ CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8, "HEAP8");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16, "HEAP16");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32, "HEAP32");
 
+DEF_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64, {
+  const Value *P = CI->getOperand(0);
+  if (EnablePthreads) {
+    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
+  } else { \
+    return getLoad(CI, P, CI->getType(), 0) + ';' + \
+             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
+                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0); \
+  } \
+})
+
 #define UNROLL_LOOP_MAX 8
 #define WRITE_LOOP_MAX 128
 
@@ -1657,6 +1668,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i8);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i16);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
+  SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
