@@ -712,17 +712,32 @@ DEF_CALL_HANDLER(llvm_copysign_f64, {
 
 // EM_ASM support
 
+enum EmAsmCallType
+{
+  EmAsmOnCallingThread,
+  EmAsmSyncOnMainThread,
+  EmAsmAsyncOnMainThread,
+};
+
 // callType is one of "", "sync_on_main_thread_" or "async_on_main_thread_" and specifies
 // in which thread's context the EM_ASM block will be executed in.
-std::string handleAsmConst(const Instruction *CI, std::string callType = "") {
+std::string handleAsmConst(const Instruction *CI, EmAsmCallType callType) {
   unsigned Num = getNumArgOperands(CI);
   std::string Sig;
   Sig += getFunctionSignatureLetter(CI->getType());
   for (unsigned i = 1; i < Num; i++) {
     Sig += getFunctionSignatureLetter(CI->getOperand(i)->getType());
   }
-  std::string func = "emscripten_asm_const_" + callType + Sig;
-  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), callType, Sig));
+  const char *callTypeFunc;
+  switch(callType)
+  {
+  case EmAsmOnCallingThread: callTypeFunc = "emscripten_asm_const_"; break;
+  case EmAsmSyncOnMainThread: callTypeFunc = "emscripten_asm_const_sync_on_main_thread_"; break;
+  case EmAsmAsyncOnMainThread: callTypeFunc = "emscripten_asm_const_async_on_main_thread_"; break;
+  default: llvm_unreachable("Unsupported call type");
+  }
+  std::string func = callTypeFunc + Sig;
+  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), callTypeFunc, Sig));
   for (unsigned i = 1; i < Num; i++) {
     ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }
@@ -731,33 +746,33 @@ std::string handleAsmConst(const Instruction *CI, std::string callType = "") {
 
 DEF_CALL_HANDLER(emscripten_asm_const, {
   Declares.insert("emscripten_asm_const");
-  return handleAsmConst(CI);
+  return handleAsmConst(CI, EmAsmOnCallingThread);
 })
 DEF_CALL_HANDLER(emscripten_asm_const_int, {
   Declares.insert("emscripten_asm_const_int");
-  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getInt32Ty(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmOnCallingThread), Type::getInt32Ty(CI->getContext()));
 })
 DEF_CALL_HANDLER(emscripten_asm_const_double, {
   Declares.insert("emscripten_asm_const_double");
-  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getDoubleTy(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmOnCallingThread), Type::getDoubleTy(CI->getContext()));
 })
 
 DEF_CALL_HANDLER(emscripten_asm_const_sync_on_main_thread, {
   Declares.insert("emscripten_asm_const_sync_on_main_thread");
-  return handleAsmConst(CI, "sync_on_main_thread_");
+  return handleAsmConst(CI, EmAsmSyncOnMainThread);
 })
 DEF_CALL_HANDLER(emscripten_asm_const_int_sync_on_main_thread, {
   Declares.insert("emscripten_asm_const_int_sync_on_main_thread");
-  return getAssign(CI) + getCast(handleAsmConst(CI, "sync_on_main_thread_"), Type::getInt32Ty(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmSyncOnMainThread), Type::getInt32Ty(CI->getContext()));
 })
 DEF_CALL_HANDLER(emscripten_asm_const_double_sync_on_main_thread, {
   Declares.insert("emscripten_asm_const_double_sync_on_main_thread");
-  return getAssign(CI) + getCast(handleAsmConst(CI, "sync_on_main_thread_"), Type::getDoubleTy(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmSyncOnMainThread), Type::getDoubleTy(CI->getContext()));
 })
 
 DEF_CALL_HANDLER(emscripten_asm_const_async_on_main_thread, {
   Declares.insert("emscripten_asm_const_async_on_main_thread");
-  return handleAsmConst(CI, "async_on_main_thread_");
+  return handleAsmConst(CI, EmAsmAsyncOnMainThread);
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {

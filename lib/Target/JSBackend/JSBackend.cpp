@@ -628,7 +628,7 @@ namespace {
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
-    unsigned getAsmConstId(const Value *V, std::string CallType, std::string Sig) {
+    unsigned getAsmConstId(const Value *V, std::string CallTypeFunc, std::string Sig) {
       V = resolveFully(V);
       const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
       std::string code;
@@ -665,11 +665,11 @@ namespace {
       if (AsmConsts.count(code) > 0) {
         auto& Info = AsmConsts[code];
         Id = Info.Id;
-        Info.Sigs.insert(std::make_pair(CallType, Sig));
+        Info.Sigs.insert(std::make_pair(CallTypeFunc, Sig));
       } else {
         AsmConstInfo Info;
         Info.Id = Id = AsmConsts.size();
-        Info.Sigs.insert(std::make_pair(CallType, Sig));
+        Info.Sigs.insert(std::make_pair(CallTypeFunc, Sig));
         AsmConsts[code] = Info;
       }
       return Id;
