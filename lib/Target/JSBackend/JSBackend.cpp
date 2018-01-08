@@ -215,7 +215,7 @@ namespace {
   typedef std::map<const BasicBlock*, Block*> LLVMToRelooperMap;
   struct AsmConstInfo {
     int Id;
-    std::set<std::string> Sigs;
+    std::set<std::pair<std::string /*call type*/, std::string /*signature*/> > Sigs;
   };
 
   /// JSWriter - This class is the main chunk of code that converts an LLVM
@@ -634,7 +634,7 @@ namespace {
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
-    unsigned getAsmConstId(const Value *V, std::string Sig) {
+    unsigned getAsmConstId(const Value *V, std::string CallTypeFunc, std::string Sig) {
       V = resolveFully(V);
       const Constant *CI = cast<GlobalVariable>(V)->getInitializer();
       std::string code;
@@ -671,11 +671,11 @@ namespace {
       if (AsmConsts.count(code) > 0) {
         auto& Info = AsmConsts[code];
         Id = Info.Id;
-        Info.Sigs.insert(Sig);
+        Info.Sigs.insert(std::make_pair(CallTypeFunc, Sig));
       } else {
         AsmConstInfo Info;
         Info.Id = Id = AsmConsts.size();
-        Info.Sigs.insert(Sig);
+        Info.Sigs.insert(std::make_pair(CallTypeFunc, Sig));
         AsmConsts[code] = Info;
       }
       return Id;
@@ -850,7 +850,7 @@ namespace {
     void printFunctionBody(const Function *F);
     void generateInsertElementExpression(const InsertElementInst *III, raw_string_ostream& Code);
     void generateExtractElementExpression(const ExtractElementInst *EEI, raw_string_ostream& Code);
-    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend);
+    std::string getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend, bool reinterpret);
     void generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code);
     void generateICmpExpression(const ICmpInst *I, raw_string_ostream& Code);
     void generateFCmpExpression(const FCmpInst *I, raw_string_ostream& Code);
@@ -1213,7 +1213,7 @@ static inline const char *getHeapName(int Bytes, int Integer)
 {
   switch (Bytes) {
     default: llvm_unreachable("Unsupported type");
-    case 8: return "HEAPF64";
+    case 8: return Integer ? "HEAP64" : "HEAPF64";
     case 4: return Integer ? "HEAP32" : "HEAPF32";
     case 2: return "HEAP16";
     case 1: return "HEAP8";
@@ -1287,11 +1287,20 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
   std::string Assign = getAssign(I);
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
-  if (OnlyWebAssembly) {
+  // If the operation is volatile, we'd like to generate an atomic operation for it to make sure it is "observed" in all cases
+  // and never optimized out, but if the operation is unaligned, that won't be possible since atomic operations can only
+  // run on aligned addresses. In such case, fall back to generating a regular operation, but issue a warning.
+  bool FallbackUnalignedVolatileOperation = OnlyWebAssembly && EnablePthreads && cast<LoadInst>(I)->isVolatile() && !Aligned;
+  if (OnlyWebAssembly && (!EnablePthreads || !cast<LoadInst>(I)->isVolatile() || FallbackUnalignedVolatileOperation)) {
     if (isAbsolute(P)) {
       // loads from an absolute constants are either intentional segfaults (int x = *((int*)0)), or code problems
       JSWriter::getAssign(I); // ensure the variable is defined, even if it isn't used
       return "abort() /* segfault, load from absolute addr */";
+    }
+    if (FallbackUnalignedVolatileOperation) {
+      errs() << "emcc: warning: unable to implement unaligned volatile load as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
     }
     if (T->isIntegerTy() || T->isPointerTy()) {
       switch (Bytes) {
@@ -1314,7 +1323,9 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
     if (EnablePthreads && cast<LoadInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+      if (!strcmp(HeapName, "HEAP64")) {
+        text = Assign + "i64_atomics_load(" + getValueAsStr(P) + ")";
+      } else if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
@@ -1428,23 +1439,34 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
   assert(sep == ';'); // FIXME when we need that
   unsigned Bytes = DL->getTypeAllocSize(T);
   bool Aligned = Bytes <= Alignment || Alignment == 0;
+  // If the operation is volatile, we'd like to generate an atomic operation for it to make sure it is "observed" in all cases
+  // and never optimized out, but if the operation is unaligned, that won't be possible since atomic operations can only
+  // run on aligned addresses. In such case, fall back to generating a regular operation, but issue a warning.
+  bool FallbackUnalignedVolatileOperation = OnlyWebAssembly && EnablePthreads && cast<StoreInst>(I)->isVolatile() && !Aligned;
   if (OnlyWebAssembly) {
     if (Alignment == 536870912) {
       return "abort() /* segfault */";
     }
-    if (T->isIntegerTy() || T->isPointerTy()) {
-      switch (Bytes) {
-        case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
-        case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        default: llvm_unreachable("invalid wasm-only int load size");
-      }
-    } else {
-      switch (Bytes) {
-        case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        default: llvm_unreachable("invalid wasm-only float load size");
+    if (FallbackUnalignedVolatileOperation) {
+      errs() << "emcc: warning: unable to implement unaligned volatile store as atomic in " << I->getParent()->getParent()->getName() << ":" << *I << " | ";
+      emitDebugInfo(errs(), I);
+      errs() << "\n";
+    }
+    if (!EnablePthreads || !cast<StoreInst>(I)->isVolatile() || FallbackUnalignedVolatileOperation) {
+      if (T->isIntegerTy() || T->isPointerTy()) {
+        switch (Bytes) {
+          case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
+          case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          default: llvm_unreachable("invalid wasm-only int load size");
+        }
+      } else {
+        switch (Bytes) {
+          case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          default: llvm_unreachable("invalid wasm-only float load size");
+        }
       }
     }
   }
@@ -1453,7 +1475,9 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
     if (EnablePthreads && cast<StoreInst>(I)->isVolatile()) {
       const char *HeapName;
       std::string Index = getHeapNameAndIndex(P, &HeapName);
-      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+      if (!strcmp(HeapName, "HEAP64")) {
+        text = std::string("i64_atomics_store(") + getValueAsStr(P) + ',' + VS + ")|0";
+      } else if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + ',' + VS + ')';
@@ -1762,7 +1786,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
     } else {
       VectorType *IntTy = VectorType::getInteger(C->getType());
       checkVectorType(IntTy);
-      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', true);
+      return getSIMDCast(IntTy, C->getType(), std::string("SIMD_") + SIMDType(IntTy) + "_splat(" + op0 + ')', /*signExtend=*/true, /*reinterpret=*/true);
     }
   }
 
@@ -1793,7 +1817,7 @@ std::string JSWriter::getConstantVector(const ConstantVectorType *C) {
       c += ',' + ensureFloat(isInt ? "0" : "+0", !isInt);
     }
 
-    return getSIMDCast(IntTy, C->getType(), c + ")", true);
+    return getSIMDCast(IntTy, C->getType(), c + ")", /*signExtend=*/true, /*reinterpret=*/true);
   }
 }
 
@@ -1959,7 +1983,9 @@ std::string castIntVecToBoolVec(int numElems, const std::string &str)
   return simdType + "_notEqual(" + str + ", " + simdType + "_splat(0))";
 }
 
-std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend)
+// Generates a conversion from the given vector type to the other vector type.
+// reinterpret: If true, generates a conversion that reinterprets the bits. If false, generates an actual type conversion operator.
+std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, const std::string &valueStr, bool signExtend, bool reinterpret)
 {
   bool toInt = toType->getElementType()->isIntegerTy();
   bool fromInt = fromType->getElementType()->isIntegerTy();
@@ -1984,7 +2010,7 @@ std::string JSWriter::getSIMDCast(VectorType *fromType, VectorType *toType, cons
     error("Invalid SIMD cast between items of different bit sizes!");
   }
 
-  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + "Bits(" + valueStr + ")";
+  return std::string("SIMD_") + SIMDType(toType) + "_from" + SIMDType(fromType) + (reinterpret ? "Bits(" : "(") + valueStr + ")";
 }
 
 void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw_string_ostream& Code) {
@@ -2055,8 +2081,8 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
   // Emit a fully-general shuffle.
   Code << "SIMD_" << SIMDType(SVI->getType()) << "_shuffle(";
 
-  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, true) << ", "
-       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, true) << ", ";
+  Code << getSIMDCast(cast<VectorType>(SVI->getOperand(0)->getType()), SVI->getType(), A, /*signExtend=*/true, /*reinterpret=*/true) << ", "
+       << getSIMDCast(cast<VectorType>(SVI->getOperand(1)->getType()), SVI->getType(), B, /*signExtend=*/true, /*reinterpret=*/true) << ", ";
 
   SmallVector<int, 16> Indices;
   SVI->getShuffleMask(Indices);
@@ -2340,12 +2366,12 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::SExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), true /* signExtend */);
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), /*signExtend=*/true, /*reinterpret=*/true);
         break;
       case Instruction::ZExt:
         assert(cast<VectorType>(I->getOperand(0)->getType())->getElementType()->isIntegerTy(1) &&
                "sign-extension from vector of other than i1 not yet supported");
-        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), false /* signExtend */);
+        Code << getAssignIfNeeded(I) << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), VT, getValueAsStr(I->getOperand(0)), /*signExtend=*/false, /*reinterpret=*/true);
         break;
       case Instruction::Select:
         // Since we represent vectors of i1 as vectors of sign extended wider integers,
@@ -2389,7 +2415,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::BitCast: {
       case Instruction::SIToFP:
         Code << getAssignIfNeeded(I);
-        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), true);
+        Code << getSIMDCast(cast<VectorType>(I->getOperand(0)->getType()), cast<VectorType>(I->getType()), getValueAsStr(I->getOperand(0)), /*signExtend=*/true, /*reinterpret=*/Operator::getOpcode(I)==Instruction::BitCast);
         break;
       }
       case Instruction::Load: {
@@ -3017,7 +3043,9 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         case AtomicRMWInst::UMin:
         case AtomicRMWInst::BAD_BINOP: llvm_unreachable("Bad atomic operation");
       }
-      if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
+      if (!strcmp(HeapName, "HEAP64")) {
+        Code << Assign << "(i64_atomics_" << atomicFunc << "(" << getValueAsStr(P) << ", " << VS << ")|0)"; break;
+      } else if (!strcmp(HeapName, "HEAPF32") || !strcmp(HeapName, "HEAPF64")) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
@@ -3801,6 +3829,8 @@ void JSWriter::printModuleBody() {
     }
     Out << "\"" << utostr(I.second.Id) << "\": [\"" << I.first.c_str() << "\", [";
     auto& Sigs = I.second.Sigs;
+
+    // Signatures of the EM_ASM blocks
     bool innerFirst = true;
     for (auto& Sig : Sigs) {
       if (innerFirst) {
@@ -3808,8 +3838,21 @@ void JSWriter::printModuleBody() {
       } else {
         Out << ", ";
       }
-      Out << "\"" << Sig << "\"";
+      Out << "\"" << Sig.second << "\"";
     }
+
+     Out << "], [";
+    // Call types for proxying (sync, async or none)
+    innerFirst = true;
+    for (auto& Sig : Sigs) {
+      if (innerFirst) {
+        innerFirst = false;
+      } else {
+        Out << ", ";
+      }
+      Out << "\"" << Sig.first << "\"";
+    }
+
     Out << "]]";
   }
   Out << "}";

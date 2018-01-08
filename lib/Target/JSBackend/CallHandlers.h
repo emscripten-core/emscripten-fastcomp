@@ -358,6 +358,17 @@ CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8, "HEAP8");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16, "HEAP16");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32, "HEAP32");
 
+DEF_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64, {
+  const Value *P = CI->getOperand(0);
+  if (EnablePthreads) {
+    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
+  } else { \
+    return getLoad(CI, P, CI->getType(), 0) + ';' + \
+             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
+                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0); \
+  } \
+})
+
 #define UNROLL_LOOP_MAX 8
 #define WRITE_LOOP_MAX 128
 
@@ -702,14 +713,6 @@ DEF_CALL_HANDLER(llvm_ctpop_i64, {
   return CH___default__(CI, "_llvm_ctpop_i64");
 })
 
-DEF_CALL_HANDLER(llvm_maxnum_f32, {
-  return CH___default__(CI, "Math_max", 2);
-})
-
-DEF_CALL_HANDLER(llvm_maxnum_f64, {
-  return CH___default__(CI, "Math_max", 2);
-})
-
 DEF_CALL_HANDLER(llvm_copysign_f32, {
   if (OnlyWebAssembly) {
     return CH___default__(CI, "f32_copysign", 2);
@@ -738,15 +741,32 @@ DEF_CALL_HANDLER(llvm_rint_f64, {
 
 // EM_ASM support
 
-std::string handleAsmConst(const Instruction *CI) {
+enum EmAsmCallType
+{
+  EmAsmOnCallingThread,
+  EmAsmSyncOnMainThread,
+  EmAsmAsyncOnMainThread,
+};
+
+// callType is one of "", "sync_on_main_thread_" or "async_on_main_thread_" and specifies
+// in which thread's context the EM_ASM block will be executed in.
+std::string handleAsmConst(const Instruction *CI, EmAsmCallType callType) {
   unsigned Num = getNumArgOperands(CI);
   std::string Sig;
   Sig += getFunctionSignatureLetter(CI->getType());
   for (unsigned i = 1; i < Num; i++) {
     Sig += getFunctionSignatureLetter(CI->getOperand(i)->getType());
   }
-  std::string func = "emscripten_asm_const_" + Sig;
-  std::string ret = "_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), Sig));
+  const char *callTypeFunc;
+  switch(callType)
+  {
+  case EmAsmOnCallingThread: callTypeFunc = ""; break;
+  case EmAsmSyncOnMainThread: callTypeFunc = "sync_on_main_thread_"; break;
+  case EmAsmAsyncOnMainThread: callTypeFunc = "async_on_main_thread_"; break;
+  default: llvm_unreachable("Unsupported call type");
+  }
+  std::string func = callTypeFunc + Sig;
+  std::string ret = "_emscripten_asm_const_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), callTypeFunc, Sig));
   for (unsigned i = 1; i < Num; i++) {
     ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }
@@ -755,15 +775,33 @@ std::string handleAsmConst(const Instruction *CI) {
 
 DEF_CALL_HANDLER(emscripten_asm_const, {
   Declares.insert("emscripten_asm_const");
-  return handleAsmConst(CI);
+  return handleAsmConst(CI, EmAsmOnCallingThread);
 })
 DEF_CALL_HANDLER(emscripten_asm_const_int, {
   Declares.insert("emscripten_asm_const_int");
-  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getInt32Ty(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmOnCallingThread), Type::getInt32Ty(CI->getContext()));
 })
 DEF_CALL_HANDLER(emscripten_asm_const_double, {
   Declares.insert("emscripten_asm_const_double");
-  return getAssign(CI) + getCast(handleAsmConst(CI), Type::getDoubleTy(CI->getContext()));
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmOnCallingThread), Type::getDoubleTy(CI->getContext()));
+})
+
+DEF_CALL_HANDLER(emscripten_asm_const_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_sync_on_main_thread");
+  return handleAsmConst(CI, EmAsmSyncOnMainThread);
+})
+DEF_CALL_HANDLER(emscripten_asm_const_int_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_int_sync_on_main_thread");
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmSyncOnMainThread), Type::getInt32Ty(CI->getContext()));
+})
+DEF_CALL_HANDLER(emscripten_asm_const_double_sync_on_main_thread, {
+  Declares.insert("emscripten_asm_const_double_sync_on_main_thread");
+  return getAssign(CI) + getCast(handleAsmConst(CI, EmAsmSyncOnMainThread), Type::getDoubleTy(CI->getContext()));
+})
+
+DEF_CALL_HANDLER(emscripten_asm_const_async_on_main_thread, {
+  Declares.insert("emscripten_asm_const_async_on_main_thread");
+  return handleAsmConst(CI, EmAsmAsyncOnMainThread);
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
@@ -955,6 +993,10 @@ DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f32, Math_cos);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f64, Math_cos);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f32, Math_sin);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f64, Math_sin);
+DEF_MAYBE_BUILTIN_HANDLER(llvm_minnum_f32, Math_min);
+DEF_MAYBE_BUILTIN_HANDLER(llvm_minnum_f64, Math_min);
+DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f32, Math_max);
+DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f64, Math_max);
 
 DEF_CALL_HANDLER(llvm_powi_f32, {
   return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
@@ -1648,6 +1690,7 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i8);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i16);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
+  SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
@@ -1675,8 +1718,6 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_cttz_i64);
   SETUP_CALL_HANDLER(llvm_ctpop_i32);
   SETUP_CALL_HANDLER(llvm_ctpop_i64);
-  SETUP_CALL_HANDLER(llvm_maxnum_f32);
-  SETUP_CALL_HANDLER(llvm_maxnum_f64);
   SETUP_CALL_HANDLER(llvm_copysign_f32);
   SETUP_CALL_HANDLER(llvm_copysign_f64);
   SETUP_CALL_HANDLER(llvm_rint_f32);
@@ -2110,6 +2151,12 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_asm_const_int);
   SETUP_CALL_HANDLER(emscripten_asm_const_double);
 
+  SETUP_CALL_HANDLER(emscripten_asm_const_sync_on_main_thread);
+  SETUP_CALL_HANDLER(emscripten_asm_const_int_sync_on_main_thread);
+  SETUP_CALL_HANDLER(emscripten_asm_const_double_sync_on_main_thread);
+
+  SETUP_CALL_HANDLER(emscripten_asm_const_async_on_main_thread);
+
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u8);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u16);
   SETUP_CALL_HANDLER(emscripten_atomic_exchange_u32);
@@ -2216,6 +2263,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_cos_f64);
   SETUP_CALL_HANDLER(llvm_sin_f32);
   SETUP_CALL_HANDLER(llvm_sin_f64);
+  SETUP_CALL_HANDLER(llvm_minnum_f32);
+  SETUP_CALL_HANDLER(llvm_minnum_f64);
+  SETUP_CALL_HANDLER(llvm_maxnum_f32);
+  SETUP_CALL_HANDLER(llvm_maxnum_f64);
 }
 
 std::string handleCall(const Instruction *CI) {
