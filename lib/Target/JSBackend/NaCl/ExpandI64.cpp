@@ -235,7 +235,7 @@ static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
       j++;
       continue;
     }
-    if (!Attrs.hasAttributes(i+1)) continue;
+    if (!Attrs.hasParamAttrs(i)) continue;
     AttributeSet ParamAttrs = Attrs.getParamAttributes(i);
     AttrBuilder AB;
     for (Attribute Attr : ParamAttrs) {
