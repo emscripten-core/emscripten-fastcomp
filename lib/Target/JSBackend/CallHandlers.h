@@ -83,10 +83,10 @@ DEF_CALL_HANDLER(__default__, {
       if (!Invoke) {
         Sig = getFunctionSignature(FT);
         if (!EmulatedFunctionPointers) {
-          Name = std::string("FUNCTION_TABLE_") + Sig + "[" + Name + " & #FM_" + Sig + "#]";
+          Name = std::string("FUNCTION_TABLE_") + Sig + '[' + Name + " & #FM_" + Sig + "#]";
           NeedCasts = false; // function table call, so stays in asm module
         } else {
-          Name = std::string(Relocatable ? "mftCall_" : "ftCall_") + Sig + "(" + getCast(Name, Type::getInt32Ty(CI->getContext()));
+          Name = std::string(Relocatable ? "mftCall_" : "ftCall_") + Sig + '(' + getCast(Name, Type::getInt32Ty(CI->getContext()));
           if (NumArgs > 0) Name += ',';
           Emulated = true;
           if (WebAssembly) {
@@ -128,7 +128,7 @@ DEF_CALL_HANDLER(__default__, {
     NeedCasts = true;
   }
   std::string text = Name;
-  if (!Emulated) text += "(";
+  if (!Emulated) text += '(';
   if (Invoke) {
     // add first param
     if (F) {
@@ -136,7 +136,7 @@ DEF_CALL_HANDLER(__default__, {
     } else {
       text += getValueAsCastStr(CV); // already a function pointer
     }
-    if (NumArgs > 0) text += ",";
+    if (NumArgs > 0) text += ',';
   }
   // this is an ffi call if we need casts, and it is not a special Math_ builtin or wasm-only intrinsic
   bool FFI = LegalizeJavaScriptFFI && NeedCasts;
@@ -156,9 +156,9 @@ DEF_CALL_HANDLER(__default__, {
     } else {
       text += getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC | FFI_OUT);
     }
-    if (i < NumArgs - 1) text += ",";
+    if (i < NumArgs - 1) text += ',';
   }
-  text += ")";
+  text += ')';
   // handle return value
   Type *InstRT = CI->getType();
   Type *ActualRT = FT->getReturnType();
@@ -169,7 +169,7 @@ DEF_CALL_HANDLER(__default__, {
                            // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
     unsigned FFI_IN = FFI ? ASM_FFI_IN : 0;
-    text = getAssignIfNeeded(CI) + "(" + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN) + ")";
+    text = getAssignIfNeeded(CI) + '(' + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN) + ')';
   }
   return text;
 })
@@ -189,9 +189,9 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
   unsigned Num = getNumArgOperands(CI);
   std::string target = "__cxa_find_matching_catch_" + utostr(Num);
   Declares.insert(target);
-  std::string Ret = getAssign(CI) + "_" + target + "(";
+  std::string Ret = getAssign(CI) + '_' + target + '(';
   for (unsigned i = 1; i < Num-1; i++) { // ignore personality and cleanup XXX - we probably should not be doing that!
-    if (i > 1) Ret += ",";
+    if (i > 1) Ret += ',';
     Ret += getValueAsCastStr(CI->getOperand(i));
   }
   Ret += ")|0";
@@ -199,7 +199,7 @@ DEF_CALL_HANDLER(emscripten_landingpad, {
 })
 DEF_CALL_HANDLER(emscripten_resume, {
   Declares.insert("__resumeException");
-  return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ")";
+  return "___resumeException(" + getValueAsCastStr(CI->getOperand(0)) + ')';
 })
 
 std::string getTempRet0() {
@@ -207,7 +207,7 @@ std::string getTempRet0() {
 }
 
 std::string setTempRet0(std::string Value) {
-  return Relocatable ? "setTempRet0((" + Value + ") | 0)" : "tempRet0 = (" + Value + ")";
+  return Relocatable ? "setTempRet0((" + Value + ") | 0)" : "tempRet0 = (" + Value + ')';
 }
 
 // setjmp support
@@ -223,7 +223,7 @@ DEF_CALL_HANDLER(emscripten_cleanup_setjmp, {
 DEF_CALL_HANDLER(emscripten_setjmp, {
   // env, label, table
   Declares.insert("saveSetjmp");
-  return "_setjmpTable = _saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + "," + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0,_setjmpTableSize|0)|0;_setjmpTableSize = " + getTempRet0();
+  return "_setjmpTable = _saveSetjmp(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ",_setjmpTable|0,_setjmpTableSize|0)|0;_setjmpTableSize = " + getTempRet0();
 })
 DEF_CALL_HANDLER(emscripten_longjmp, {
   Declares.insert("longjmp");
@@ -290,18 +290,18 @@ DEF_CALL_HANDLER(setHigh32, {
 #define TO_I(low, high) \
 DEF_CALL_HANDLER(low, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
-  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
+  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = '+' + Input; \
   return getAssign(CI) + "(~~" + Input + ")>>>0"; \
 }) \
 DEF_CALL_HANDLER(high, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
-  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = "+" + Input; \
+  if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = '+' + Input; \
   return getAssign(CI) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (~~+Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295)) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
 TO_I(FtoILow, FtoIHigh);
 TO_I(DtoILow, DtoIHigh);
 DEF_CALL_HANDLER(BDtoILow, {
-  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ";" + getAssign(CI) + "HEAP32[tempDoublePtr>>2]|0";
+  return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ';' + getAssign(CI) + "HEAP32[tempDoublePtr>>2]|0";
 })
 DEF_CALL_HANDLER(BDtoIHigh, {
   return getAssign(CI) + "HEAP32[tempDoublePtr+4>>2]|0";
@@ -310,7 +310,7 @@ DEF_CALL_HANDLER(SItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
   if (PreciseF32 && CI->getType()->isFloatTy()) {
-    Ret = "Math_fround(" + Ret + ")";
+    Ret = "Math_fround(" + Ret + ')';
   }
   return getAssign(CI) + Ret;
 })
@@ -318,7 +318,7 @@ DEF_CALL_HANDLER(UItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
   if (PreciseF32 && CI->getType()->isFloatTy()) {
-    Ret = "Math_fround(" + Ret + ")";
+    Ret = "Math_fround(" + Ret + ')';
   }
   return getAssign(CI) + Ret;
 })
@@ -331,8 +331,8 @@ DEF_CALL_HANDLER(UItoD, {
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
 DEF_CALL_HANDLER(BItoD, {
-  return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ";" +
-         "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ";" +
+  return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ';' +
+         "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ';' +
          getAssign(CI) + "+HEAPF64[tempDoublePtr>>3]";
 })
 
@@ -346,7 +346,7 @@ DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
 DEF_CALL_HANDLER(name, { \
   const Value *P = CI->getOperand(0); \
   if (EnablePthreads) { \
-    return getAssign(CI) + "(Atomics_compareExchange(" HeapName ", " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
+    return getAssign(CI) + "(Atomics_compareExchange(" HeapName ", " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
   } else { \
     return getLoad(CI, P, CI->getType(), 0) + ';' + \
              "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
@@ -359,14 +359,25 @@ CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16, "HEAP16");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32, "HEAP32");
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64, {
-  const Value *P = CI->getOperand(0);
   if (EnablePthreads) {
-    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
-  } else { \
-    return getLoad(CI, P, CI->getType(), 0) + ';' + \
-             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " + \
-                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0); \
-  } \
+    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
+  } else {
+    const Value *P = CI->getOperand(0);
+    return getLoad(CI, P, CI->getType(), 0) + ';' +
+             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " +
+                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0);
+  }
+})
+
+DEF_CALL_HANDLER(__atomic_compare_exchange_8, {
+  if (EnablePthreads) {
+    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
+  } else {
+    const Value *P = CI->getOperand(0);
+    return getLoad(CI, P, CI->getType(), 0) + ';' +
+             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " +
+                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0);
+  }
 })
 
 #define UNROLL_LOOP_MAX 8
@@ -396,10 +407,10 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
               unsigned CurrLen = Size*(Len/Size);
               for (unsigned Offset = 0; Offset < CurrLen; Offset += Size) {
                 unsigned PosOffset = Pos + Offset;
-                std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset) + " | 0");
-                Ret += "; store" + utostr(Size) + "(" + Dest + Add +
-                           ",load" + utostr(Size) + "(" + Src + Add + "," + utostr(std::min(Align, Size)) + ")" +
-                       "," + utostr(std::min(Align, Size)) + ")";
+                std::string Add = PosOffset == 0 ? "" : ('+' + utostr(PosOffset) + " | 0");
+                Ret += "; store" + utostr(Size) + '(' + Dest + Add +
+                           ",load" + utostr(Size) + '(' + Src + Add + ',' + utostr(std::min(Align, Size)) + ')' +
+                       ',' + utostr(std::min(Align, Size)) + ')';
               }
               Pos += CurrLen;
               Len -= CurrLen;
@@ -411,7 +422,7 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
             if (Align > 4) Align = 4;
             else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
             if (Align == 1 && Len > 1 && WarnOnUnaligned) {
-              errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+              errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ':' << *CI << " (compiler's fault?)\n";
             }
             unsigned Pos = 0;
             std::string Ret;
@@ -425,14 +436,14 @@ DEF_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32, {
                 // unroll
                 for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
                   unsigned PosOffset = Pos + Offset;
-                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
-                  Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + getHeapAccess(Src + Add, Align) + "|0";
+                  std::string Add = PosOffset == 0 ? "" : ('+' + utostr(PosOffset));
+                  Ret += ';' + getHeapAccess(Dest + Add, Align) + '=' + getHeapAccess(Src + Add, Align) + "|0";
                 }
               } else {
                 // emit a loop
                 UsedVars["dest"] = UsedVars["src"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-                std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
-                Ret += "dest=" + Dest + Add + "; src=" + Src + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+                std::string Add = Pos == 0 ? "" : ('+' + utostr(Pos) + "|0");
+                Ret += "dest=" + Dest + Add + "; src=" + Src + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + '=' + getHeapAccess("src", Align) + "|0; dest=dest+" + utostr(Align) + "|0; src=src+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
               }
               Pos += CurrLen;
               Len -= CurrLen;
@@ -481,8 +492,8 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
                 std::string ValStr = Size < 8 ? utostr(FullVal) : emitI64Const(FullVal);
                 for (unsigned Offset = 0; Offset < CurrLen; Offset += Size) {
                   unsigned PosOffset = Pos + Offset;
-                  std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset) + "|0");
-                  Ret += "; store" + utostr(Size) + "(" + Dest + Add + "," + ValStr  + "," + utostr(std::min(Align, Size)) + ")";
+                  std::string Add = PosOffset == 0 ? "" : ('+' + utostr(PosOffset) + "|0");
+                  Ret += "; store" + utostr(Size) + '(' + Dest + Add + ',' + ValStr  + ',' + utostr(std::min(Align, Size)) + ')';
                 }
                 Pos += CurrLen;
                 Len -= CurrLen;
@@ -495,7 +506,7 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
               if (Align > 4) Align = 4;
               else if (Align == 0) Align = 1; // align 0 means 1 in memcpy and memset (unlike other places where it means 'default/4')
               if (Align == 1 && Len > 1 && WarnOnUnaligned) {
-                errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ":" << *CI << " (compiler's fault?)\n";
+                errs() << "emcc: warning: unaligned memcpy in  " << CI->getParent()->getParent()->getName() << ':' << *CI << " (compiler's fault?)\n";
               }
               unsigned Pos = 0;
               std::string Ret;
@@ -513,14 +524,14 @@ DEF_CALL_HANDLER(llvm_memset_p0i8_i32, {
                   // unroll
                   for (unsigned Offset = 0; Offset < CurrLen; Offset += Align) {
                     unsigned PosOffset = Pos + Offset;
-                    std::string Add = PosOffset == 0 ? "" : ("+" + utostr(PosOffset));
-                    Ret += ";" + getHeapAccess(Dest + Add, Align) + "=" + utostr(FullVal) + "|0";
+                    std::string Add = PosOffset == 0 ? "" : ('+' + utostr(PosOffset));
+                    Ret += ';' + getHeapAccess(Dest + Add, Align) + '=' + utostr(FullVal) + "|0";
                   }
                 } else {
                   // emit a loop
                   UsedVars["dest"] = UsedVars["stop"] = Type::getInt32Ty(TheModule->getContext());
-                  std::string Add = Pos == 0 ? "" : ("+" + utostr(Pos) + "|0");
-                  Ret += "dest=" + Dest + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + "=" + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
+                  std::string Add = Pos == 0 ? "" : ('+' + utostr(Pos) + "|0");
+                  Ret += "dest=" + Dest + Add + "; stop=dest+" + utostr(CurrLen) + "|0; do { " + getHeapAccess("dest", Align) + '=' + utostr(FullVal) + "|0; dest=dest+" + utostr(Align) + "|0; } while ((dest|0) < (stop|0))";
                 }
                 Pos += CurrLen;
                 Len -= CurrLen;
@@ -562,18 +573,18 @@ DEF_CALL_HANDLER(llvm_dbg_declare, {
   std::string LocalVariableName = LocalVariableDI->getName().str();
 
   auto VarMD = utostr(getIDForMetadata(LocalVariableType))
-  + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
-  + ",\"" + LocalVariableName + "\"";
+  + ',' + VariableOffset + ',' + utostr(getIDForMetadata(DwarfOp))
+  + ",\"" + LocalVariableName + '"';
 
 
   if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
     Declares.insert("metadata_llvm_dbg_value_local");
     auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
-    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
+    return "_metadata_llvm_dbg_value_local(" + LocalVarName + ',' + VarMD + ')';
   } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
     Declares.insert("metadata_llvm_dbg_value_constant");
     return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
-    + "," + VarMD + ")";
+    + ',' + VarMD + ')';
   }
 
   return "";
@@ -592,17 +603,17 @@ DEF_CALL_HANDLER(llvm_dbg_value, {
   std::string LocalVariableName = LocalVariableDI->getName().str();
 
   auto VarMD = utostr(getIDForMetadata(LocalVariableType))
-               + "," + VariableOffset + "," + utostr(getIDForMetadata(DwarfOp))
-               + ",\"" + LocalVariableName + "\"";
+               + ',' + VariableOffset + ',' + utostr(getIDForMetadata(DwarfOp))
+               + ",\"" + LocalVariableName + '"';
 
   if (auto const *ValAsAssign = dyn_cast<LocalAsMetadata>(AssignedValue)) {
     Declares.insert("metadata_llvm_dbg_value_local");
     auto LocalVarName = getJSName(ValAsAssign->getValue()->stripPointerCasts());
-    return "_metadata_llvm_dbg_value_local(" + LocalVarName + "," + VarMD + ")";
+    return "_metadata_llvm_dbg_value_local(" + LocalVarName + ',' + VarMD + ')';
   } else if (auto const *ValAsAssign = dyn_cast<ConstantAsMetadata>(AssignedValue)) {
     Declares.insert("metadata_llvm_dbg_value_constant");
     return "_metadata_llvm_dbg_value_constant(\"" + getValueAsStr(ValAsAssign->getValue())
-    + "," + VarMD + ")";
+    + ',' + VarMD + ')';
   }
 
   return "";
@@ -645,13 +656,13 @@ DEF_CALL_HANDLER(llvm_prefetch, {
 })
 
 DEF_CALL_HANDLER(llvm_objectsize_i32_p0i8, {
-  return  getAssign(CI) + ((cast<ConstantInt>(CI->getOperand(1)))->getZExtValue() == 0 ? "-1" : "0");
+  return getAssign(CI) + ((cast<ConstantInt>(CI->getOperand(1)))->getZExtValue() == 0 ? "-1" : "0");
 })
 
 DEF_CALL_HANDLER(llvm_flt_rounds, {
   // FLT_ROUNDS helper. We don't support setting the rounding mode dynamically,
   // so it's always round-to-nearest (1).
-  return getAssign(CI) + "1";
+  return getAssign(CI) + '1';
 })
 
 DEF_CALL_HANDLER(bitshift64Lshr, {
@@ -741,6 +752,7 @@ DEF_CALL_HANDLER(llvm_rint_f64, {
 
 // EM_ASM support
 
+// callType specifies in which thread's context a given EM_ASM block will be executed in.
 enum EmAsmCallType
 {
   EmAsmOnCallingThread,
@@ -748,8 +760,6 @@ enum EmAsmCallType
   EmAsmAsyncOnMainThread,
 };
 
-// callType is one of "", "sync_on_main_thread_" or "async_on_main_thread_" and specifies
-// in which thread's context the EM_ASM block will be executed in.
 std::string handleAsmConst(const Instruction *CI, EmAsmCallType callType) {
   unsigned Num = getNumArgOperands(CI);
   std::string Sig;
@@ -766,11 +776,11 @@ std::string handleAsmConst(const Instruction *CI, EmAsmCallType callType) {
   default: llvm_unreachable("Unsupported call type");
   }
   std::string func = callTypeFunc + Sig;
-  std::string ret = "_emscripten_asm_const_" + func + "(" + utostr(getAsmConstId(CI->getOperand(0), callTypeFunc, Sig));
+  std::string ret = "_emscripten_asm_const_" + func + '(' + utostr(getAsmConstId(CI->getOperand(0), callTypeFunc, Sig));
   for (unsigned i = 1; i < Num; i++) {
-    ret += ", " + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
+    ret += ',' + getValueAsCastParenStr(CI->getOperand(i), ASM_NONSPECIFIC);
   }
-  return ret + ")";
+  return ret + ')';
 }
 
 DEF_CALL_HANDLER(emscripten_asm_const, {
@@ -805,23 +815,30 @@ DEF_CALL_HANDLER(emscripten_asm_const_async_on_main_thread, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
-  return getAssign(CI) + "(Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u16, {
-  return getAssign(CI) + "(Atomics_exchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_exchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u32, {
-  return getAssign(CI) + "(Atomics_exchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_exchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_exchange_8, {
+  if (EnablePthreads) {
+    return getAssign(CI) + '(' + (OnlyWebAssembly ? "i64_atomics_exchange" : "_emscripten_atomic_exchange_u64") + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  } else {
+    return getStore(CI, CI->getOperand(0), CI->getType(), getValueAsStr(CI->getOperand(1)), 0);
+  }
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_cas_u8, {
-  return getAssign(CI) + "(Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u16, {
-  return getAssign(CI) + "(Atomics_compareExchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u32, {
-  return getAssign(CI) + "(Atomics_compareExchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + getValueAsStr(CI->getOperand(2)) + ")|0)";
+  return getAssign(CI) + "(Atomics_compareExchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_load_u8, {
@@ -838,88 +855,137 @@ DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
   // we must emulate manually.
   Declares.insert("_Atomics_load_f32_emulated");
   return getAssign(CI) + (PreciseF32 ? "Math_fround(" : "+") + "__Atomics_load_f32_emulated(" + getShiftedPtr(CI->getOperand(0), 4) + (PreciseF32 ? "))" : ")");
-//  return getAssign(CI) + "Atomics_load(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ")";
+//  return getAssign(CI) + "Atomics_load(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ')';
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
   Declares.insert("emscripten_atomic_load_f64");
-  return getAssign(CI) + "+_emscripten_atomic_load_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ")";
-//  return getAssign(CI) + "Atomics_load(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ")";
+  return getAssign(CI) + "+_emscripten_atomic_load_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ')';
+//  return getAssign(CI) + "Atomics_load(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ')';
+})
+DEF_CALL_HANDLER(__atomic_load_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_load";
+  else if (OnlyWebAssembly) op = "load8";
+  else op = "_emscripten_atomic_load_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_store_u8, {
-  return getAssign(CI) + "(Atomics_store(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_store(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u16, {
-  return getAssign(CI) + "(Atomics_store(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_store(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
-  return getAssign(CI) + "(Atomics_store(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_store(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
   Declares.insert("emscripten_atomic_store_f32");
-  return getAssign(CI) + "_emscripten_atomic_store_f32(" + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-//  return getAssign(CI) + "Atomics_store(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "_emscripten_atomic_store_f32(" + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
+//  return getAssign(CI) + "Atomics_store(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f64, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
   Declares.insert("emscripten_atomic_store_f64");
-  return getAssign(CI) + "+_emscripten_atomic_store_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
-//  return getAssign(CI) + "Atomics_store(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return getAssign(CI) + "+_emscripten_atomic_store_f64(" + getShiftedPtr(CI->getOperand(0), 8) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
+//  return getAssign(CI) + "Atomics_store(HEAPF64, " + getShiftedPtr(CI->getOperand(0), 8) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
+})
+DEF_CALL_HANDLER(__atomic_store_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_store";
+  else if (OnlyWebAssembly) op = "store8";
+  else op = "_emscripten_atomic_store_u64";
+  return std::string("(") + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_add_u8, {
-  return getAssign(CI) + "(Atomics_add(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_add(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u16, {
-  return getAssign(CI) + "(Atomics_add(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_add(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u32, {
-  return getAssign(CI) + "(Atomics_add(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_add(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_fetch_add_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_add";
+  else if (OnlyWebAssembly) op = "i64_add";
+  else op = "__emscripten_atomic_fetch_and_add_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_sub_u8, {
-  return getAssign(CI) + "(Atomics_sub(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_sub(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u16, {
-  return getAssign(CI) + "(Atomics_sub(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_sub(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u32, {
-  return getAssign(CI) + "(Atomics_sub(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_sub(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_fetch_sub_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_sub";
+  else if (OnlyWebAssembly) op = "i64_sub";
+  else op = "__emscripten_atomic_fetch_and_sub_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_and_u8, {
-  return getAssign(CI) + "(Atomics_and(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_and(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u16, {
-  return getAssign(CI) + "(Atomics_and(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_and(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u32, {
-  return getAssign(CI) + "(Atomics_and(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_and(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_fetch_and_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_and";
+  else if (OnlyWebAssembly) op = "i64_and";
+  else op = "__emscripten_atomic_fetch_and_and_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_or_u8, {
-  return getAssign(CI) + "(Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u16, {
-  return getAssign(CI) + "(Atomics_or(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_or(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u32, {
-  return getAssign(CI) + "(Atomics_or(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_or(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_fetch_or_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_or";
+  else if (OnlyWebAssembly) op = "i64_or";
+  else op = "__emscripten_atomic_fetch_and_or_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_xor_u8, {
-  return getAssign(CI) + "(Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u16, {
-  return getAssign(CI) + "(Atomics_xor(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_xor(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u32, {
-  return getAssign(CI) + "(Atomics_xor(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ", " + getValueAsStr(CI->getOperand(1)) + ")|0)";
+  return getAssign(CI) + "(Atomics_xor(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
+})
+DEF_CALL_HANDLER(__atomic_fetch_xor_8, {
+  const char *op;
+  if (EnablePthreads && OnlyWebAssembly) op = "i64_atomics_xor";
+  else if (OnlyWebAssembly) op = "i64_xor";
+  else op = "__emscripten_atomic_fetch_and_xor_u64";
+  return getAssign(CI) + '(' + op + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 
 #define DEF_BUILTIN_HANDLER(name, to) \
@@ -999,10 +1065,10 @@ DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f32, Math_max);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f64, Math_max);
 
 DEF_CALL_HANDLER(llvm_powi_f32, {
-  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
+  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ',' + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ')', CI->getType());
 })
 DEF_CALL_HANDLER(llvm_powi_f64, {
-  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ", " + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ")", CI->getType());
+  return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ',' + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ')', CI->getType());
 })
 
 DEF_BUILTIN_HANDLER(llvm_log_f32, Math_log);
@@ -1034,22 +1100,22 @@ static std::string castBool64x2ToInt32x4(const std::string &valueStr) {
   return std::string("SIMD_Int32x4_fromBool64x2Bits(") + valueStr + ')';
 }
 DEF_CALL_HANDLER(emscripten_float64x2_lessThan, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 DEF_CALL_HANDLER(emscripten_float64x2_lessThanOrEqual, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 DEF_CALL_HANDLER(emscripten_float64x2_greaterThan, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 DEF_CALL_HANDLER(emscripten_float64x2_greaterThanOrEqual, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 DEF_CALL_HANDLER(emscripten_float64x2_equal, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_equal(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 DEF_CALL_HANDLER(emscripten_float64x2_notEqual, {
-  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")");
+  return getAssign(CI) + castBool64x2ToInt32x4("SIMD_Float64x2_notEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')');
 })
 // n.b. No emscripten_float64x2_anyTrue, only defined on boolean SIMD types.
 // n.b. No emscripten_float64x2_allTrue, only defined on boolean SIMD types.
@@ -1062,19 +1128,19 @@ DEF_BUILTIN_HANDLER(emscripten_float64x2_extractLane, SIMD_Float64x2_extractLane
 DEF_BUILTIN_HANDLER(emscripten_float64x2_replaceLane, SIMD_Float64x2_replaceLane);
 DEF_CALL_HANDLER(emscripten_float64x2_store, {
   UsesSIMDFloat64x2 = true;
-  return "SIMD_Float64x2_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float64x2_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_store1, {
   UsesSIMDFloat64x2 = true;
-  return "SIMD_Float64x2_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float64x2_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_load, {
   UsesSIMDFloat64x2 = true;
-  return getAssign(CI) + "SIMD_Float64x2_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float64x2_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_load1, {
   UsesSIMDFloat64x2 = true;
-  return getAssign(CI) + "SIMD_Float64x2_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float64x2_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromInt32x4Bits, SIMD_Float64x2_fromInt32x4Bits);
@@ -1109,26 +1175,26 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_abs, SIMD_Float32x4_abs);
 std::string castBoolVecToIntVec(int numElems, const std::string &str, bool signExtend)
 {
   int elemWidth = 128 / numElems;
-  std::string simdType = "SIMD_Int" + llvm::to_string(elemWidth) + "x" + llvm::to_string(numElems);
-  return simdType + "_select(" + str + ", " + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
+  std::string simdType = "SIMD_Int" + llvm::to_string(elemWidth) + 'x' + llvm::to_string(numElems);
+  return simdType + "_select(" + str + ',' + simdType + "_splat(" + (signExtend ? "-1" : "1") + "), " + simdType + "_splat(0))";
 }
 DEF_CALL_HANDLER(emscripten_float32x4_lessThan, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_float32x4_lessThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_float32x4_greaterThan, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_float32x4_greaterThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_float32x4_equal, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_float32x4_notEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Float32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 // n.b. No emscripten_float32x4_anyTrue, only defined on boolean SIMD types.
 // n.b. No emscripten_float32x4_allTrue, only defined on boolean SIMD types.
@@ -1142,7 +1208,7 @@ DEF_CALL_HANDLER(emscripten_float32x4_select, {
   } else {
     Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int32x4_splat(0))";
   }
-  return getAssign(CI) + "SIMD_Float32x4_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_select(" + Op + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ')';
 })
 // n.b. No emscripten_float32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
 // n.b. No emscripten_float32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
@@ -1152,35 +1218,35 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_extractLane, SIMD_Float32x4_extractLane
 DEF_BUILTIN_HANDLER(emscripten_float32x4_replaceLane, SIMD_Float32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_float32x4_store, {
   UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store1, {
   UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store2, {
   UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store3, {
   UsesSIMDFloat32x4 = true;
-  return "SIMD_Float32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Float32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load, {
   UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load1, {
   UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load2, {
   UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load3, {
   UsesSIMDFloat32x4 = true;
-  return getAssign(CI) + "SIMD_Float32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Float32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_float32x4_fromFloat64x2Bits, SIMD_Float32x4_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_float32x4_fromInt32x4Bits, SIMD_Float32x4_fromInt32x4Bits);
@@ -1215,22 +1281,22 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_xor, SIMD_Int32x4_xor);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_or, SIMD_Int32x4_or);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_not, SIMD_Int32x4_not);
 DEF_CALL_HANDLER(emscripten_int32x4_lessThan, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_lessThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_greaterThan, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_greaterThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_equal, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_equal(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_notEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(4, "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int32x4_select, {
   // FIXME: We really need a more general way of handling boolean types,
@@ -1242,7 +1308,7 @@ DEF_CALL_HANDLER(emscripten_int32x4_select, {
   } else {
     Op = "SIMD_Int32x4_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int32x4_splat(0))";
   }
-  return getAssign(CI) + "SIMD_Int32x4_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "SIMD_Int32x4_select(" + Op + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ')';
 })
 // n.b. No emscripten_int32x4_addSaturate, only defined on 8-bit and 16-bit integer SIMD types.
 // n.b. No emscripten_int32x4_subSaturate, only defined on 8-bit and 16-bit integer SIMD types.
@@ -1252,35 +1318,35 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_extractLane, SIMD_Int32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_replaceLane, SIMD_Int32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_int32x4_store, {
   UsesSIMDInt32x4 = true;
-  return "SIMD_Int32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store1, {
   UsesSIMDInt32x4 = true;
-  return "SIMD_Int32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store2, {
   UsesSIMDInt32x4 = true;
-  return "SIMD_Int32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store3, {
   UsesSIMDInt32x4 = true;
-  return "SIMD_Int32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load, {
   UsesSIMDInt32x4 = true;
-  return getAssign(CI) + "SIMD_Int32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load1, {
   UsesSIMDInt32x4 = true;
-  return getAssign(CI) + "SIMD_Int32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load2, {
   UsesSIMDInt32x4 = true;
-  return getAssign(CI) + "SIMD_Int32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load3, {
   UsesSIMDInt32x4 = true;
-  return getAssign(CI) + "SIMD_Int32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2Bits, SIMD_Int32x4_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat32x4Bits, SIMD_Int32x4_fromFloat32x4Bits);
@@ -1334,35 +1400,35 @@ DEF_BUILTIN_HANDLER(emscripten_uint32x4_extractLane, SIMD_Uint32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_replaceLane, SIMD_Uint32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_uint32x4_store, {
   UsesSIMDUint32x4 = true;
-  return "SIMD_Uint32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Uint32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store1, {
   UsesSIMDUint32x4 = true;
-  return "SIMD_Uint32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Uint32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store2, {
   UsesSIMDUint32x4 = true;
-  return "SIMD_Uint32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Uint32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store3, {
   UsesSIMDUint32x4 = true;
-  return "SIMD_Uint32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ", " + ")";
+  return "SIMD_Uint32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load, {
   UsesSIMDUint32x4 = true;
-  return getAssign(CI) + "SIMD_Uint32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Uint32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load1, {
   UsesSIMDUint32x4 = true;
-  return getAssign(CI) + "SIMD_Uint32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Uint32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load2, {
   UsesSIMDUint32x4 = true;
-  return getAssign(CI) + "SIMD_Uint32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Uint32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load3, {
   UsesSIMDUint32x4 = true;
-  return getAssign(CI) + "SIMD_Uint32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Uint32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat64x2Bits, SIMD_Uint32x4_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat32x4Bits, SIMD_Uint32x4_fromFloat32x4Bits);
@@ -1398,22 +1464,22 @@ DEF_BUILTIN_HANDLER(emscripten_int16x8_xor, SIMD_Int16x8_xor);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_or, SIMD_Int16x8_or);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_not, SIMD_Int16x8_not);
 DEF_CALL_HANDLER(emscripten_int16x8_lessThan, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_lessThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_greaterThan, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_greaterThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_equal, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_equal(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_notEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(8, "SIMD_Int16x8_notEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int16x8_select, {
   // FIXME: We really need a more general way of handling boolean types,
@@ -1425,7 +1491,7 @@ DEF_CALL_HANDLER(emscripten_int16x8_select, {
   } else {
     Op = "SIMD_Int16x8_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int16x8_splat(0))";
   }
-  return getAssign(CI) + "SIMD_Int16x8_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "SIMD_Int16x8_select(" + Op + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int16x8_addSaturate, SIMD_Int16x8_addSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_subSaturate, SIMD_Int16x8_subSaturate);
@@ -1435,11 +1501,11 @@ DEF_BUILTIN_HANDLER(emscripten_int16x8_extractLane, SIMD_Int16x8_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_replaceLane, SIMD_Int16x8_replaceLane);
 DEF_CALL_HANDLER(emscripten_int16x8_store, {
   UsesSIMDInt16x8 = true;
-  return "SIMD_Int16x8_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int16x8_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int16x8_load, {
   UsesSIMDInt16x8 = true;
-  return getAssign(CI) + "SIMD_Int16x8_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int16x8_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat64x2Bits, SIMD_Int16x8_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat32x4Bits, SIMD_Int16x8_fromFloat32x4Bits);
@@ -1523,22 +1589,22 @@ DEF_BUILTIN_HANDLER(emscripten_int8x16_xor, SIMD_Int8x16_xor);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_or, SIMD_Int8x16_or);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_not, SIMD_Int8x16_not);
 DEF_CALL_HANDLER(emscripten_int8x16_lessThan, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_lessThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_lessThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_greaterThan, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThan(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_greaterThanOrEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_greaterThanOrEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_equal, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_equal(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_equal(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_notEqual, {
-  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")", true);
+  return getAssign(CI) + castBoolVecToIntVec(16, "SIMD_Int8x16_notEqual(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')', true);
 })
 DEF_CALL_HANDLER(emscripten_int8x16_select, {
   // FIXME: We really need a more general way of handling boolean types,
@@ -1550,7 +1616,7 @@ DEF_CALL_HANDLER(emscripten_int8x16_select, {
   } else {
     Op = "SIMD_Int8x16_notEqual(" + getValueAsStr(CI->getOperand(0)) + ", SIMD_Int8x16_splat(0))";
   }
-  return getAssign(CI) + "SIMD_Int8x16_select(" + Op + "," + getValueAsStr(CI->getOperand(1)) + "," + getValueAsStr(CI->getOperand(2)) + ")";
+  return getAssign(CI) + "SIMD_Int8x16_select(" + Op + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int8x16_addSaturate, SIMD_Int8x16_addSaturate);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_subSaturate, SIMD_Int8x16_subSaturate);
@@ -1560,11 +1626,11 @@ DEF_BUILTIN_HANDLER(emscripten_int8x16_extractLane, SIMD_Int8x16_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_replaceLane, SIMD_Int8x16_replaceLane);
 DEF_CALL_HANDLER(emscripten_int8x16_store, {
   UsesSIMDInt8x16 = true;
-  return "SIMD_Int8x16_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ", " + getValueAsStr(CI->getOperand(1)) + ")";
+  return "SIMD_Int8x16_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int8x16_load, {
   UsesSIMDInt8x16 = true;
-  return getAssign(CI) + "SIMD_Int8x16_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ")";
+  return getAssign(CI) + "SIMD_Int8x16_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat64x2Bits, SIMD_Int8x16_fromFloat64x2Bits);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat32x4Bits, SIMD_Int8x16_fromFloat32x4Bits);
@@ -2198,6 +2264,18 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_atomic_xor_u32);
 
   SETUP_CALL_HANDLER(emscripten_atomic_fence);
+
+  if (OnlyWebAssembly) {
+    SETUP_CALL_HANDLER(__atomic_exchange_8);
+    SETUP_CALL_HANDLER(__atomic_compare_exchange_8);
+    SETUP_CALL_HANDLER(__atomic_load_8);
+    SETUP_CALL_HANDLER(__atomic_store_8);
+    SETUP_CALL_HANDLER(__atomic_fetch_add_8);
+    SETUP_CALL_HANDLER(__atomic_fetch_sub_8);
+    SETUP_CALL_HANDLER(__atomic_fetch_and_8);
+    SETUP_CALL_HANDLER(__atomic_fetch_or_8);
+    SETUP_CALL_HANDLER(__atomic_fetch_xor_8);
+  }
 
   SETUP_CALL_HANDLER(abs);
   SETUP_CALL_HANDLER(labs);
