@@ -425,7 +425,7 @@ namespace {
         Sig = "X";
       }
       FunctionTable &Table = FunctionTables[Sig];
-      unsigned MinSize = ReservedFunctionPointers ? 2*(ReservedFunctionPointers+1) : 1; // each reserved slot must be 2-aligned
+      unsigned MinSize = ReservedFunctionPointers + 1;
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
     }
