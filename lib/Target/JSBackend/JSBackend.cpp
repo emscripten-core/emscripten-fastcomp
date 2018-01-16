@@ -425,8 +425,7 @@ namespace {
         Sig = "X";
       }
       FunctionTable &Table = FunctionTables[Sig];
-      unsigned MinSize =
-          ReservedFunctionPointers ? ReservedFunctionPointers + 1 : 1;
+      unsigned MinSize = ReservedFunctionPointers + 1;
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
     }
