@@ -163,10 +163,10 @@ static bool okToRemainIllegal(Function *F) {
 
   // XXX EMSCRIPTEN: These take an i64 immediate argument; since they're not
   // real instructions, we don't need to legalize them.
-  if (Name == "llvm.lifetime.start") return true;
-  if (Name == "llvm.lifetime.end") return true;
-  if (Name == "llvm.invariant.start") return true;
-  if (Name == "llvm.invariant.end") return true;
+  if (Name.startswith("llvm.lifetime.start")) return true;
+  if (Name.startswith("llvm.lifetime.end")) return true;
+  if (Name.startswith("llvm.invariant.start")) return true;
+  if (Name.startswith("llvm.invariant.end")) return true;
 
   return false;
 }
