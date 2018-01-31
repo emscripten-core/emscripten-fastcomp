@@ -15,30 +15,42 @@
 #ifndef LLVM_UNITTESTS_EXECUTIONENGINE_ORC_ORCTESTCOMMON_H
 #define LLVM_UNITTESTS_EXECUTIONENGINE_ORC_ORCTESTCOMMON_H
 
+#include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/TypeBuilder.h"
 #include "llvm/Object/ObjectFile.h"
-#include "llvm/ExecutionEngine/ExecutionEngine.h"
-#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/Support/TargetSelect.h"
 #include <memory>
 
 namespace llvm {
 
-// Base class for Orc tests that will execute code.
-class OrcExecutionTest {
+class OrcNativeTarget {
 public:
-
-  OrcExecutionTest() {
+  static void initialize() {
     if (!NativeTargetInitialized) {
       InitializeNativeTarget();
       InitializeNativeTargetAsmParser();
       InitializeNativeTargetAsmPrinter();
       NativeTargetInitialized = true;
     }
+  }
+
+private:
+  static bool NativeTargetInitialized;
+};
+
+// Base class for Orc tests that will execute code.
+class OrcExecutionTest {
+public:
+
+  OrcExecutionTest() {
+
+    // Initialize the native target if it hasn't been done already.
+    OrcNativeTarget::initialize();
 
     // Try to select a TargetMachine for the host.
     TM.reset(EngineBuilder().selectTarget());
@@ -56,8 +68,6 @@ public:
 protected:
   LLVMContext Context;
   std::unique_ptr<TargetMachine> TM;
-private:
-  static bool NativeTargetInitialized;
 };
 
 class ModuleBuilder {
@@ -91,7 +101,7 @@ class TypeBuilder<DummyStruct, XCompile> {
 public:
   static StructType *get(LLVMContext &Context) {
     return StructType::get(
-      TypeBuilder<types::i<32>[256], XCompile>::get(Context), nullptr);
+        TypeBuilder<types::i<32>[256], XCompile>::get(Context));
   }
 };
 

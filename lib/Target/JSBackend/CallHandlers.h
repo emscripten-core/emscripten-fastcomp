@@ -616,6 +616,22 @@ DEF_CALL_HANDLER(llvm_lifetime_end, {
   return "";
 })
 
+DEF_CALL_HANDLER(llvm_lifetime_start_p0i8, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_lifetime_end_p0i8, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_invariant_start, {
+  return "";
+})
+
+DEF_CALL_HANDLER(llvm_invariant_end, {
+  return "";
+})
+
 DEF_CALL_HANDLER(llvm_invariant_start_p0i8, {
   return "";
 })
@@ -711,6 +727,16 @@ DEF_CALL_HANDLER(llvm_copysign_f64, {
   }
   Declares.insert("llvm_copysign_f64");
   return CH___default__(CI, "_llvm_copysign_f64", 2);
+})
+
+DEF_CALL_HANDLER(llvm_rint_f32, {
+  Declares.insert("llvm_rint_f32");
+  return CH___default__(CI, "_llvm_rint_f32");
+})
+
+DEF_CALL_HANDLER(llvm_rint_f64, {
+  Declares.insert("llvm_rint_f64");
+  return CH___default__(CI, "_llvm_rint_f64");
 })
 
 // EM_ASM support
@@ -1674,6 +1700,10 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_dbg_value);
   SETUP_CALL_HANDLER(llvm_lifetime_start);
   SETUP_CALL_HANDLER(llvm_lifetime_end);
+  SETUP_CALL_HANDLER(llvm_lifetime_start_p0i8);
+  SETUP_CALL_HANDLER(llvm_lifetime_end_p0i8);
+  SETUP_CALL_HANDLER(llvm_invariant_start);
+  SETUP_CALL_HANDLER(llvm_invariant_end);
   SETUP_CALL_HANDLER(llvm_invariant_start_p0i8);
   SETUP_CALL_HANDLER(llvm_invariant_end_p0i8);
   SETUP_CALL_HANDLER(llvm_prefetch);
@@ -1690,6 +1720,8 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_ctpop_i64);
   SETUP_CALL_HANDLER(llvm_copysign_f32);
   SETUP_CALL_HANDLER(llvm_copysign_f64);
+  SETUP_CALL_HANDLER(llvm_rint_f32);
+  SETUP_CALL_HANDLER(llvm_rint_f64);
 
   // SIMD.js Float64x2
   SETUP_CALL_HANDLER(emscripten_float64x2_set);

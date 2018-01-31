@@ -7,7 +7,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-def FLATAtomic : ComplexPattern<i64, 3, "SelectFlat">;
+def FLATAtomic : ComplexPattern<i64, 3, "SelectFlatAtomic", [], [], -10>;
+def FLATOffset : ComplexPattern<i64, 3, "SelectFlat", [], [], -10>;
 
 //===----------------------------------------------------------------------===//
 // FLAT classes
@@ -55,6 +56,8 @@ class FLAT_Real <bits<7> op, FLAT_Pseudo ps> :
   // copy relevant pseudo op flags
   let SubtargetPredicate = ps.SubtargetPredicate;
   let AsmMatchConverter  = ps.AsmMatchConverter;
+  let TSFlags = ps.TSFlags;
+  let UseNamedOperandTable = ps.UseNamedOperandTable;
 
   // encoding fields
   bits<8> vaddr;
@@ -62,9 +65,24 @@ class FLAT_Real <bits<7> op, FLAT_Pseudo ps> :
   bits<8> vdst;
   bits<1> slc;
   bits<1> glc;
-  bits<1> tfe;
 
-  // 15-0 is reserved.
+  // Only valid on gfx9
+  bits<1> lds = 0; // XXX - What does this actually do?
+  bits<2> seg; // Segment, 00=flat, 01=scratch, 10=global, 11=reserved
+
+  // Signed offset. Highest bit ignored for flat and treated as 12-bit
+  // unsigned for flat acceses.
+  bits<13> offset;
+  bits<1> nv = 0; // XXX - What does this actually do?
+
+  // We don't use tfe right now, and it was removed in gfx9.
+  bits<1> tfe = 0;
+
+  // Only valid on GFX9+
+  let Inst{12-0} = offset;
+  let Inst{13} = lds;
+  let Inst{15-14} = 0;
+
   let Inst{16}    = !if(ps.has_glc, glc, ps.glcValue);
   let Inst{17}    = slc;
   let Inst{24-18} = op;
@@ -72,24 +90,30 @@ class FLAT_Real <bits<7> op, FLAT_Pseudo ps> :
   let Inst{39-32} = vaddr;
   let Inst{47-40} = !if(ps.has_data, vdata, ?);
   // 54-48 is reserved.
-  let Inst{55}    = tfe;
+  let Inst{55}    = nv; // nv on GFX9+, TFE before.
   let Inst{63-56} = !if(ps.has_vdst, vdst, ?);
 }
 
-class FLAT_Load_Pseudo <string opName, RegisterClass regClass> : FLAT_Pseudo<
+class FLAT_Load_Pseudo <string opName, RegisterClass regClass,
+  bit HasSignedOffset = 0> : FLAT_Pseudo<
   opName,
   (outs regClass:$vdst),
-  (ins VReg_64:$vaddr, GLC:$glc, slc:$slc, tfe:$tfe),
-  " $vdst, $vaddr$glc$slc$tfe"> {
+  !if(HasSignedOffset,
+    (ins VReg_64:$vaddr, offset_s13:$offset, GLC:$glc, slc:$slc),
+    (ins VReg_64:$vaddr, offset_u12:$offset, GLC:$glc, slc:$slc)),
+  " $vdst, $vaddr$offset$glc$slc"> {
   let has_data = 0;
   let mayLoad = 1;
 }
 
-class FLAT_Store_Pseudo <string opName, RegisterClass vdataClass> : FLAT_Pseudo<
+class FLAT_Store_Pseudo <string opName, RegisterClass vdataClass,
+  bit HasSignedOffset = 0> : FLAT_Pseudo<
   opName,
   (outs),
-  (ins VReg_64:$vaddr, vdataClass:$vdata, GLC:$glc, slc:$slc, tfe:$tfe),
-  " $vaddr, $vdata$glc$slc$tfe"> {
+  !if(HasSignedOffset,
+    (ins VReg_64:$vaddr, vdataClass:$vdata, offset_s13:$offset, GLC:$glc, slc:$slc),
+    (ins VReg_64:$vaddr, vdataClass:$vdata, offset_u12:$offset, GLC:$glc, slc:$slc)),
+  " $vaddr, $vdata$offset$glc$slc"> {
   let mayLoad  = 0;
   let mayStore = 1;
   let has_vdst = 0;
@@ -101,12 +125,15 @@ multiclass FLAT_Atomic_Pseudo<
   ValueType vt,
   SDPatternOperator atomic = null_frag,
   ValueType data_vt = vt,
-  RegisterClass data_rc = vdst_rc> {
+  RegisterClass data_rc = vdst_rc,
+  bit HasSignedOffset = 0> {
 
   def "" : FLAT_Pseudo <opName,
     (outs),
-    (ins VReg_64:$vaddr, data_rc:$vdata, slc:$slc, tfe:$tfe),
-    " $vaddr, $vdata$slc$tfe",
+    !if(HasSignedOffset,
+      (ins VReg_64:$vaddr, data_rc:$vdata, offset_s13:$offset, slc:$slc),
+      (ins VReg_64:$vaddr, data_rc:$vdata, offset_u12:$offset, slc:$slc)),
+    " $vaddr, $vdata$offset$slc",
     []>,
     AtomicNoRet <NAME, 0> {
     let mayLoad = 1;
@@ -119,10 +146,12 @@ multiclass FLAT_Atomic_Pseudo<
 
   def _RTN : FLAT_Pseudo <opName,
     (outs vdst_rc:$vdst),
-    (ins VReg_64:$vaddr, data_rc:$vdata, slc:$slc, tfe:$tfe),
-    " $vdst, $vaddr, $vdata glc$slc$tfe",
+    !if(HasSignedOffset,
+      (ins VReg_64:$vaddr, data_rc:$vdata, offset_s13:$offset, slc:$slc),
+      (ins VReg_64:$vaddr, data_rc:$vdata, offset_u12:$offset, slc:$slc)),
+    " $vdst, $vaddr, $vdata$offset glc$slc",
     [(set vt:$vdst,
-      (atomic (FLATAtomic i64:$vaddr, i1:$slc, i1:$tfe), data_vt:$vdata))]>,
+      (atomic (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc), data_vt:$vdata))]>,
     AtomicNoRet <NAME, 1> {
     let mayLoad  = 1;
     let mayStore = 1;
@@ -136,7 +165,7 @@ multiclass FLAT_Atomic_Pseudo<
 class flat_binary_atomic_op<SDNode atomic_op> : PatFrag<
   (ops node:$ptr, node:$value),
   (atomic_op node:$ptr, node:$value),
-  [{return cast<MemSDNode>(N)->getAddressSpace() == AMDGPUAS::FLAT_ADDRESS;}]
+  [{return cast<MemSDNode>(N)->getAddressSpace() == AMDGPUASI.FLAT_ADDRESS;}]
 >;
 
 def atomic_cmp_swap_flat : flat_binary_atomic_op<AMDGPUatomic_cmp_swap>;
@@ -284,16 +313,16 @@ defm FLAT_ATOMIC_FMAX_X2     : FLAT_Atomic_Pseudo <"flat_atomic_fmax_x2",
 class flat_ld <SDPatternOperator ld> : PatFrag<(ops node:$ptr),
                                                (ld node:$ptr), [{
   auto const AS = cast<MemSDNode>(N)->getAddressSpace();
-  return AS == AMDGPUAS::FLAT_ADDRESS ||
-         AS == AMDGPUAS::GLOBAL_ADDRESS ||
-         AS == AMDGPUAS::CONSTANT_ADDRESS;
+  return AS == AMDGPUASI.FLAT_ADDRESS ||
+         AS == AMDGPUASI.GLOBAL_ADDRESS ||
+         AS == AMDGPUASI.CONSTANT_ADDRESS;
 }]>;
 
 class flat_st <SDPatternOperator st> : PatFrag<(ops node:$val, node:$ptr),
                                                (st node:$val, node:$ptr), [{
   auto const AS = cast<MemSDNode>(N)->getAddressSpace();
-  return AS == AMDGPUAS::FLAT_ADDRESS ||
-         AS == AMDGPUAS::GLOBAL_ADDRESS;
+  return AS == AMDGPUASI.FLAT_ADDRESS ||
+         AS == AMDGPUASI.GLOBAL_ADDRESS;
 }]>;
 
 def atomic_flat_load   : flat_ld <atomic_load>;
@@ -310,31 +339,31 @@ def flat_truncstorei16 : flat_st <truncstorei16>;
 
 // Patterns for global loads with no offset.
 class FlatLoadPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : Pat <
-  (vt (node i64:$addr)),
-  (inst $addr, 0, 0, 0)
+  (vt (node (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc))),
+  (inst $vaddr, $offset, 0, $slc)
 >;
 
 class FlatLoadAtomicPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : Pat <
-  (vt (node i64:$addr)),
-  (inst $addr, 1, 0, 0)
+  (vt (node (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc))),
+  (inst $vaddr, $offset, 1, $slc)
 >;
 
 class FlatStorePat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : Pat <
-  (node vt:$data, i64:$addr),
-  (inst $addr, $data, 0, 0, 0)
+  (node vt:$data, (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc)),
+  (inst $vaddr, $data, $offset, 0, $slc)
 >;
 
 class FlatStoreAtomicPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt> : Pat <
   // atomic store follows atomic binop convention so the address comes
   // first.
-  (node i64:$addr, vt:$data),
-  (inst $addr, $data, 1, 0, 0)
+  (node (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc), vt:$data),
+  (inst $vaddr, $data, $offset, 1, $slc)
 >;
 
 class FlatAtomicPat <FLAT_Pseudo inst, SDPatternOperator node, ValueType vt,
                      ValueType data_vt = vt> : Pat <
-  (vt (node i64:$addr, data_vt:$data)),
-  (inst $addr, $data, 0, 0)
+  (vt (node (FLATAtomic i64:$vaddr, i16:$offset, i1:$slc), data_vt:$data)),
+  (inst $vaddr, $data, $offset, $slc)
 >;
 
 let Predicates = [isCIVI] in {

@@ -1,6 +1,6 @@
 ; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI-NOHSA -check-prefix=FUNC %s
 ; RUN: llc -mtriple=amdgcn-amdhsa -mcpu=kaveri -verify-machineinstrs < %s | FileCheck -check-prefix=FUNC -check-prefix=CI-HSA -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=SI-NOHSA -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefix=SI-NOHSA -check-prefix=FUNC %s
 ; RUN: llc -march=r600 -mcpu=redwood < %s | FileCheck -check-prefix=EG -check-prefix=FUNC %s
 
 ; FIXME: This seems to not ever actually become an extload
@@ -10,7 +10,7 @@
 
 ; EG: MEM_RAT_CACHELESS STORE_RAW [[VAL:T[0-9]+.[XYZW]]],
 ; EG: VTX_READ_32 [[VAL]]
-define void @global_anyext_load_i8(i8 addrspace(1)* nocapture noalias %out, i8 addrspace(1)* nocapture noalias %src) nounwind {
+define amdgpu_kernel void @global_anyext_load_i8(i8 addrspace(1)* nocapture noalias %out, i8 addrspace(1)* nocapture noalias %src) nounwind {
   %cast = bitcast i8 addrspace(1)* %src to i32 addrspace(1)*
   %load = load i32, i32 addrspace(1)* %cast
   %x = bitcast i32 %load to <4 x i8>
@@ -25,7 +25,7 @@ define void @global_anyext_load_i8(i8 addrspace(1)* nocapture noalias %out, i8 a
 
 ; EG: MEM_RAT_CACHELESS STORE_RAW [[VAL:T[0-9]+.[XYZW]]],
 ; EG: VTX_READ_32 [[VAL]]
-define void @global_anyext_load_i16(i16 addrspace(1)* nocapture noalias %out, i16 addrspace(1)* nocapture noalias %src) nounwind {
+define amdgpu_kernel void @global_anyext_load_i16(i16 addrspace(1)* nocapture noalias %out, i16 addrspace(1)* nocapture noalias %src) nounwind {
   %cast = bitcast i16 addrspace(1)* %src to i32 addrspace(1)*
   %load = load i32, i32 addrspace(1)* %cast
   %x = bitcast i32 %load to <2 x i16>
@@ -40,7 +40,7 @@ define void @global_anyext_load_i16(i16 addrspace(1)* nocapture noalias %out, i1
 
 ; EG: LDS_READ_RET {{.*}}, [[VAL:T[0-9]+.[XYZW]]]
 ; EG: LDS_WRITE * [[VAL]]
-define void @local_anyext_load_i8(i8 addrspace(3)* nocapture noalias %out, i8 addrspace(3)* nocapture noalias %src) nounwind {
+define amdgpu_kernel void @local_anyext_load_i8(i8 addrspace(3)* nocapture noalias %out, i8 addrspace(3)* nocapture noalias %src) nounwind {
   %cast = bitcast i8 addrspace(3)* %src to i32 addrspace(3)*
   %load = load i32, i32 addrspace(3)* %cast
   %x = bitcast i32 %load to <4 x i8>
@@ -55,7 +55,7 @@ define void @local_anyext_load_i8(i8 addrspace(3)* nocapture noalias %out, i8 ad
 
 ; EG: LDS_READ_RET {{.*}}, [[VAL:T[0-9]+.[XYZW]]]
 ; EG: LDS_WRITE * [[VAL]]
-define void @local_anyext_load_i16(i16 addrspace(3)* nocapture noalias %out, i16 addrspace(3)* nocapture noalias %src) nounwind {
+define amdgpu_kernel void @local_anyext_load_i16(i16 addrspace(3)* nocapture noalias %out, i16 addrspace(3)* nocapture noalias %src) nounwind {
   %cast = bitcast i16 addrspace(3)* %src to i32 addrspace(3)*
   %load = load i32, i32 addrspace(3)* %cast
   %x = bitcast i32 %load to <2 x i16>

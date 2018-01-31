@@ -14,9 +14,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "SystemZTargetMachine.h"
+#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
-#include "llvm/CodeGen/LivePhysRegs.h"
 #include "llvm/Target/TargetRegisterInfo.h"
 
 using namespace llvm;
@@ -167,10 +167,10 @@ bool SystemZShortenInst::shortenFPConv(MachineInstr &MI, unsigned Opcode) {
     MI.RemoveOperand(0);
     MI.setDesc(TII->get(Opcode));
     MachineInstrBuilder(*MI.getParent()->getParent(), &MI)
-      .addOperand(Dest)
-      .addOperand(Mode)
-      .addOperand(Src)
-      .addOperand(Suppress);
+        .add(Dest)
+        .add(Mode)
+        .add(Src)
+        .add(Suppress);
     return true;
   }
   return false;

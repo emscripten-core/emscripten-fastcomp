@@ -163,10 +163,10 @@ static bool okToRemainIllegal(Function *F) {
 
   // XXX EMSCRIPTEN: These take an i64 immediate argument; since they're not
   // real instructions, we don't need to legalize them.
-  if (Name == "llvm.lifetime.start") return true;
-  if (Name == "llvm.lifetime.end") return true;
-  if (Name == "llvm.invariant.start") return true;
-  if (Name == "llvm.invariant.end") return true;
+  if (Name.startswith("llvm.lifetime.start")) return true;
+  if (Name.startswith("llvm.lifetime.end")) return true;
+  if (Name.startswith("llvm.invariant.start")) return true;
+  if (Name.startswith("llvm.invariant.end")) return true;
 
   return false;
 }
@@ -210,7 +210,7 @@ static bool isLegalInstruction(const Instruction *I) {
 static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
   Function *NewFunc = Function::Create(NewType, F->getLinkage());
 
-  AttributeSet Attrs = F->getAttributes();
+  AttributeList Attrs = F->getAttributes();
   AttributeSet FnAttrs = Attrs.getFnAttributes();
 
   // Legalizing the return value is done by storing part of the value into
@@ -218,35 +218,30 @@ static Function *RecreateFunctionLegalized(Function *F, FunctionType *NewType) {
   // so we can no longer claim to be readonly or readnone.
   if (isIllegal(F->getReturnType())) {
     FnAttrs = FnAttrs.removeAttribute(F->getContext(),
-                                      AttributeSet::FunctionIndex,
                                       Attribute::ReadOnly);
     FnAttrs = FnAttrs.removeAttribute(F->getContext(),
-                                      AttributeSet::FunctionIndex,
                                       Attribute::ReadNone);
   }
 
-  NewFunc->addAttributes(AttributeSet::FunctionIndex, FnAttrs);
-  NewFunc->addAttributes(AttributeSet::ReturnIndex, Attrs.getRetAttributes());
+  NewFunc->addAttributes(AttributeList::FunctionIndex, FnAttrs);
+  NewFunc->addAttributes(AttributeList::ReturnIndex, Attrs.getRetAttributes());
   Function::arg_iterator AI = F->arg_begin();
 
   // We need to recreate the attribute set, with the right indexes
-  AttributeSet NewAttrs;
+  AttributeList NewAttrs;
   unsigned NumArgs = F->arg_size();
-  for (unsigned i = 1, j = 1; i < NumArgs+1; i++, j++, AI++) {
+  for (unsigned i = 0, j = 1; i < NumArgs; i++, j++, AI++) {
     if (isIllegal(AI->getType())) {
       j++;
       continue;
     }
-    if (!Attrs.hasAttributes(i)) continue;
+    if (!Attrs.hasParamAttrs(i)) continue;
     AttributeSet ParamAttrs = Attrs.getParamAttributes(i);
     AttrBuilder AB;
-    unsigned NumSlots = ParamAttrs.getNumSlots();
-    for (unsigned k = 0; k < NumSlots; k++) {
-      for (AttributeSet::iterator I = ParamAttrs.begin(k), E = ParamAttrs.end(k); I != E; I++) {
-        AB.addAttribute(*I);
-      }
+    for (Attribute Attr : ParamAttrs) {
+      AB.addAttribute(Attr);
     }
-    NewFunc->addAttributes(j, AttributeSet::get(F->getContext(), j, AB));
+    NewFunc->addAttributes(j, AB);
   }
 
   F->getParent()->getFunctionList().insert(F->getIterator(), NewFunc);
@@ -877,8 +872,8 @@ bool ExpandI64::splitInst(Instruction *I) {
       Map Groups;                          // (as two 64-bit values in the switch may share their lower bits)
 
       for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-        BasicBlock *BB = i.getCaseSuccessor();
-        uint64_t Bits = i.getCaseValue()->getZExtValue();
+        BasicBlock *BB = i->getCaseSuccessor();
+        uint64_t Bits = i->getCaseValue()->getZExtValue();
         uint32_t LowBits = (uint32_t)Bits;
         uint32_t HighBits = (uint32_t)(Bits >> 32);
         Vec& V = Groups[LowBits];
@@ -972,7 +967,9 @@ bool ExpandI64::splitInst(Instruction *I) {
       break;
     }
     default: {
+#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
       I->dump();
+#endif
       assert(0 && "some i64 thing we can't legalize yet. possible hint: optimize with -O0 or -O2+, and not -O1");
     }
   }

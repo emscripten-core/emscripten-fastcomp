@@ -548,6 +548,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(ninf);
   KEYWORD(nsz);
   KEYWORD(arcp);
+  KEYWORD(contract);
   KEYWORD(fast);
   KEYWORD(nuw);
   KEYWORD(nsw);
@@ -600,6 +601,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(hhvm_ccc);
   KEYWORD(cxx_fast_tlscc);
   KEYWORD(amdgpu_vs);
+  KEYWORD(amdgpu_hs);
   KEYWORD(amdgpu_gs);
   KEYWORD(amdgpu_ps);
   KEYWORD(amdgpu_cs);
@@ -647,6 +649,7 @@ lltok::Kind LLLexer::LexIdentifier() {
   KEYWORD(returned);
   KEYWORD(returns_twice);
   KEYWORD(signext);
+  KEYWORD(speculatable);
   KEYWORD(sret);
   KEYWORD(ssp);
   KEYWORD(sspreq);

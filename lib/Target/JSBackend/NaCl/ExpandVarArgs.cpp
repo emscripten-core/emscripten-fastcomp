@@ -178,9 +178,9 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   Function *F = Call->getParent()->getParent();
   LLVMContext &Ctx = M->getContext();
 
-  SmallVector<AttributeSet, 8> Attrs;
-  Attrs.push_back(Call->getAttributes().getFnAttributes());
-  Attrs.push_back(Call->getAttributes().getRetAttributes());
+  AttributeSet FnAttrs = Call->getAttributes().getFnAttributes();
+  AttributeSet RetAttrs = Call->getAttributes().getRetAttributes();
+  SmallVector<AttributeSet, 8> ArgAttrs;
 
   // Split argument list into fixed and variable arguments.
   SmallVector<Value *, 8> FixedArgs;
@@ -188,8 +188,7 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   SmallVector<Type *, 8> VarArgsTypes;
   for (unsigned I = 0, E = FuncType->getNumParams(); I < E; ++I) {
     FixedArgs.push_back(Call->getArgOperand(I));
-    // AttributeSets use 1-based indexing.
-    Attrs.push_back(Call->getAttributes().getParamAttributes(I + 1));
+    ArgAttrs.push_back(Call->getAttributes().getParamAttributes(I));
   }
   for (unsigned I = FuncType->getNumParams(), E = Call->getNumArgOperands();
        I < E; ++I) {
@@ -224,10 +223,10 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   // Call llvm.lifetime.start/end intrinsics to indicate that Buf is
   // only used for the duration of the function call, so that the
   // stack space can be reused elsewhere.
-  auto LifetimeStart = Intrinsic::getDeclaration(M, Intrinsic::lifetime_start);
-  auto LifetimeEnd = Intrinsic::getDeclaration(M, Intrinsic::lifetime_end);
   auto *I8Ptr = Type::getInt8Ty(Ctx)->getPointerTo();
   auto *BufPtr = IRB.CreateBitCast(Buf, I8Ptr, "vararg_lifetime_bitcast");
+  auto LifetimeStart = Intrinsic::getDeclaration(M, Intrinsic::lifetime_start, { BufPtr->getType() });
+  auto LifetimeEnd = Intrinsic::getDeclaration(M, Intrinsic::lifetime_end, { BufPtr->getType() });
   auto *BufSize =
       ConstantInt::get(Ctx, APInt(64, DL->getTypeAllocSize(VarArgsTy)));
   IRB.CreateCall(LifetimeStart, {BufSize, BufPtr});
@@ -264,13 +263,13 @@ static bool ExpandVarArgCall(Module *M, InstType *Call, DataLayout *DL) {
   Instruction *NewCall;
   if (auto *C = dyn_cast<CallInst>(Call)) {
     auto *N = IRB.CreateCall(CastFunc, FixedArgs);
-    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    N->setAttributes(AttributeList::get(Ctx, FnAttrs, RetAttrs, ArgAttrs));
     NewCall = N;
     IRB.CreateCall(LifetimeEnd, {BufSize, BufPtr});
   } else if (auto *C = dyn_cast<InvokeInst>(Call)) {
     auto *N = IRB.CreateInvoke(CastFunc, C->getNormalDest(), C->getUnwindDest(),
                                FixedArgs, C->getName());
-    N->setAttributes(AttributeSet::get(Ctx, Attrs));
+    N->setAttributes(AttributeList::get(Ctx, FnAttrs, RetAttrs, ArgAttrs));
     (IRBuilder<>(&*C->getNormalDest()->getFirstInsertionPt()))
         .CreateCall(LifetimeEnd, {BufSize, BufPtr});
     (IRBuilder<>(&*C->getUnwindDest()->getFirstInsertionPt()))

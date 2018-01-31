@@ -253,7 +253,7 @@ public:
   bool DefinesPredicate(MachineInstr &MI,
                         std::vector<MachineOperand> &Pred) const override;
 
-  bool isPredicable(MachineInstr &MI) const override;
+  bool isPredicable(const MachineInstr &MI) const override;
 
   // Comparison optimization.
 
@@ -269,7 +269,7 @@ public:
   ///
   unsigned getInstSizeInBytes(const MachineInstr &MI) const override;
 
-  void getNoopForMachoTarget(MCInst &NopInst) const override;
+  void getNoop(MCInst &NopInst) const override;
 
   std::pair<unsigned, unsigned>
   decomposeMachineOperandsTargetFlags(unsigned TF) const override;
@@ -290,6 +290,7 @@ public:
     return Reg >= PPC::V0 && Reg <= PPC::V31;
   }
   const TargetRegisterClass *updatedRC(const TargetRegisterClass *RC) const;
+  static int getRecordFormOpcode(unsigned Opcode);
 };
 
 }

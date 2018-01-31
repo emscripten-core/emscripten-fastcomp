@@ -1,4 +1,4 @@
-//===-- DWARFUnit.h ---------------------------------------------*- C++ -*-===//
+//===- DWARFUnit.h ----------------------------------------------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -7,32 +7,38 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLVM_LIB_DEBUGINFO_DWARFUNIT_H
-#define LLVM_LIB_DEBUGINFO_DWARFUNIT_H
+#ifndef LLVM_DEBUGINFO_DWARF_DWARFUNIT_H
+#define LLVM_DEBUGINFO_DWARF_DWARFUNIT_H
 
 #include "llvm/ADT/Optional.h"
-#include "llvm/ADT/iterator_range.h"
 #include "llvm/ADT/STLExtras.h"
-#include "llvm/DebugInfo/DWARF/DWARFDebugAbbrev.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/iterator_range.h"
+#include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugInfoEntry.h"
 #include "llvm/DebugInfo/DWARF/DWARFDebugRangeList.h"
 #include "llvm/DebugInfo/DWARF/DWARFDie.h"
 #include "llvm/DebugInfo/DWARF/DWARFRelocMap.h"
 #include "llvm/DebugInfo/DWARF/DWARFSection.h"
 #include "llvm/DebugInfo/DWARF/DWARFUnitIndex.h"
+#include "llvm/Object/Binary.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/DataExtractor.h"
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <map>
+#include <memory>
 #include <vector>
 
 namespace llvm {
 
-namespace object {
-class ObjectFile;
-}
-
+class DWARFAbbreviationDeclarationSet;
 class DWARFContext;
 class DWARFDebugAbbrev;
 class DWARFUnit;
-class StringRef;
-class raw_ostream;
 
 /// Base class for all DWARFUnitSection classes. This provides the
 /// functionality common to all unit types.
@@ -47,12 +53,13 @@ public:
                 DWARFUnitIndex *Index = nullptr);
 
 protected:
-  virtual void parseImpl(DWARFContext &Context, const DWARFSection &Section,
-                         const DWARFDebugAbbrev *DA, StringRef RS, StringRef SS,
-                         StringRef SOS, StringRef AOS, StringRef LS,
-                         bool isLittleEndian, bool isDWO) = 0;
-
   ~DWARFUnitSectionBase() = default;
+
+  virtual void parseImpl(DWARFContext &Context, const DWARFSection &Section,
+                         const DWARFDebugAbbrev *DA, const DWARFSection *RS,
+                         StringRef SS, const DWARFSection &SOS,
+                         const DWARFSection *AOS, StringRef LS,
+                         bool isLittleEndian, bool isDWO) = 0;
 };
 
 const DWARFUnitIndex &getDWARFUnitIndex(DWARFContext &Context,
@@ -65,7 +72,7 @@ class DWARFUnitSection final : public SmallVector<std::unique_ptr<UnitType>, 1>,
   bool Parsed = false;
 
 public:
-  typedef llvm::SmallVectorImpl<std::unique_ptr<UnitType>> UnitVector;
+  typedef SmallVectorImpl<std::unique_ptr<UnitType>> UnitVector;
   typedef typename UnitVector::iterator iterator;
   typedef llvm::iterator_range<typename UnitVector::iterator> iterator_range;
 
@@ -82,9 +89,9 @@ public:
 
 private:
   void parseImpl(DWARFContext &Context, const DWARFSection &Section,
-                 const DWARFDebugAbbrev *DA, StringRef RS, StringRef SS,
-                 StringRef SOS, StringRef AOS, StringRef LS, bool LE,
-                 bool IsDWO) override {
+                 const DWARFDebugAbbrev *DA, const DWARFSection *RS,
+                 StringRef SS, const DWARFSection &SOS, const DWARFSection *AOS,
+                 StringRef LS, bool LE, bool IsDWO) override {
     if (Parsed)
       return;
     const auto &Index = getDWARFUnitIndex(Context, UnitType::Section);
@@ -105,16 +112,17 @@ private:
 
 class DWARFUnit {
   DWARFContext &Context;
-  // Section containing this DWARFUnit.
+  /// Section containing this DWARFUnit.
   const DWARFSection &InfoSection;
 
   const DWARFDebugAbbrev *Abbrev;
-  StringRef RangeSection;
+  const DWARFSection *RangeSection;
   uint32_t RangeSectionBase;
   StringRef LineSection;
   StringRef StringSection;
-  StringRef StringOffsetSection;
-  StringRef AddrOffsetSection;
+  const DWARFSection &StringOffsetSection;
+  uint64_t StringOffsetSectionBase = 0;
+  const DWARFSection *AddrOffsetSection;
   uint32_t AddrOffsetSectionBase;
   bool isLittleEndian;
   bool isDWO;
@@ -122,24 +130,22 @@ class DWARFUnit {
 
   uint32_t Offset;
   uint32_t Length;
-  uint16_t Version;
   const DWARFAbbreviationDeclarationSet *Abbrevs;
+  uint16_t Version;
+  uint8_t UnitType;
   uint8_t AddrSize;
   uint64_t BaseAddr;
-  // The compile unit debug information entry items.
+  /// The compile unit debug information entry items.
   std::vector<DWARFDebugInfoEntry> DieArray;
+
+  /// Map from range's start address to end address and corresponding DIE.
+  /// IntervalMap does not support range removal, as a result, we use the
+  /// std::map::upper_bound for address range lookup.
+  std::map<uint64_t, std::pair<uint64_t, DWARFDie>> AddrDieMap;
   typedef iterator_range<std::vector<DWARFDebugInfoEntry>::iterator>
       die_iterator_range;
 
-  class DWOHolder {
-    object::OwningBinary<object::ObjectFile> DWOFile;
-    std::unique_ptr<DWARFContext> DWOContext;
-    DWARFUnit *DWOU;
-  public:
-    DWOHolder(StringRef DWOPath);
-    DWARFUnit *getUnit() const { return DWOU; }
-  };
-  std::unique_ptr<DWOHolder> DWO;
+  std::shared_ptr<DWARFUnit> DWO;
 
   const DWARFUnitIndex::Entry *IndexEntry;
 
@@ -151,14 +157,15 @@ class DWARFUnit {
 
 protected:
   virtual bool extractImpl(DataExtractor debug_info, uint32_t *offset_ptr);
+
   /// Size in bytes of the unit header.
-  virtual uint32_t getHeaderSize() const { return 11; }
+  virtual uint32_t getHeaderSize() const { return Version <= 4 ? 11 : 12; }
 
 public:
   DWARFUnit(DWARFContext &Context, const DWARFSection &Section,
-            const DWARFDebugAbbrev *DA, StringRef RS, StringRef SS,
-            StringRef SOS, StringRef AOS, StringRef LS, bool LE, bool IsDWO,
-            const DWARFUnitSectionBase &UnitSection,
+            const DWARFDebugAbbrev *DA, const DWARFSection *RS, StringRef SS,
+            const DWARFSection &SOS, const DWARFSection *AOS, StringRef LS,
+            bool LE, bool IsDWO, const DWARFUnitSectionBase &UnitSection,
             const DWARFUnitIndex::Entry *IndexEntry = nullptr);
 
   virtual ~DWARFUnit();
@@ -167,28 +174,40 @@ public:
 
   StringRef getLineSection() const { return LineSection; }
   StringRef getStringSection() const { return StringSection; }
-  StringRef getStringOffsetSection() const { return StringOffsetSection; }
-  void setAddrOffsetSection(StringRef AOS, uint32_t Base) {
+  const DWARFSection &getStringOffsetSection() const {
+    return StringOffsetSection;
+  }
+
+  void setAddrOffsetSection(const DWARFSection *AOS, uint32_t Base) {
     AddrOffsetSection = AOS;
     AddrOffsetSectionBase = Base;
   }
-  void setRangesSection(StringRef RS, uint32_t Base) {
+
+  /// Recursively update address to Die map.
+  void updateAddressDieMap(DWARFDie Die);
+
+  void setRangesSection(const DWARFSection *RS, uint32_t Base) {
     RangeSection = RS;
     RangeSectionBase = Base;
   }
 
   bool getAddrOffsetSectionItem(uint32_t Index, uint64_t &Result) const;
   // FIXME: Result should be uint64_t in DWARF64.
-  bool getStringOffsetSectionItem(uint32_t Index, uint32_t &Result) const;
+  bool getStringOffsetSectionItem(uint32_t Index, uint64_t &Result) const;
+  uint64_t getStringOffsetSectionRelocation(uint32_t Index) const;
 
   DataExtractor getDebugInfoExtractor() const {
     return DataExtractor(InfoSection.Data, isLittleEndian, AddrSize);
   }
+
   DataExtractor getStringExtractor() const {
     return DataExtractor(StringSection, false, 0);
   }
 
   const RelocAddrMap *getRelocMap() const { return &InfoSection.Relocs; }
+  const RelocAddrMap &getStringOffsetsRelocMap() const {
+    return StringOffsetSection.Relocs;
+  }
 
   bool extract(DataExtractor debug_info, uint32_t* offset_ptr);
 
@@ -202,23 +221,30 @@ public:
   uint32_t getNextUnitOffset() const { return Offset + Length + 4; }
   uint32_t getLength() const { return Length; }
   uint16_t getVersion() const { return Version; }
+
   dwarf::DwarfFormat getFormat() const {
     return dwarf::DwarfFormat::DWARF32; // FIXME: Support DWARF64.
   }
+
   const DWARFAbbreviationDeclarationSet *getAbbreviations() const {
     return Abbrevs;
   }
+
+  uint8_t getUnitType() const { return UnitType; }
   uint8_t getAddressByteSize() const { return AddrSize; }
+
   uint8_t getRefAddrByteSize() const {
     if (Version == 2)
       return AddrSize;
     return getDwarfOffsetByteSize();
   }
+
   uint8_t getDwarfOffsetByteSize() const {
     if (getFormat() == dwarf::DwarfFormat::DWARF64)
       return 8;
     return 4;
   }
+
   uint64_t getBaseAddress() const { return BaseAddr; }
 
   void setBaseAddress(uint64_t base_addr) {
@@ -284,9 +310,9 @@ public:
         [](const DWARFDebugInfoEntry &LHS, uint32_t Offset) {
           return LHS.getOffset() < Offset;
         });
-    if (it == DieArray.end())
-      return DWARFDie();
-    return DWARFDie(this, &*it);
+    if (it != DieArray.end() && it->getOffset() == Offset)
+      return DWARFDie(this, &*it);
+    return DWARFDie();
   }
 
   uint32_t getLineTableOffset() const {
@@ -308,9 +334,11 @@ private:
   /// extractDIEsIfNeeded - Parses a compile unit and indexes its DIEs if it
   /// hasn't already been done. Returns the number of DIEs parsed at this call.
   size_t extractDIEsIfNeeded(bool CUDieOnly);
+
   /// extractDIEsToVector - Appends all parsed DIEs to a vector.
   void extractDIEsToVector(bool AppendCUDie, bool AppendNonCUDIEs,
                            std::vector<DWARFDebugInfoEntry> &DIEs) const;
+
   /// clearDIEs - Clear parsed DIEs to keep memory usage low.
   void clearDIEs(bool KeepCUDie);
 
@@ -318,12 +346,12 @@ private:
   /// it was actually constructed.
   bool parseDWO();
 
-  /// getSubprogramForAddress - Returns subprogram DIE with address range
+  /// getSubroutineForAddress - Returns subprogram DIE with address range
   /// encompassing the provided address. The pointer is alive as long as parsed
   /// compile unit DIEs are not cleared.
-  DWARFDie getSubprogramForAddress(uint64_t Address);
+  DWARFDie getSubroutineForAddress(uint64_t Address);
 };
 
-}
+} // end namespace llvm
 
-#endif
+#endif // LLVM_DEBUGINFO_DWARF_DWARFUNIT_H

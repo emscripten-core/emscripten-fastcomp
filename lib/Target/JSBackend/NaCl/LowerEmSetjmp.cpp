@@ -281,7 +281,7 @@ bool LowerEmSetjmp::runOnModule(Module &M) {
               if (Function *F = dyn_cast<Function>(CI->getCalledValue())) {
                 F->removeFnAttr(Attribute::NoReturn);
               }
-              CI->setAttributes(CI->getAttributes().removeAttribute(TheModule->getContext(), AttributeSet::FunctionIndex, Attribute::NoReturn));
+              CI->setAttributes(CI->getAttributes().removeAttribute(TheModule->getContext(), AttributeList::FunctionIndex, Attribute::NoReturn));
               assert(!CI->doesNotReturn());
             }
           }

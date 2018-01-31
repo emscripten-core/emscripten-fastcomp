@@ -45,6 +45,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/InstIterator.h"
 #include "llvm/Support/Debug.h"
@@ -68,8 +69,7 @@ class InterleavedAccess : public FunctionPass {
 
 public:
   static char ID;
-  InterleavedAccess(const TargetMachine *TM = nullptr)
-      : FunctionPass(ID), DT(nullptr), TM(TM), TLI(nullptr) {
+  InterleavedAccess() : FunctionPass(ID), DT(nullptr), TLI(nullptr) {
     initializeInterleavedAccessPass(*PassRegistry::getPassRegistry());
   }
 
@@ -84,7 +84,6 @@ public:
 
 private:
   DominatorTree *DT;
-  const TargetMachine *TM;
   const TargetLowering *TLI;
 
   /// The maximum supported interleave factor.
@@ -108,18 +107,16 @@ private:
 } // end anonymous namespace.
 
 char InterleavedAccess::ID = 0;
-INITIALIZE_TM_PASS_BEGIN(
-    InterleavedAccess, "interleaved-access",
+INITIALIZE_PASS_BEGIN(InterleavedAccess, DEBUG_TYPE,
     "Lower interleaved memory accesses to target specific intrinsics", false,
     false)
 INITIALIZE_PASS_DEPENDENCY(DominatorTreeWrapperPass)
-INITIALIZE_TM_PASS_END(
-    InterleavedAccess, "interleaved-access",
+INITIALIZE_PASS_END(InterleavedAccess, DEBUG_TYPE,
     "Lower interleaved memory accesses to target specific intrinsics", false,
     false)
 
-FunctionPass *llvm::createInterleavedAccessPass(const TargetMachine *TM) {
-  return new InterleavedAccess(TM);
+FunctionPass *llvm::createInterleavedAccessPass() {
+  return new InterleavedAccess();
 }
 
 /// \brief Check if the mask is a DE-interleave mask of the given factor
@@ -174,7 +171,7 @@ static bool isDeInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
 /// I.e. <0, LaneLen, ... , LaneLen*(Factor - 1), 1, LaneLen + 1, ...>
 /// E.g. For a Factor of 2 (LaneLen=4): <0, 4, 1, 5, 2, 6, 3, 7>
 static bool isReInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
-                               unsigned MaxFactor) {
+                               unsigned MaxFactor, unsigned OpNumElts) {
   unsigned NumElts = Mask.size();
   if (NumElts < 4)
     return false;
@@ -245,6 +242,9 @@ static bool isReInterleaveMask(ArrayRef<int> Mask, unsigned &Factor,
       // else StartMask remains set to 0, i.e. all elements are undefs
 
       if (StartMask < 0)
+        break;
+      // We must stay within the vectors; This case can happen with undefs.
+      if (StartMask + LaneLen > OpNumElts*2)
         break;
     }
 
@@ -406,7 +406,8 @@ bool InterleavedAccess::lowerInterleavedStore(
 
   // Check if the shufflevector is RE-interleave shuffle.
   unsigned Factor;
-  if (!isReInterleaveMask(SVI->getShuffleMask(), Factor, MaxFactor))
+  unsigned OpNumElts = SVI->getOperand(0)->getType()->getVectorNumElements();
+  if (!isReInterleaveMask(SVI->getShuffleMask(), Factor, MaxFactor, OpNumElts))
     return false;
 
   DEBUG(dbgs() << "IA: Found an interleaved store: " << *SI << "\n");
@@ -422,13 +423,15 @@ bool InterleavedAccess::lowerInterleavedStore(
 }
 
 bool InterleavedAccess::runOnFunction(Function &F) {
-  if (!TM || !LowerInterleavedAccesses)
+  auto *TPC = getAnalysisIfAvailable<TargetPassConfig>();
+  if (!TPC || !LowerInterleavedAccesses)
     return false;
 
   DEBUG(dbgs() << "*** " << getPassName() << ": " << F.getName() << "\n");
 
   DT = &getAnalysis<DominatorTreeWrapperPass>().getDomTree();
-  TLI = TM->getSubtargetImpl(F)->getTargetLowering();
+  auto &TM = TPC->getTM<TargetMachine>();
+  TLI = TM.getSubtargetImpl(F)->getTargetLowering();
   MaxFactor = TLI->getMaxSupportedInterleaveFactor();
 
   // Holds dead instructions that will be erased later.

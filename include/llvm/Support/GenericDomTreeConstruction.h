@@ -24,102 +24,99 @@
 #ifndef LLVM_SUPPORT_GENERICDOMTREECONSTRUCTION_H
 #define LLVM_SUPPORT_GENERICDOMTREECONSTRUCTION_H
 
+#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/GenericDomTree.h"
 
 namespace llvm {
 
+// External storage for depth first iterator that reuses the info lookup map
+// domtree already has.  We don't have a set, but a map instead, so we are
+// converting the one argument insert calls.
+template <class NodeRef, class InfoType> struct df_iterator_dom_storage {
+public:
+  using BaseSet = DenseMap<NodeRef, InfoType>;
+  df_iterator_dom_storage(BaseSet &Storage) : Storage(Storage) {}
+
+  using iterator = typename BaseSet::iterator;
+  std::pair<iterator, bool> insert(NodeRef N) {
+    return Storage.insert({N, InfoType()});
+  }
+  void completed(NodeRef) {}
+
+private:
+  BaseSet &Storage;
+};
+
+template <class GraphT>
+unsigned ReverseDFSPass(DominatorTreeBaseByGraphTraits<GraphT> &DT,
+                        typename GraphT::NodeRef V, unsigned N) {
+  df_iterator_dom_storage<
+      typename GraphT::NodeRef,
+      typename DominatorTreeBaseByGraphTraits<GraphT>::InfoRec>
+      DFStorage(DT.Info);
+  bool IsChildOfArtificialExit = (N != 0);
+  for (auto I = idf_ext_begin(V, DFStorage), E = idf_ext_end(V, DFStorage);
+       I != E; ++I) {
+    typename GraphT::NodeRef BB = *I;
+    auto &BBInfo = DT.Info[BB];
+    BBInfo.DFSNum = BBInfo.Semi = ++N;
+    BBInfo.Label = BB;
+    // Set the parent to the top of the visited stack.  The stack includes us,
+    // and is 1 based, so we subtract to account for both of these.
+    if (I.getPathLength() > 1)
+      BBInfo.Parent = DT.Info[I.getPath(I.getPathLength() - 2)].DFSNum;
+    DT.Vertex.push_back(BB); // Vertex[n] = V;
+
+    if (IsChildOfArtificialExit)
+      BBInfo.Parent = 1;
+
+    IsChildOfArtificialExit = false;
+  }
+  return N;
+}
 template <class GraphT>
 unsigned DFSPass(DominatorTreeBaseByGraphTraits<GraphT> &DT,
                  typename GraphT::NodeRef V, unsigned N) {
-  // This is more understandable as a recursive algorithm, but we can't use the
-  // recursive algorithm due to stack depth issues.  Keep it here for
-  // documentation purposes.
-#if 0
-  InfoRec &VInfo = DT.Info[DT.Roots[i]];
-  VInfo.DFSNum = VInfo.Semi = ++N;
-  VInfo.Label = V;
-
-  Vertex.push_back(V);        // Vertex[n] = V;
-
-  for (succ_iterator SI = succ_begin(V), E = succ_end(V); SI != E; ++SI) {
-    InfoRec &SuccVInfo = DT.Info[*SI];
-    if (SuccVInfo.Semi == 0) {
-      SuccVInfo.Parent = V;
-      N = DTDFSPass(DT, *SI, N);
-    }
-  }
-#else
-  bool IsChildOfArtificialExit = (N != 0);
-
-  SmallVector<
-      std::pair<typename GraphT::NodeRef, typename GraphT::ChildIteratorType>,
-      32>
-      Worklist;
-  Worklist.push_back(std::make_pair(V, GraphT::child_begin(V)));
-  while (!Worklist.empty()) {
-    typename GraphT::NodeRef BB = Worklist.back().first;
-    typename GraphT::ChildIteratorType NextSucc = Worklist.back().second;
-
+  df_iterator_dom_storage<
+      typename GraphT::NodeRef,
+      typename DominatorTreeBaseByGraphTraits<GraphT>::InfoRec>
+      DFStorage(DT.Info);
+  for (auto I = df_ext_begin(V, DFStorage), E = df_ext_end(V, DFStorage);
+       I != E; ++I) {
+    typename GraphT::NodeRef BB = *I;
     auto &BBInfo = DT.Info[BB];
-
-    // First time we visited this BB?
-    if (NextSucc == GraphT::child_begin(BB)) {
-      BBInfo.DFSNum = BBInfo.Semi = ++N;
-      BBInfo.Label = BB;
-
-      DT.Vertex.push_back(BB);       // Vertex[n] = V;
-
-      if (IsChildOfArtificialExit)
-        BBInfo.Parent = 1;
-
-      IsChildOfArtificialExit = false;
-    }
-
-    // store the DFS number of the current BB - the reference to BBInfo might
-    // get invalidated when processing the successors.
-    unsigned BBDFSNum = BBInfo.DFSNum;
-
-    // If we are done with this block, remove it from the worklist.
-    if (NextSucc == GraphT::child_end(BB)) {
-      Worklist.pop_back();
-      continue;
-    }
-
-    // Increment the successor number for the next time we get to it.
-    ++Worklist.back().second;
-
-    // Visit the successor next, if it isn't already visited.
-    typename GraphT::NodeRef Succ = *NextSucc;
-
-    auto &SuccVInfo = DT.Info[Succ];
-    if (SuccVInfo.Semi == 0) {
-      SuccVInfo.Parent = BBDFSNum;
-      Worklist.push_back(std::make_pair(Succ, GraphT::child_begin(Succ)));
-    }
+    BBInfo.DFSNum = BBInfo.Semi = ++N;
+    BBInfo.Label = BB;
+    // Set the parent to the top of the visited stack.  The stack includes us,
+    // and is 1 based, so we subtract to account for both of these.
+    if (I.getPathLength() > 1)
+      BBInfo.Parent = DT.Info[I.getPath(I.getPathLength() - 2)].DFSNum;
+    DT.Vertex.push_back(BB); // Vertex[n] = V;
   }
-#endif
-    return N;
+  return N;
 }
 
 template <class GraphT>
 typename GraphT::NodeRef Eval(DominatorTreeBaseByGraphTraits<GraphT> &DT,
                               typename GraphT::NodeRef VIn,
                               unsigned LastLinked) {
+  using NodePtr = typename GraphT::NodeRef;
+
   auto &VInInfo = DT.Info[VIn];
   if (VInInfo.DFSNum < LastLinked)
     return VIn;
 
-  SmallVector<typename GraphT::NodeRef, 32> Work;
-  SmallPtrSet<typename GraphT::NodeRef, 32> Visited;
+  SmallVector<NodePtr, 32> Work;
+  SmallPtrSet<NodePtr, 32> Visited;
 
   if (VInInfo.Parent >= LastLinked)
     Work.push_back(VIn);
 
   while (!Work.empty()) {
-    typename GraphT::NodeRef V = Work.back();
+    NodePtr V = Work.back();
     auto &VInfo = DT.Info[V];
-    typename GraphT::NodeRef VAncestor = DT.Vertex[VInfo.Parent];
+    NodePtr VAncestor = DT.Vertex[VInfo.Parent];
 
     // Process Ancestor first
     if (Visited.insert(VAncestor).second && VInfo.Parent >= LastLinked) {
@@ -133,8 +130,8 @@ typename GraphT::NodeRef Eval(DominatorTreeBaseByGraphTraits<GraphT> &DT,
       continue;
 
     auto &VAInfo = DT.Info[VAncestor];
-    typename GraphT::NodeRef VAncestorLabel = VAInfo.Label;
-    typename GraphT::NodeRef VLabel = VInfo.Label;
+    NodePtr VAncestorLabel = VAInfo.Label;
+    NodePtr VLabel = VInfo.Label;
     if (DT.Info[VAncestorLabel].Semi < DT.Info[VLabel].Semi)
       VInfo.Label = VAncestorLabel;
     VInfo.Parent = VAInfo.Parent;
@@ -146,10 +143,11 @@ typename GraphT::NodeRef Eval(DominatorTreeBaseByGraphTraits<GraphT> &DT,
 template <class FuncT, class NodeT>
 void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
                FuncT &F) {
-  typedef GraphTraits<NodeT> GraphT;
-  static_assert(std::is_pointer<typename GraphT::NodeRef>::value,
+  using GraphT = GraphTraits<NodeT>;
+  using NodePtr = typename GraphT::NodeRef;
+  static_assert(std::is_pointer<NodePtr>::value,
                 "NodeRef should be pointer type");
-  typedef typename std::remove_pointer<typename GraphT::NodeRef>::type NodeType;
+  using NodeType = typename std::remove_pointer<NodePtr>::type;
 
   unsigned N = 0;
   bool MultipleRoots = (DT.Roots.size() > 1);
@@ -163,9 +161,13 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
 
   // Step #1: Number blocks in depth-first order and initialize variables used
   // in later stages of the algorithm.
-  for (unsigned i = 0, e = static_cast<unsigned>(DT.Roots.size());
-       i != e; ++i)
-    N = DFSPass<GraphT>(DT, DT.Roots[i], N);
+  if (DT.isPostDominator()){
+    for (unsigned i = 0, e = static_cast<unsigned>(DT.Roots.size());
+         i != e; ++i)
+      N = ReverseDFSPass<GraphT>(DT, DT.Roots[i], N);
+  } else {
+    N = DFSPass<GraphT>(DT, DT.Roots[0], N);
+  }
 
   // it might be that some blocks did not get a DFS number (e.g., blocks of
   // infinite loops). In these cases an artificial exit node is required.
@@ -187,13 +189,13 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
     Buckets[i] = i;
 
   for (unsigned i = N; i >= 2; --i) {
-    typename GraphT::NodeRef W = DT.Vertex[i];
+    NodePtr W = DT.Vertex[i];
     auto &WInfo = DT.Info[W];
 
     // Step #2: Implicitly define the immediate dominator of vertices
     for (unsigned j = i; Buckets[j] != i; j = Buckets[j]) {
-      typename GraphT::NodeRef V = DT.Vertex[Buckets[j]];
-      typename GraphT::NodeRef U = Eval<GraphT>(DT, V, i + 1);
+      NodePtr V = DT.Vertex[Buckets[j]];
+      NodePtr U = Eval<GraphT>(DT, V, i + 1);
       DT.IDoms[V] = DT.Info[U].Semi < i ? U : W;
     }
 
@@ -201,17 +203,12 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
 
     // initialize the semi dominator to point to the parent node
     WInfo.Semi = WInfo.Parent;
-    typedef GraphTraits<Inverse<NodeT> > InvTraits;
-    for (typename InvTraits::ChildIteratorType CI =
-         InvTraits::child_begin(W),
-         E = InvTraits::child_end(W); CI != E; ++CI) {
-      typename InvTraits::NodeRef N = *CI;
-      if (DT.Info.count(N)) {  // Only if this predecessor is reachable!
+    for (const auto &N : inverse_children<NodeT>(W))
+      if (DT.Info.count(N)) { // Only if this predecessor is reachable!
         unsigned SemiU = DT.Info[Eval<GraphT>(DT, N, i + 1)].Semi;
         if (SemiU < WInfo.Semi)
           WInfo.Semi = SemiU;
       }
-    }
 
     // If V is a non-root vertex and sdom(V) = parent(V), then idom(V) is
     // necessarily parent(V). In this case, set idom(V) here and avoid placing
@@ -225,17 +222,17 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
   }
 
   if (N >= 1) {
-    typename GraphT::NodeRef Root = DT.Vertex[1];
+    NodePtr Root = DT.Vertex[1];
     for (unsigned j = 1; Buckets[j] != 1; j = Buckets[j]) {
-      typename GraphT::NodeRef V = DT.Vertex[Buckets[j]];
+      NodePtr V = DT.Vertex[Buckets[j]];
       DT.IDoms[V] = Root;
     }
   }
 
   // Step #4: Explicitly define the immediate dominator of each vertex
   for (unsigned i = 2; i <= N; ++i) {
-    typename GraphT::NodeRef W = DT.Vertex[i];
-    typename GraphT::NodeRef &WIDom = DT.IDoms[W];
+    NodePtr W = DT.Vertex[i];
+    NodePtr &WIDom = DT.IDoms[W];
     if (WIDom != DT.Vertex[DT.Info[W].Semi])
       WIDom = DT.IDoms[WIDom];
   }
@@ -246,7 +243,7 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
   // one exit block, or it may be the virtual exit (denoted by (BasicBlock *)0)
   // which postdominates all real exits if there are multiple exit blocks, or
   // an infinite loop.
-  typename GraphT::NodeRef Root = !MultipleRoots ? DT.Roots[0] : nullptr;
+  NodePtr Root = !MultipleRoots ? DT.Roots[0] : nullptr;
 
   DT.RootNode =
       (DT.DomTreeNodes[Root] =
@@ -255,13 +252,13 @@ void Calculate(DominatorTreeBaseByGraphTraits<GraphTraits<NodeT>> &DT,
 
   // Loop over all of the reachable blocks in the function...
   for (unsigned i = 2; i <= N; ++i) {
-    typename GraphT::NodeRef W = DT.Vertex[i];
+    NodePtr W = DT.Vertex[i];
 
     // Don't replace this with 'count', the insertion side effect is important
     if (DT.DomTreeNodes[W])
       continue; // Haven't calculated this node yet?
 
-    typename GraphT::NodeRef ImmDom = DT.getIDom(W);
+    NodePtr ImmDom = DT.getIDom(W);
 
     assert(ImmDom || DT.DomTreeNodes[nullptr]);
 

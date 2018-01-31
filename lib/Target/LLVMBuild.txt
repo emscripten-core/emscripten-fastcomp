@@ -30,6 +30,7 @@ subdirectories =
  MSP430
  NVPTX
  Mips
+ Nios2
  PowerPC
  RISCV
  Sparc

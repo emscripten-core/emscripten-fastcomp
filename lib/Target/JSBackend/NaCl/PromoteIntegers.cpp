@@ -621,9 +621,9 @@ static void convertInstruction(DataLayout *DL, Instruction *Inst,
     CopyDebug(NewInst, Switch);
     for (SwitchInst::CaseIt I = Switch->case_begin(), E = Switch->case_end();
          I != E; ++I) {
-      NewInst->addCase(cast<ConstantInt>(convertConstant(I.getCaseValue(),
+      NewInst->addCase(cast<ConstantInt>(convertConstant(I->getCaseValue(),
                                                          /*SignExt=*/false)),
-                       I.getCaseSuccessor());
+                       I->getCaseSuccessor());
     }
     Switch->eraseFromParent();
   } else {
@@ -685,8 +685,8 @@ bool PromoteIntegers::ensureCompliantSignature(
                                      OldFct->getBasicBlockList());
   IRBuilder<> Builder(&*NewFct->getEntryBlock().getFirstInsertionPt());
 
-  auto OldArgIter = OldFct->getArgumentList().begin();
-  for (auto &NewArg : NewFct->getArgumentList()) {
+  auto OldArgIter = OldFct->arg_begin();
+  for (Argument &NewArg : NewFct->args()) {
     Argument *OldArg = &*OldArgIter++;
 
     if (OldArg->getType() != NewArg.getType()) {

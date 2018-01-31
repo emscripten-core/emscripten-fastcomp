@@ -45,6 +45,7 @@ set(LLVM_TEST_DEPENDS
           llvm-config
           llvm-cov
           llvm-cxxdump
+          llvm-cvtres
           llvm-diff
           llvm-dis
           llvm-dsymutil
@@ -60,7 +61,7 @@ set(LLVM_TEST_DEPENDS
           llvm-nm
           llvm-objdump
           llvm-opt-report
-          llvm-pdbdump
+          llvm-pdbutil
           llvm-profdata
           llvm-ranlib
           llvm-readobj

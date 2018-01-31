@@ -9,15 +9,30 @@
 
 #include "MCTargetDesc/SystemZMCTargetDesc.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/MC/MCInstBuilder.h"
+#include "llvm/MC/MCParser/MCAsmLexer.h"
+#include "llvm/MC/MCParser/MCAsmParser.h"
+#include "llvm/MC/MCParser/MCAsmParserExtension.h"
 #include "llvm/MC/MCParser/MCParsedAsmOperand.h"
 #include "llvm/MC/MCParser/MCTargetAsmParser.h"
 #include "llvm/MC/MCStreamer.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/SMLoc.h"
 #include "llvm/Support/TargetRegistry.h"
+#include <algorithm>
+#include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <memory>
+#include <string>
 
 using namespace llvm;
 
@@ -31,6 +46,7 @@ static bool inRange(const MCExpr *Expr, int64_t MinValue, int64_t MaxValue) {
 }
 
 namespace {
+
 enum RegisterKind {
   GR32Reg,
   GRH32Reg,
@@ -56,7 +72,6 @@ enum MemoryKind {
 };
 
 class SystemZOperand : public MCParsedAsmOperand {
-public:
 private:
   enum OperandKind {
     KindInvalid,
@@ -140,12 +155,14 @@ public:
                                                        SMLoc EndLoc) {
     return make_unique<SystemZOperand>(KindInvalid, StartLoc, EndLoc);
   }
+
   static std::unique_ptr<SystemZOperand> createToken(StringRef Str, SMLoc Loc) {
     auto Op = make_unique<SystemZOperand>(KindToken, Loc, Loc);
     Op->Token.Data = Str.data();
     Op->Token.Length = Str.size();
     return Op;
   }
+
   static std::unique_ptr<SystemZOperand>
   createReg(RegisterKind Kind, unsigned Num, SMLoc StartLoc, SMLoc EndLoc) {
     auto Op = make_unique<SystemZOperand>(KindReg, StartLoc, EndLoc);
@@ -153,12 +170,14 @@ public:
     Op->Reg.Num = Num;
     return Op;
   }
+
   static std::unique_ptr<SystemZOperand>
   createImm(const MCExpr *Expr, SMLoc StartLoc, SMLoc EndLoc) {
     auto Op = make_unique<SystemZOperand>(KindImm, StartLoc, EndLoc);
     Op->Imm = Expr;
     return Op;
   }
+
   static std::unique_ptr<SystemZOperand>
   createMem(MemoryKind MemKind, RegisterKind RegKind, unsigned Base,
             const MCExpr *Disp, unsigned Index, const MCExpr *LengthImm,
@@ -175,6 +194,7 @@ public:
       Op->Mem.Length.Reg = LengthReg;
     return Op;
   }
+
   static std::unique_ptr<SystemZOperand>
   createImmTLS(const MCExpr *Imm, const MCExpr *Sym,
                SMLoc StartLoc, SMLoc EndLoc) {
@@ -241,6 +261,9 @@ public:
   }
   bool isMemDisp20(MemoryKind MemKind, RegisterKind RegKind) const {
     return isMem(MemKind, RegKind) && inRange(Mem.Disp, -524288, 524287);
+  }
+  bool isMemDisp12Len4(RegisterKind RegKind) const {
+    return isMemDisp12(BDLMem, RegKind) && inRange(Mem.Length.Imm, 1, 0x10);
   }
   bool isMemDisp12Len8(RegisterKind RegKind) const {
     return isMemDisp12(BDLMem, RegKind) && inRange(Mem.Length.Imm, 1, 0x100);
@@ -327,6 +350,7 @@ public:
   bool isBDAddr64Disp20() const { return isMemDisp20(BDMem, ADDR64Reg); }
   bool isBDXAddr64Disp12() const { return isMemDisp12(BDXMem, ADDR64Reg); }
   bool isBDXAddr64Disp20() const { return isMemDisp20(BDXMem, ADDR64Reg); }
+  bool isBDLAddr64Disp12Len4() const { return isMemDisp12Len4(ADDR64Reg); }
   bool isBDLAddr64Disp12Len8() const { return isMemDisp12Len8(ADDR64Reg); }
   bool isBDRAddr64Disp12() const { return isMemDisp12(BDRMem, ADDR64Reg); }
   bool isBDVAddr64Disp12() const { return isMemDisp12(BDVMem, ADDR64Reg); }
@@ -503,6 +527,7 @@ public:
     return parsePCRel(Operands, -(1LL << 32), (1LL << 32) - 1, true);
   }
 };
+
 } // end anonymous namespace
 
 #define GET_REGISTER_MATCHER

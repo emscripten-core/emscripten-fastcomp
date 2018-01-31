@@ -541,8 +541,8 @@ void AllocaManager::analyze(const Function &Func, const DataLayout &Layout,
   // Get the declarations for the lifetime intrinsics so we can quickly test to
   // see if they are used at all, and for use later if they are.
   const Module *M = F->getParent();
-  LifetimeStart = M->getFunction(Intrinsic::getName(Intrinsic::lifetime_start));
-  LifetimeEnd = M->getFunction(Intrinsic::getName(Intrinsic::lifetime_end));
+  LifetimeStart = M->getFunction("llvm.lifetime.start.p0i8");
+  LifetimeEnd = M->getFunction("llvm.lifetime.end.p0i8");
 
   // If we are optimizing and the module contains any lifetime intrinsics, run
   // the alloca coloring algorithm.

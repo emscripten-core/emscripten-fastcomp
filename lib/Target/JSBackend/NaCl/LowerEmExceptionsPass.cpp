@@ -152,7 +152,7 @@ bool LowerEmExceptions::runOnModule(Module &M) {
             if (Function *F = dyn_cast<Function>(II->getCalledValue())) {
               F->removeFnAttr(Attribute::NoReturn);
             }
-            II->setAttributes(II->getAttributes().removeAttribute(TheModule->getContext(), AttributeSet::FunctionIndex, Attribute::NoReturn));
+            II->setAttributes(II->getAttributes().removeAttribute(TheModule->getContext(), AttributeList::FunctionIndex, Attribute::NoReturn));
             assert(!II->doesNotReturn());
           }
 

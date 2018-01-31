@@ -41,7 +41,7 @@ static bool ConsiderSplit(const SwitchInst *SI, int64_t& Median) {
   int64_t Minn = INT64_MAX, Maxx = INT64_MIN;
   std::vector<int64_t> Values;
   for (SwitchInst::ConstCaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-    int64_t Curr = i.getCaseValue()->getSExtValue();
+    int64_t Curr = i->getCaseValue()->getSExtValue();
     if (Curr < Minn) Minn = Curr;
     if (Curr > Maxx) Maxx = Curr;
     Values.push_back(Curr);
@@ -82,8 +82,8 @@ static void DoSplit(SwitchInst *SI, int64_t Median) {
   SwitchInst *HighSI = SwitchInst::Create(Condition, DD, NumItems/2, HighBB);
 
   for (SwitchInst::CaseIt i = SI->case_begin(), e = SI->case_end(); i != e; ++i) {
-    BasicBlock *BB = i.getCaseSuccessor();
-    auto Value = i.getCaseValue();
+    BasicBlock *BB = i->getCaseSuccessor();
+    auto Value = i->getCaseValue();
     SwitchInst *NewSI = Value->getSExtValue() < Median ? LowSI : HighSI;
     NewSI->addCase(Value, BB);
     // update phis

@@ -85,6 +85,7 @@ representation.
    CodeOfConduct
    CompileCudaWithLLVM
    ReportingGuide
+   Benchmarking
 
 :doc:`GettingStarted`
    Discusses how to get up and running quickly with the LLVM infrastructure.
@@ -269,6 +270,7 @@ For API clients and LLVM developers.
    Coroutines
    GlobalISel
    XRay
+   XRayExample
    PDB/index
 
 :doc:`WritingAnLLVMPass`
@@ -353,10 +355,10 @@ For API clients and LLVM developers.
   Answers some questions about the new Attributes infrastructure.
 
 :doc:`NVPTXUsage`
-   This document describes using the NVPTX back-end to compile GPU kernels.
+   This document describes using the NVPTX backend to compile GPU kernels.
 
 :doc:`AMDGPUUsage`
-   This document describes how to use the AMDGPU back-end.
+   This document describes using the AMDGPU backend to compile GPU kernels.
 
 :doc:`StackMaps`
   LLVM support for mapping instruction addresses to the location of
@@ -393,6 +395,9 @@ For API clients and LLVM developers.
 
 :doc:`XRay`
   High-level documentation of how to use XRay in LLVM.
+
+:doc:`XRayExample`
+  An example of how to debug an application with XRay.
 
 :doc:`The Microsoft PDB File Format <PDB/index>`
   A detailed description of the Microsoft PDB (Program Database) file format.
@@ -518,6 +523,7 @@ can be better.
 
    CodeOfConduct
    Proposals/GitHubMove
+   Proposals/VectorizationPlan
 
 :doc:`CodeOfConduct`
    Proposal to adopt a code of conduct on the LLVM social spaces (lists, events,
@@ -526,6 +532,8 @@ can be better.
 :doc:`Proposals/GitHubMove`
    Proposal to move from SVN/Git to GitHub.
 
+:doc:`Proposals/VectorizationPlan`
+   Proposal to model the process and upgrade the infrastructure of LLVM's Loop Vectorizer.
 
 Indices and tables
 ==================

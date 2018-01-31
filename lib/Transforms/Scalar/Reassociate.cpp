@@ -982,7 +982,7 @@ static unsigned FindInOperandList(SmallVectorImpl<ValueEntry> &Ops, unsigned i,
 /// Emit a tree of add instructions, summing Ops together
 /// and returning the result.  Insert the tree before I.
 static Value *EmitAddTreeOfValues(Instruction *I,
-                                  SmallVectorImpl<WeakVH> &Ops){
+                                  SmallVectorImpl<WeakTrackingVH> &Ops) {
   if (Ops.size() == 1) return Ops.back();
 
   Value *V1 = Ops.back();
@@ -1069,8 +1069,7 @@ Value *ReassociatePass::RemoveFactorFromExpression(Value *V, Value *Factor) {
 ///
 /// Ops is the top-level list of add operands we're trying to factor.
 static void FindSingleUseMultiplyFactors(Value *V,
-                                         SmallVectorImpl<Value*> &Factors,
-                                       const SmallVectorImpl<ValueEntry> &Ops) {
+                                         SmallVectorImpl<Value*> &Factors) {
   BinaryOperator *BO = isReassociableOp(V, Instruction::Mul, Instruction::FMul);
   if (!BO) {
     Factors.push_back(V);
@@ -1078,8 +1077,8 @@ static void FindSingleUseMultiplyFactors(Value *V,
   }
 
   // Otherwise, add the LHS and RHS to the list of factors.
-  FindSingleUseMultiplyFactors(BO->getOperand(1), Factors, Ops);
-  FindSingleUseMultiplyFactors(BO->getOperand(0), Factors, Ops);
+  FindSingleUseMultiplyFactors(BO->getOperand(1), Factors);
+  FindSingleUseMultiplyFactors(BO->getOperand(0), Factors);
 }
 
 /// Optimize a series of operands to an 'and', 'or', or 'xor' instruction.
@@ -1137,7 +1136,7 @@ static Value *OptimizeAndOrXor(unsigned Opcode,
 /// be returned.
 static Value *createAndInstr(Instruction *InsertBefore, Value *Opnd, 
                              const APInt &ConstOpnd) {
-  if (ConstOpnd != 0) {
+  if (!ConstOpnd.isNullValue()) {
     if (!ConstOpnd.isAllOnesValue()) {
       LLVMContext &Ctx = Opnd->getType()->getContext();
       Instruction *I;
@@ -1164,7 +1163,7 @@ bool ReassociatePass::CombineXorOpnd(Instruction *I, XorOpnd *Opnd1,
   //                       = ((x | c1) ^ c1) ^ (c1 ^ c2)
   //                       = (x & ~c1) ^ (c1 ^ c2)
   // It is useful only when c1 == c2.
-  if (Opnd1->isOrExpr() && Opnd1->getConstPart() != 0) {
+  if (Opnd1->isOrExpr() && !Opnd1->getConstPart().isNullValue()) {
     if (!Opnd1->getValue()->hasOneUse())
       return false;
 
@@ -1222,8 +1221,8 @@ bool ReassociatePass::CombineXorOpnd(Instruction *I, XorOpnd *Opnd1,
     APInt C3((~C1) ^ C2);
 
     // Do not increase code size!
-    if (C3 != 0 && !C3.isAllOnesValue()) {
-      int NewInstNum = ConstOpnd != 0 ? 1 : 2;
+    if (!C3.isNullValue() && !C3.isAllOnesValue()) {
+      int NewInstNum = ConstOpnd.getBoolValue() ? 1 : 2;
       if (NewInstNum > DeadInstNum)
         return false;
     }
@@ -1239,8 +1238,8 @@ bool ReassociatePass::CombineXorOpnd(Instruction *I, XorOpnd *Opnd1,
     APInt C3 = C1 ^ C2;
     
     // Do not increase code size
-    if (C3 != 0 && !C3.isAllOnesValue()) {
-      int NewInstNum = ConstOpnd != 0 ? 1 : 2;
+    if (!C3.isNullValue() && !C3.isAllOnesValue()) {
+      int NewInstNum = ConstOpnd.getBoolValue() ? 1 : 2;
       if (NewInstNum > DeadInstNum)
         return false;
     }
@@ -1277,9 +1276,15 @@ Value *ReassociatePass::OptimizeXor(Instruction *I,
   if (Ops.size() == 1)
     return nullptr;
 
+  Type *Ty = Ops[0].Op->getType();
+
+  // TODO: We should optimize vector Xor instructions, but they are
+  // currently unsupported.
+  if (Ty->isVectorTy())
+    return nullptr;
+
   SmallVector<XorOpnd, 8> Opnds;
   SmallVector<XorOpnd*, 8> OpndPtrs;
-  Type *Ty = Ops[0].Op->getType();
   APInt ConstOpnd(Ty->getIntegerBitWidth(), 0);
 
   // Step 1: Convert ValueEntry to XorOpnd
@@ -1328,7 +1333,8 @@ Value *ReassociatePass::OptimizeXor(Instruction *I,
     Value *CV;
 
     // Step 3.1: Try simplifying "CurrOpnd ^ ConstOpnd"
-    if (ConstOpnd != 0 && CombineXorOpnd(I, CurrOpnd, ConstOpnd, CV)) {
+    if (!ConstOpnd.isNullValue() &&
+        CombineXorOpnd(I, CurrOpnd, ConstOpnd, CV)) {
       Changed = true;
       if (CV)
         *CurrOpnd = XorOpnd(CV);
@@ -1370,7 +1376,7 @@ Value *ReassociatePass::OptimizeXor(Instruction *I,
       ValueEntry VE(getRank(O.getValue()), O.getValue());
       Ops.push_back(VE);
     }
-    if (ConstOpnd != 0) {
+    if (!ConstOpnd.isNullValue()) {
       Value *C = ConstantInt::get(Ty->getContext(), ConstOpnd);
       ValueEntry VE(getRank(C), C);
       Ops.push_back(VE);
@@ -1499,7 +1505,7 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
 
     // Compute all of the factors of this added value.
     SmallVector<Value*, 8> Factors;
-    FindSingleUseMultiplyFactors(BOp, Factors, Ops);
+    FindSingleUseMultiplyFactors(BOp, Factors);
     assert(Factors.size() > 1 && "Bad linearize!");
 
     // Add one to FactorOccurrences for each unique factor in this op.
@@ -1521,8 +1527,8 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
       if (ConstantInt *CI = dyn_cast<ConstantInt>(Factor)) {
         if (CI->isNegative() && !CI->isMinValue(true)) {
           Factor = ConstantInt::get(CI->getContext(), -CI->getValue());
-          assert(!Duplicates.count(Factor) &&
-                 "Shouldn't have two constant factors, missed a canonicalize");
+          if (!Duplicates.insert(Factor).second)
+            continue;
           unsigned Occ = ++FactorOccurrences[Factor];
           if (Occ > MaxOcc) {
             MaxOcc = Occ;
@@ -1534,8 +1540,8 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
           APFloat F(CF->getValueAPF());
           F.changeSign();
           Factor = ConstantFP::get(CF->getContext(), F);
-          assert(!Duplicates.count(Factor) &&
-                 "Shouldn't have two constant factors, missed a canonicalize");
+          if (!Duplicates.insert(Factor).second)
+            continue;
           unsigned Occ = ++FactorOccurrences[Factor];
           if (Occ > MaxOcc) {
             MaxOcc = Occ;
@@ -1560,7 +1566,7 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
             ? BinaryOperator::CreateAdd(MaxOccVal, MaxOccVal)
             : BinaryOperator::CreateFAdd(MaxOccVal, MaxOccVal);
 
-    SmallVector<WeakVH, 4> NewMulOps;
+    SmallVector<WeakTrackingVH, 4> NewMulOps;
     for (unsigned i = 0; i != Ops.size(); ++i) {
       // Only try to remove factors from expressions we're allowed to.
       BinaryOperator *BOp =
@@ -1583,7 +1589,7 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
     }
 
     // No need for extra uses anymore.
-    delete DummyInst;
+    DummyInst->deleteValue();
 
     unsigned NumAddedValues = NewMulOps.size();
     Value *V = EmitAddTreeOfValues(I, NewMulOps);
@@ -1628,8 +1634,8 @@ Value *ReassociatePass::OptimizeAdd(Instruction *I,
 ///   ((((x*y)*x)*y)*x) -> [(x, 3), (y, 2)]
 ///
 /// \returns Whether any factors have a power greater than one.
-bool ReassociatePass::collectMultiplyFactors(SmallVectorImpl<ValueEntry> &Ops,
-                                             SmallVectorImpl<Factor> &Factors) {
+static bool collectMultiplyFactors(SmallVectorImpl<ValueEntry> &Ops,
+                                   SmallVectorImpl<Factor> &Factors) {
   // FIXME: Have Ops be (ValueEntry, Multiplicity) pairs, simplifying this.
   // Compute the sum of powers of simplifiable factors.
   unsigned FactorPowerSum = 0;
@@ -1923,7 +1929,7 @@ Instruction *ReassociatePass::canonicalizeNegConstExpr(Instruction *I) {
 
   // User must be a binary operator with one or more uses.
   Instruction *User = I->user_back();
-  if (!isa<BinaryOperator>(User) || !User->hasNUsesOrMore(1))
+  if (!isa<BinaryOperator>(User) || User->use_empty())
     return nullptr;
 
   unsigned UserOpcode = User->getOpcode();
@@ -1999,11 +2005,6 @@ void ReassociatePass::OptimizeInst(Instruction *I) {
   // transformations simpler.
   if (I->isCommutative())
     canonicalizeOperands(I);
-
-  // TODO: We should optimize vector Xor instructions, but they are
-  // currently unsupported.
-  if (I->getType()->isVectorTy() && I->getOpcode() == Instruction::Xor)
-    return;
 
   // Don't optimize floating point instructions that don't have unsafe algebra.
   if (I->getType()->isFPOrFPVectorTy() && !I->hasUnsafeAlgebra())
@@ -2236,8 +2237,8 @@ PreservedAnalyses ReassociatePass::run(Function &F, FunctionAnalysisManager &) {
   ValueRankMap.clear();
 
   if (MadeChange) {
-    // FIXME: This should also 'preserve the CFG'.
-    auto PA = PreservedAnalyses();
+    PreservedAnalyses PA;
+    PA.preserveSet<CFGAnalyses>();
     PA.preserve<GlobalsAA>();
     return PA;
   }

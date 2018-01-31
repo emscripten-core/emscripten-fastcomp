@@ -10,30 +10,52 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "ARMTargetMachine.h"
 #include "ARM.h"
 #include "ARMCallLowering.h"
-#include "ARMFrameLowering.h"
-#include "ARMInstructionSelector.h"
 #include "ARMLegalizerInfo.h"
+#ifdef LLVM_BUILD_GLOBAL_ISEL
 #include "ARMRegisterBankInfo.h"
+#endif
+#include "ARMSubtarget.h"
+#include "ARMTargetMachine.h"
 #include "ARMTargetObjectFile.h"
 #include "ARMTargetTransformInfo.h"
+#include "MCTargetDesc/ARMMCTargetDesc.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/CodeGen/ExecutionDepsFix.h"
+#include "llvm/CodeGen/GlobalISel/CallLowering.h"
+#include "llvm/CodeGen/GlobalISel/GISelAccessor.h"
 #include "llvm/CodeGen/GlobalISel/IRTranslator.h"
 #include "llvm/CodeGen/GlobalISel/InstructionSelect.h"
+#include "llvm/CodeGen/GlobalISel/InstructionSelector.h"
 #include "llvm/CodeGen/GlobalISel/Legalizer.h"
+#include "llvm/CodeGen/GlobalISel/LegalizerInfo.h"
 #include "llvm/CodeGen/GlobalISel/RegBankSelect.h"
+#include "llvm/CodeGen/GlobalISel/RegisterBankInfo.h"
+#include "llvm/CodeGen/MachineFunction.h"
+#include "llvm/CodeGen/MachineScheduler.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
+#include "llvm/IR/Attributes.h"
+#include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/MC/MCAsmInfo.h"
+#include "llvm/Pass.h"
+#include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FormattedStream.h"
+#include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/TargetParser.h"
 #include "llvm/Support/TargetRegistry.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Scalar.h"
+#include <cassert>
+#include <memory>
+#include <string>
+
 using namespace llvm;
 
 static cl::opt<bool>
@@ -57,25 +79,31 @@ static cl::opt<cl::boolOrDefault>
 EnableGlobalMerge("arm-global-merge", cl::Hidden,
                   cl::desc("Enable the global merge pass"));
 
+namespace llvm {
+  void initializeARMExecutionDepsFixPass(PassRegistry&);
+}
+
 extern "C" void LLVMInitializeARMTarget() {
   // Register the target.
   RegisterTargetMachine<ARMLETargetMachine> X(getTheARMLETarget());
+  RegisterTargetMachine<ARMLETargetMachine> A(getTheThumbLETarget());
   RegisterTargetMachine<ARMBETargetMachine> Y(getTheARMBETarget());
-  RegisterTargetMachine<ThumbLETargetMachine> A(getTheThumbLETarget());
-  RegisterTargetMachine<ThumbBETargetMachine> B(getTheThumbBETarget());
+  RegisterTargetMachine<ARMBETargetMachine> B(getTheThumbBETarget());
 
   PassRegistry &Registry = *PassRegistry::getPassRegistry();
   initializeGlobalISel(Registry);
   initializeARMLoadStoreOptPass(Registry);
   initializeARMPreAllocLoadStoreOptPass(Registry);
+  initializeARMConstantIslandsPass(Registry);
+  initializeARMExecutionDepsFixPass(Registry);
 }
 
 static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
   if (TT.isOSBinFormatMachO())
-    return make_unique<TargetLoweringObjectFileMachO>();
+    return llvm::make_unique<TargetLoweringObjectFileMachO>();
   if (TT.isOSWindows())
-    return make_unique<TargetLoweringObjectFileCOFF>();
-  return make_unique<ARMElfTargetObjectFile>();
+    return llvm::make_unique<TargetLoweringObjectFileCOFF>();
+  return llvm::make_unique<ARMElfTargetObjectFile>();
 }
 
 static ARMBaseTargetMachine::ARMABI
@@ -94,13 +122,13 @@ computeTargetABI(const Triple &TT, StringRef CPU,
   ARMBaseTargetMachine::ARMABI TargetABI =
       ARMBaseTargetMachine::ARM_ABI_UNKNOWN;
 
-  unsigned ArchKind = llvm::ARM::parseCPUArch(CPU);
-  StringRef ArchName = llvm::ARM::getArchName(ArchKind);
+  unsigned ArchKind = ARM::parseCPUArch(CPU);
+  StringRef ArchName = ARM::getArchName(ArchKind);
   // FIXME: This is duplicated code from the front end and should be unified.
   if (TT.isOSBinFormatMachO()) {
-    if (TT.getEnvironment() == llvm::Triple::EABI ||
-        (TT.getOS() == llvm::Triple::UnknownOS && TT.isOSBinFormatMachO()) ||
-        llvm::ARM::parseArchProfile(ArchName) == llvm::ARM::PK_M) {
+    if (TT.getEnvironment() == Triple::EABI ||
+        (TT.getOS() == Triple::UnknownOS && TT.isOSBinFormatMachO()) ||
+        ARM::parseArchProfile(ArchName) == ARM::PK_M) {
       TargetABI = ARMBaseTargetMachine::ARM_ABI_AAPCS;
     } else if (TT.isWatchABI()) {
       TargetABI = ARMBaseTargetMachine::ARM_ABI_AAPCS16;
@@ -113,16 +141,16 @@ computeTargetABI(const Triple &TT, StringRef CPU,
   } else {
     // Select the default based on the platform.
     switch (TT.getEnvironment()) {
-    case llvm::Triple::Android:
-    case llvm::Triple::GNUEABI:
-    case llvm::Triple::GNUEABIHF:
-    case llvm::Triple::MuslEABI:
-    case llvm::Triple::MuslEABIHF:
-    case llvm::Triple::EABIHF:
-    case llvm::Triple::EABI:
+    case Triple::Android:
+    case Triple::GNUEABI:
+    case Triple::GNUEABIHF:
+    case Triple::MuslEABI:
+    case Triple::MuslEABIHF:
+    case Triple::EABIHF:
+    case Triple::EABI:
       TargetABI = ARMBaseTargetMachine::ARM_ABI_AAPCS;
       break;
-    case llvm::Triple::GNU:
+    case Triple::GNU:
       TargetABI = ARMBaseTargetMachine::ARM_ABI_APCS;
       break;
     default:
@@ -141,7 +169,7 @@ static std::string computeDataLayout(const Triple &TT, StringRef CPU,
                                      const TargetOptions &Options,
                                      bool isLittle) {
   auto ABI = computeTargetABI(TT, CPU, Options);
-  std::string Ret = "";
+  std::string Ret;
 
   if (isLittle)
     // Little endian.
@@ -236,31 +264,42 @@ ARMBaseTargetMachine::ARMBaseTargetMachine(const Target &T, const Triple &TT,
     else
       this->Options.EABIVersion = EABI::EABI5;
   }
+
+  initAsmInfo();
+  if (!Subtarget.isThumb() && !Subtarget.hasARMOps())
+    report_fatal_error("CPU: '" + Subtarget.getCPUString() + "' does not "
+                       "support ARM mode execution!");
 }
 
-ARMBaseTargetMachine::~ARMBaseTargetMachine() {}
+ARMBaseTargetMachine::~ARMBaseTargetMachine() = default;
 
 #ifdef LLVM_BUILD_GLOBAL_ISEL
 namespace {
+
 struct ARMGISelActualAccessor : public GISelAccessor {
   std::unique_ptr<CallLowering> CallLoweringInfo;
   std::unique_ptr<InstructionSelector> InstSelector;
   std::unique_ptr<LegalizerInfo> Legalizer;
   std::unique_ptr<RegisterBankInfo> RegBankInfo;
+
   const CallLowering *getCallLowering() const override {
     return CallLoweringInfo.get();
   }
+
   const InstructionSelector *getInstructionSelector() const override {
     return InstSelector.get();
   }
+
   const LegalizerInfo *getLegalizerInfo() const override {
     return Legalizer.get();
   }
+
   const RegisterBankInfo *getRegBankInfo() const override {
     return RegBankInfo.get();
   }
 };
-} // End anonymous namespace.
+
+} // end anonymous namespace
 #endif
 
 const ARMSubtarget *
@@ -300,14 +339,14 @@ ARMBaseTargetMachine::getSubtargetImpl(const Function &F) const {
 #else
     ARMGISelActualAccessor *GISel = new ARMGISelActualAccessor();
     GISel->CallLoweringInfo.reset(new ARMCallLowering(*I->getTargetLowering()));
-    GISel->Legalizer.reset(new ARMLegalizerInfo());
+    GISel->Legalizer.reset(new ARMLegalizerInfo(*I));
 
     auto *RBI = new ARMRegisterBankInfo(*I->getRegisterInfo());
 
     // FIXME: At this point, we can't rely on Subtarget having RBI.
     // It's awkward to mix passing RBI and the Subtarget; should we pass
     // TII/TRI as well?
-    GISel->InstSelector.reset(new ARMInstructionSelector(*I, *RBI));
+    GISel->InstSelector.reset(createARMInstructionSelector(*this, *I, *RBI));
 
     GISel->RegBankInfo.reset(RBI);
 #endif
@@ -322,22 +361,6 @@ TargetIRAnalysis ARMBaseTargetMachine::getTargetIRAnalysis() {
   });
 }
 
-void ARMTargetMachine::anchor() {}
-
-ARMTargetMachine::ARMTargetMachine(const Target &T, const Triple &TT,
-                                   StringRef CPU, StringRef FS,
-                                   const TargetOptions &Options,
-                                   Optional<Reloc::Model> RM,
-                                   CodeModel::Model CM, CodeGenOpt::Level OL,
-                                   bool isLittle)
-    : ARMBaseTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, isLittle) {
-  initAsmInfo();
-  if (!Subtarget.hasARMOps())
-    report_fatal_error("CPU: '" + Subtarget.getCPUString() + "' does not "
-                       "support ARM mode execution!");
-}
-
-void ARMLETargetMachine::anchor() {}
 
 ARMLETargetMachine::ARMLETargetMachine(const Target &T, const Triple &TT,
                                        StringRef CPU, StringRef FS,
@@ -345,9 +368,7 @@ ARMLETargetMachine::ARMLETargetMachine(const Target &T, const Triple &TT,
                                        Optional<Reloc::Model> RM,
                                        CodeModel::Model CM,
                                        CodeGenOpt::Level OL)
-    : ARMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
-
-void ARMBETargetMachine::anchor() {}
+    : ARMBaseTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
 
 ARMBETargetMachine::ARMBETargetMachine(const Target &T, const Triple &TT,
                                        StringRef CPU, StringRef FS,
@@ -355,49 +376,32 @@ ARMBETargetMachine::ARMBETargetMachine(const Target &T, const Triple &TT,
                                        Optional<Reloc::Model> RM,
                                        CodeModel::Model CM,
                                        CodeGenOpt::Level OL)
-    : ARMTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
-
-void ThumbTargetMachine::anchor() {}
-
-ThumbTargetMachine::ThumbTargetMachine(const Target &T, const Triple &TT,
-                                       StringRef CPU, StringRef FS,
-                                       const TargetOptions &Options,
-                                       Optional<Reloc::Model> RM,
-                                       CodeModel::Model CM,
-                                       CodeGenOpt::Level OL, bool isLittle)
-    : ARMBaseTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, isLittle) {
-  initAsmInfo();
-}
-
-void ThumbLETargetMachine::anchor() {}
-
-ThumbLETargetMachine::ThumbLETargetMachine(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Optional<Reloc::Model> RM,
-                                           CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
-    : ThumbTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
-
-void ThumbBETargetMachine::anchor() {}
-
-ThumbBETargetMachine::ThumbBETargetMachine(const Target &T, const Triple &TT,
-                                           StringRef CPU, StringRef FS,
-                                           const TargetOptions &Options,
-                                           Optional<Reloc::Model> RM,
-                                           CodeModel::Model CM,
-                                           CodeGenOpt::Level OL)
-    : ThumbTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
+    : ARMBaseTargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
 
 namespace {
+
 /// ARM Code Generator Pass Configuration Options.
 class ARMPassConfig : public TargetPassConfig {
 public:
-  ARMPassConfig(ARMBaseTargetMachine *TM, PassManagerBase &PM)
+  ARMPassConfig(ARMBaseTargetMachine &TM, PassManagerBase &PM)
     : TargetPassConfig(TM, PM) {}
 
   ARMBaseTargetMachine &getARMTargetMachine() const {
     return getTM<ARMBaseTargetMachine>();
+  }
+
+  ScheduleDAGInstrs *
+  createMachineScheduler(MachineSchedContext *C) const override {
+    ScheduleDAGMILive *DAG = createGenericSchedLive(C);
+    // add DAG Mutations here.
+    return DAG;
+  }
+
+  ScheduleDAGInstrs *
+  createPostMachineScheduler(MachineSchedContext *C) const override {
+    ScheduleDAGMI *DAG = createGenericSchedPostRA(C);
+    // add DAG Mutations here.
+    return DAG;
   }
 
   void addIRPasses() override;
@@ -413,17 +417,31 @@ public:
   void addPreSched2() override;
   void addPreEmitPass() override;
 };
-} // namespace
+
+class ARMExecutionDepsFix : public ExecutionDepsFix {
+public:
+  static char ID;
+  ARMExecutionDepsFix() : ExecutionDepsFix(ID, ARM::DPRRegClass) {}
+  StringRef getPassName() const override {
+    return "ARM Execution Dependency Fix";
+  }
+};
+char ARMExecutionDepsFix::ID;
+
+} // end anonymous namespace
+
+INITIALIZE_PASS(ARMExecutionDepsFix, "arm-execution-deps-fix",
+                "ARM Execution Dependency Fix", false, false)
 
 TargetPassConfig *ARMBaseTargetMachine::createPassConfig(PassManagerBase &PM) {
-  return new ARMPassConfig(this, PM);
+  return new ARMPassConfig(*this, PM);
 }
 
 void ARMPassConfig::addIRPasses() {
   if (TM->Options.ThreadModel == ThreadModel::Single)
     addPass(createLowerAtomicPass());
   else
-    addPass(createAtomicExpandPass(TM));
+    addPass(createAtomicExpandPass());
 
   // Cmpxchg instructions are often used with a subsequent comparison to
   // determine whether it succeeded. We can exploit existing control-flow in
@@ -438,7 +456,7 @@ void ARMPassConfig::addIRPasses() {
 
   // Match interleaved memory accesses to ldN/stN intrinsics.
   if (TM->getOptLevel() != CodeGenOpt::None)
-    addPass(createInterleavedAccessPass(TM));
+    addPass(createInterleavedAccessPass());
 }
 
 bool ARMPassConfig::addPreISel() {
@@ -508,7 +526,7 @@ void ARMPassConfig::addPreSched2() {
     if (EnableARMLoadStoreOpt)
       addPass(createARMLoadStoreOptimizationPass());
 
-    addPass(createExecutionDependencyFixPass(&ARM::DPRRegClass));
+    addPass(new ARMExecutionDepsFix());
   }
 
   // Expand some pseudo instructions into multiple instructions to allow

@@ -24,6 +24,7 @@
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeWriterPass.h"
 #include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DebugInfo.h"
 #include "llvm/IR/IRPrintingPasses.h"
@@ -102,6 +103,11 @@ OutputAssembly("S", cl::desc("Write output as LLVM assembly"));
 static cl::opt<bool>
     OutputThinLTOBC("thinlto-bc",
                     cl::desc("Write output as ThinLTO-ready bitcode"));
+
+static cl::opt<std::string> ThinLinkBitcodeFile(
+    "thin-link-bitcode-file", cl::value_desc("filename"),
+    cl::desc(
+        "A file in which to write minimized bitcode for the thin link only"));
 
 static cl::opt<bool>
 NoVerify("disable-verify", cl::desc("Do not run the verifier"), cl::Hidden);
@@ -202,10 +208,10 @@ static cl::opt<bool>
 PrintBreakpoints("print-breakpoints-for-testing",
                  cl::desc("Print select breakpoints location for testing"));
 
-static cl::opt<std::string>
-DefaultDataLayout("default-data-layout",
-          cl::desc("data layout string to use if not specified by module"),
-          cl::value_desc("layout-string"), cl::init(""));
+static cl::opt<std::string> ClDataLayout("data-layout",
+                                         cl::desc("data layout string to use"),
+                                         cl::value_desc("layout-string"),
+                                         cl::init(""));
 
 static cl::opt<bool> PreserveBitcodeUseListOrder(
     "preserve-bc-uselistorder",
@@ -269,7 +275,7 @@ static void AddOptimizationPasses(legacy::PassManagerBase &MPM,
   if (DisableInline) {
     // No inlining pass
   } else if (OptLevel > 1) {
-    Builder.Inliner = createFunctionInliningPass(OptLevel, SizeLevel);
+    Builder.Inliner = createFunctionInliningPass(OptLevel, SizeLevel, false);
   } else {
     Builder.Inliner = createAlwaysInlinerLegacyPass();
   }
@@ -288,13 +294,8 @@ static void AddOptimizationPasses(legacy::PassManagerBase &MPM,
   Builder.SLPVectorize =
       DisableSLPVectorization ? false : OptLevel > 1 && SizeLevel < 2;
 
-  // Add target-specific passes that need to run as early as possible.
   if (TM)
-    Builder.addExtension(
-        PassManagerBuilder::EP_EarlyAsPossible,
-        [&](const PassManagerBuilder &, legacy::PassManagerBase &PM) {
-          TM->addEarlyAsPossiblePasses(PM);
-        });
+    TM->adjustPassManager(Builder);
 
   if (Coroutines)
     addCoroutinePassesToExtensionPoints(Builder);
@@ -386,18 +387,20 @@ int main(int argc, char **argv) {
   initializeTarget(Registry);
   // For codegen passes, only passes that do IR to IR transformation are
   // supported.
+  initializeScalarizeMaskedMemIntrinPass(Registry);
   initializeCodeGenPreparePass(Registry);
   initializeAtomicExpandPass(Registry);
   initializeRewriteSymbolsLegacyPassPass(Registry);
   initializeWinEHPreparePass(Registry);
   initializeDwarfEHPreparePass(Registry);
-  initializeSafeStackPass(Registry);
+  initializeSafeStackLegacyPassPass(Registry);
   initializeSjLjEHPreparePass(Registry);
   initializePreISelIntrinsicLoweringLegacyPassPass(Registry);
   initializeGlobalMergePass(Registry);
   initializeInterleavedAccessPass(Registry);
   initializeCountingFunctionInserterPass(Registry);
   initializeUnreachableBlockElimLegacyPassPass(Registry);
+  initializeExpandReductionsPass(Registry);
 
 #ifdef LINK_POLLY_INTO_TOOLS
   polly::initializePollyPasses(Registry);
@@ -487,12 +490,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // If we are supposed to override the target triple, do so now.
+  // If we are supposed to override the target triple or data layout, do so now.
   if (!TargetTriple.empty())
     M->setTargetTriple(Triple::normalize(TargetTriple));
+  if (!ClDataLayout.empty())
+    M->setDataLayout(ClDataLayout);
 
   // Figure out what stream we are supposed to write to...
   std::unique_ptr<tool_output_file> Out;
+  std::unique_ptr<tool_output_file> ThinLinkOut;
   if (NoOutput) {
     if (!OutputFilename.empty())
       errs() << "WARNING: The -o (output filename) option is ignored when\n"
@@ -507,6 +513,15 @@ int main(int argc, char **argv) {
     if (EC) {
       errs() << EC.message() << '\n';
       return 1;
+    }
+
+    if (!ThinLinkBitcodeFile.empty()) {
+      ThinLinkOut.reset(
+          new tool_output_file(ThinLinkBitcodeFile, EC, sys::fs::F_None));
+      if (EC) {
+        errs() << EC.message() << '\n';
+        return 1;
+      }
     }
   }
 
@@ -537,7 +552,9 @@ int main(int argc, char **argv) {
   if (PassPipeline.getNumOccurrences() > 0) {
     OutputKind OK = OK_NoOutput;
     if (!NoOutput)
-      OK = OutputAssembly ? OK_OutputAssembly : OK_OutputBitcode;
+      OK = OutputAssembly
+               ? OK_OutputAssembly
+               : (OutputThinLTOBC ? OK_OutputThinLTOBitcode : OK_OutputBitcode);
 
     VerifierKind VK = VK_VerifyInAndOut;
     if (NoVerify)
@@ -548,7 +565,7 @@ int main(int argc, char **argv) {
     // The user has asked to use the new pass manager and provided a pipeline
     // string. Hand off the rest of the functionality to the new code for that
     // layer.
-    return runPassPipeline(argv[0], *M, TM.get(), Out.get(),
+    return runPassPipeline(argv[0], *M, TM.get(), Out.get(), ThinLinkOut.get(),
                            PassPipeline, OK, VK, PreserveAssemblyUseListOrder,
                            PreserveBitcodeUseListOrder, EmitSummaryIndex,
                            EmitModuleHash)
@@ -568,12 +585,6 @@ int main(int argc, char **argv) {
   if (DisableSimplifyLibCalls)
     TLII.disableAllFunctions();
   Passes.add(new TargetLibraryInfoWrapperPass(TLII));
-
-  // Add an appropriate DataLayout instance for this module.
-  const DataLayout &DL = M->getDataLayout();
-  if (DL.isDefault() && !DefaultDataLayout.empty()) {
-    M->setDataLayout(DefaultDataLayout);
-  }
 
   // Add internal analysis passes from the target machine.
   Passes.add(createTargetTransformInfoWrapperPass(TM ? TM->getTargetIRAnalysis()
@@ -603,6 +614,13 @@ int main(int argc, char **argv) {
     }
     Passes.add(createBreakpointPrinter(Out->os()));
     NoOutput = true;
+  }
+
+  if (TM) {
+    // FIXME: We should dyn_cast this when supported.
+    auto &LTM = static_cast<LLVMTargetMachine &>(*TM);
+    Pass *TPC = LTM.createPassConfig(Passes);
+    Passes.add(TPC);
   }
 
   // Create a new optimization pass for each one specified on the command line
@@ -645,9 +663,7 @@ int main(int argc, char **argv) {
 
     const PassInfo *PassInf = PassList[i];
     Pass *P = nullptr;
-    if (PassInf->getTargetMachineCtor())
-      P = PassInf->getTargetMachineCtor()(TM.get());
-    else if (PassInf->getNormalCtor())
+    if (PassInf->getNormalCtor())
       P = PassInf->getNormalCtor()();
     else
       errs() << argv[0] << ": cannot create pass: "
@@ -743,7 +759,8 @@ int main(int argc, char **argv) {
         report_fatal_error("Text output is incompatible with -module-hash");
       Passes.add(createPrintModulePass(*OS, "", PreserveAssemblyUseListOrder));
     } else if (OutputThinLTOBC)
-      Passes.add(createWriteThinLTOBitcodePass(*OS));
+      Passes.add(createWriteThinLTOBitcodePass(
+          *OS, ThinLinkOut ? &ThinLinkOut->os() : nullptr));
     else
       Passes.add(createBitcodeWriterPass(*OS, PreserveBitcodeUseListOrder,
                                          EmitSummaryIndex, EmitModuleHash));
@@ -789,6 +806,9 @@ int main(int argc, char **argv) {
 
   if (YamlFile)
     YamlFile->keep();
+
+  if (ThinLinkOut)
+    ThinLinkOut->keep();
 
   return 0;
 }

@@ -1,4 +1,4 @@
-//===----- KaleidoscopeJIT.h - A simple JIT for Kaleidoscope ----*- C++ -*-===//
+//===- KaleidoscopeJIT.h - A simple JIT for Kaleidoscope --------*- C++ -*-===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -20,13 +20,12 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
-#include "llvm/ExecutionEngine/RuntimeDyld.h"
-#include "llvm/ExecutionEngine/Orc/CompileOnDemandLayer.h"
 #include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
-#include "llvm/ExecutionEngine/Orc/ObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/OrcRemoteTargetClient.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/LegacyPassManager.h"
@@ -73,17 +72,17 @@ namespace llvm {
 namespace orc {
 
 // Typedef the remote-client API.
-typedef remote::OrcRemoteTargetClient<FDRPCChannel> MyRemote;
+using MyRemote = remote::OrcRemoteTargetClient<FDRPCChannel>;
 
 class KaleidoscopeJIT {
 private:
   std::unique_ptr<TargetMachine> TM;
   const DataLayout DL;
-  ObjectLinkingLayer<> ObjectLayer;
+  RTDyldObjectLinkingLayer<> ObjectLayer;
   IRCompileLayer<decltype(ObjectLayer)> CompileLayer;
 
-  typedef std::function<std::unique_ptr<Module>(std::unique_ptr<Module>)>
-    OptimizeFunction;
+  using OptimizeFunction =
+      std::function<std::unique_ptr<Module>(std::unique_ptr<Module>)>;
 
   IRTransformLayer<decltype(CompileLayer), OptimizeFunction> OptimizeLayer;
 
@@ -92,7 +91,7 @@ private:
   MyRemote &Remote;
 
 public:
-  typedef decltype(OptimizeLayer)::ModuleSetHandleT ModuleHandle;
+  using ModuleHandle = decltype(OptimizeLayer)::ModuleSetHandleT;
 
   KaleidoscopeJIT(MyRemote &Remote)
       : TM(EngineBuilder().selectTarget(Triple(Remote.getTargetTriple()), "",
@@ -124,7 +123,6 @@ public:
   TargetMachine &getTargetMachine() { return *TM; }
 
   ModuleHandle addModule(std::unique_ptr<Module> M) {
-
     // Build our symbol resolver:
     // Lambda 1: Look back into the JIT itself to find symbols that are part of
     //           the same "logical dylib".

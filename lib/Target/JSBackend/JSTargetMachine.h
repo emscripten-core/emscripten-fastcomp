@@ -53,8 +53,7 @@ public:
       PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
       bool DisableVerify = true, AnalysisID StartBefore = nullptr,
       AnalysisID StartAfter = nullptr, AnalysisID StopBefore = nullptr,
-      AnalysisID StopAfter = nullptr,
-      MachineFunctionInitializer *MFInitializer = nullptr) override;
+      AnalysisID StopAfter = nullptr) override;
 
   TargetIRAnalysis getTargetIRAnalysis() override;
 

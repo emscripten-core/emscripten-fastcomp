@@ -27,6 +27,14 @@ class StringRef;
 class AAManager;
 class TargetMachine;
 
+/// A struct capturing PGO tunables.
+struct PGOOptions {
+  std::string ProfileGenFile = "";
+  std::string ProfileUseFile = "";
+  bool RunProfileGen = false;
+  bool SamplePGO = false;
+};
+
 /// \brief This class provides access to building LLVM's passes.
 ///
 /// It's members provide the baseline state available to passes during their
@@ -35,6 +43,7 @@ class TargetMachine;
 /// construction.
 class PassBuilder {
   TargetMachine *TM;
+  Optional<PGOOptions> PGOOpt;
 
 public:
   /// \brief LLVM-provided high-level optimization levels.
@@ -123,7 +132,9 @@ public:
     Oz
   };
 
-  explicit PassBuilder(TargetMachine *TM = nullptr) : TM(TM) {}
+  explicit PassBuilder(TargetMachine *TM = nullptr,
+                       Optional<PGOOptions> PGOOpt = None)
+      : TM(TM), PGOOpt(PGOOpt) {}
 
   /// \brief Cross register the analysis managers through their proxies.
   ///
@@ -181,6 +192,39 @@ public:
   buildFunctionSimplificationPipeline(OptimizationLevel Level,
                                       bool DebugLogging = false);
 
+  /// Construct the core LLVM module canonicalization and simplification
+  /// pipeline.
+  ///
+  /// This pipeline focuses on canonicalizing and simplifying the entire module
+  /// of IR. Much like the function simplification pipeline above, it is
+  /// suitable to run repeatedly over the IR and is not expected to destroy
+  /// important information. It does, however, perform inlining and other
+  /// heuristic based simplifications that are not strictly reversible.
+  ///
+  /// Note that \p Level cannot be `O0` here. The pipelines produced are
+  /// only intended for use when attempting to optimize code. If frontends
+  /// require some transformations for semantic reasons, they should explicitly
+  /// build them.
+  ModulePassManager
+  buildModuleSimplificationPipeline(OptimizationLevel Level,
+                                    bool DebugLogging = false);
+
+  /// Construct the core LLVM module optimization pipeline.
+  ///
+  /// This pipeline focuses on optimizing the execution speed of the IR. It
+  /// uses cost modeling and thresholds to balance code growth against runtime
+  /// improvements. It includes vectorization and other information destroying
+  /// transformations. It also cannot generally be run repeatedly on a module
+  /// without potentially seriously regressing either runtime performance of
+  /// the code or serious code size growth.
+  ///
+  /// Note that \p Level cannot be `O0` here. The pipelines produced are
+  /// only intended for use when attempting to optimize code. If frontends
+  /// require some transformations for semantic reasons, they should explicitly
+  /// build them.
+  ModulePassManager buildModuleOptimizationPipeline(OptimizationLevel Level,
+                                                    bool DebugLogging = false);
+
   /// Build a per-module default optimization pipeline.
   ///
   /// This provides a good default optimization pipeline for per-module
@@ -194,6 +238,36 @@ public:
   /// build them.
   ModulePassManager buildPerModuleDefaultPipeline(OptimizationLevel Level,
                                                   bool DebugLogging = false);
+
+  /// Build a pre-link, ThinLTO-targeting default optimization pipeline to
+  /// a pass manager.
+  ///
+  /// This adds the pre-link optimizations tuned to prepare a module for
+  /// a ThinLTO run. It works to minimize the IR which needs to be analyzed
+  /// without making irreversible decisions which could be made better during
+  /// the LTO run.
+  ///
+  /// Note that \p Level cannot be `O0` here. The pipelines produced are
+  /// only intended for use when attempting to optimize code. If frontends
+  /// require some transformations for semantic reasons, they should explicitly
+  /// build them.
+  ModulePassManager
+  buildThinLTOPreLinkDefaultPipeline(OptimizationLevel Level,
+                                     bool DebugLogging = false);
+
+  /// Build an ThinLTO default optimization pipeline to a pass manager.
+  ///
+  /// This provides a good default optimization pipeline for link-time
+  /// optimization and code generation. It is particularly tuned to fit well
+  /// when IR coming into the LTO phase was first run through \c
+  /// addPreLinkLTODefaultPipeline, and the two coordinate closely.
+  ///
+  /// Note that \p Level cannot be `O0` here. The pipelines produced are
+  /// only intended for use when attempting to optimize code. If frontends
+  /// require some transformations for semantic reasons, they should explicitly
+  /// build them.
+  ModulePassManager buildThinLTODefaultPipeline(OptimizationLevel Level,
+                                                bool DebugLogging = false);
 
   /// Build a pre-link, LTO-targeting default optimization pipeline to a pass
   /// manager.

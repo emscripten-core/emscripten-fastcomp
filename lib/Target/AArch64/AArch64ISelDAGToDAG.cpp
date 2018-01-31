@@ -20,6 +20,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/KnownBits.h"
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -328,11 +329,52 @@ static AArch64_AM::ShiftExtendType getShiftTypeForNode(SDValue N) {
   }
 }
 
+/// \brief Determine whether it is worth it to fold SHL into the addressing
+/// mode.
+static bool isWorthFoldingSHL(SDValue V) {
+  assert(V.getOpcode() == ISD::SHL && "invalid opcode");
+  // It is worth folding logical shift of up to three places.
+  auto *CSD = dyn_cast<ConstantSDNode>(V.getOperand(1));
+  if (!CSD)
+    return false;
+  unsigned ShiftVal = CSD->getZExtValue();
+  if (ShiftVal > 3)
+    return false;
+
+  // Check if this particular node is reused in any non-memory related
+  // operation.  If yes, do not try to fold this node into the address
+  // computation, since the computation will be kept.
+  const SDNode *Node = V.getNode();
+  for (SDNode *UI : Node->uses())
+    if (!isa<MemSDNode>(*UI))
+      for (SDNode *UII : UI->uses())
+        if (!isa<MemSDNode>(*UII))
+          return false;
+  return true;
+}
+
 /// \brief Determine whether it is worth to fold V into an extended register.
 bool AArch64DAGToDAGISel::isWorthFolding(SDValue V) const {
-  // it hurts if the value is used at least twice, unless we are optimizing
-  // for code size.
-  return ForCodeSize || V.hasOneUse();
+  // Trivial if we are optimizing for code size or if there is only
+  // one use of the value.
+  if (ForCodeSize || V.hasOneUse())
+    return true;
+  // If a subtarget has a fastpath LSL we can fold a logical shift into
+  // the addressing mode and save a cycle.
+  if (Subtarget->hasLSLFast() && V.getOpcode() == ISD::SHL &&
+      isWorthFoldingSHL(V))
+    return true;
+  if (Subtarget->hasLSLFast() && V.getOpcode() == ISD::ADD) {
+    const SDValue LHS = V.getOperand(0);
+    const SDValue RHS = V.getOperand(1);
+    if (LHS.getOpcode() == ISD::SHL && isWorthFoldingSHL(LHS))
+      return true;
+    if (RHS.getOpcode() == ISD::SHL && isWorthFoldingSHL(RHS))
+      return true;
+  }
+
+  // It hurts otherwise, since the value will be reused.
+  return false;
 }
 
 /// SelectShiftedRegister - Select a "shifted register" operand.  If the value
@@ -1811,20 +1853,20 @@ static void getUsefulBitsFromBitfieldMoveOpd(SDValue Op, APInt &UsefulBits,
   OpUsefulBits = 1;
 
   if (MSB >= Imm) {
-    OpUsefulBits = OpUsefulBits.shl(MSB - Imm + 1);
+    OpUsefulBits <<= MSB - Imm + 1;
     --OpUsefulBits;
     // The interesting part will be in the lower part of the result
     getUsefulBits(Op, OpUsefulBits, Depth + 1);
     // The interesting part was starting at Imm in the argument
-    OpUsefulBits = OpUsefulBits.shl(Imm);
+    OpUsefulBits <<= Imm;
   } else {
-    OpUsefulBits = OpUsefulBits.shl(MSB + 1);
+    OpUsefulBits <<= MSB + 1;
     --OpUsefulBits;
     // The interesting part will be shifted in the result
-    OpUsefulBits = OpUsefulBits.shl(OpUsefulBits.getBitWidth() - Imm);
+    OpUsefulBits <<= OpUsefulBits.getBitWidth() - Imm;
     getUsefulBits(Op, OpUsefulBits, Depth + 1);
     // The interesting part was at zero in the argument
-    OpUsefulBits = OpUsefulBits.lshr(OpUsefulBits.getBitWidth() - Imm);
+    OpUsefulBits.lshrInPlace(OpUsefulBits.getBitWidth() - Imm);
   }
 
   UsefulBits &= OpUsefulBits;
@@ -1851,17 +1893,17 @@ static void getUsefulBitsFromOrWithShiftedReg(SDValue Op, APInt &UsefulBits,
   if (AArch64_AM::getShiftType(ShiftTypeAndValue) == AArch64_AM::LSL) {
     // Shift Left
     uint64_t ShiftAmt = AArch64_AM::getShiftValue(ShiftTypeAndValue);
-    Mask = Mask.shl(ShiftAmt);
+    Mask <<= ShiftAmt;
     getUsefulBits(Op, Mask, Depth + 1);
-    Mask = Mask.lshr(ShiftAmt);
+    Mask.lshrInPlace(ShiftAmt);
   } else if (AArch64_AM::getShiftType(ShiftTypeAndValue) == AArch64_AM::LSR) {
     // Shift Right
     // We do not handle AArch64_AM::ASR, because the sign will change the
     // number of useful bits
     uint64_t ShiftAmt = AArch64_AM::getShiftValue(ShiftTypeAndValue);
-    Mask = Mask.lshr(ShiftAmt);
+    Mask.lshrInPlace(ShiftAmt);
     getUsefulBits(Op, Mask, Depth + 1);
-    Mask = Mask.shl(ShiftAmt);
+    Mask <<= ShiftAmt;
   } else
     return;
 
@@ -1889,13 +1931,13 @@ static void getUsefulBitsFromBFM(SDValue Op, SDValue Orig, APInt &UsefulBits,
     uint64_t Width = MSB - Imm + 1;
     uint64_t LSB = Imm;
 
-    OpUsefulBits = OpUsefulBits.shl(Width);
+    OpUsefulBits <<= Width;
     --OpUsefulBits;
 
     if (Op.getOperand(1) == Orig) {
       // Copy the low bits from the result to bits starting from LSB.
       Mask = ResultUsefulBits & OpUsefulBits;
-      Mask = Mask.shl(LSB);
+      Mask <<= LSB;
     }
 
     if (Op.getOperand(0) == Orig)
@@ -1906,14 +1948,14 @@ static void getUsefulBitsFromBFM(SDValue Op, SDValue Orig, APInt &UsefulBits,
     uint64_t Width = MSB + 1;
     uint64_t LSB = UsefulBits.getBitWidth() - Imm;
 
-    OpUsefulBits = OpUsefulBits.shl(Width);
+    OpUsefulBits <<= Width;
     --OpUsefulBits;
-    OpUsefulBits = OpUsefulBits.shl(LSB);
+    OpUsefulBits <<= LSB;
 
     if (Op.getOperand(1) == Orig) {
       // Copy the bits from the result to the zero bits.
       Mask = ResultUsefulBits & OpUsefulBits;
-      Mask = Mask.lshr(LSB);
+      Mask.lshrInPlace(LSB);
     }
 
     if (Op.getOperand(0) == Orig)
@@ -2037,18 +2079,18 @@ static bool isBitfieldPositioningOp(SelectionDAG *CurDAG, SDValue Op,
   (void)BitWidth;
   assert(BitWidth == 32 || BitWidth == 64);
 
-  APInt KnownZero, KnownOne;
-  CurDAG->computeKnownBits(Op, KnownZero, KnownOne);
+  KnownBits Known;
+  CurDAG->computeKnownBits(Op, Known);
 
   // Non-zero in the sense that they're not provably zero, which is the key
   // point if we want to use this value
-  uint64_t NonZeroBits = (~KnownZero).getZExtValue();
+  uint64_t NonZeroBits = (~Known.Zero).getZExtValue();
 
   // Discard a constant AND mask if present. It's safe because the node will
   // already have been factored into the computeKnownBits calculation above.
   uint64_t AndImm;
   if (isOpcWithIntImmediate(Op.getNode(), ISD::AND, AndImm)) {
-    assert((~APInt(BitWidth, AndImm) & ~KnownZero) == 0);
+    assert((~APInt(BitWidth, AndImm) & ~Known.Zero) == 0);
     Op = Op.getOperand(0);
   }
 
@@ -2117,15 +2159,15 @@ static bool tryBitfieldInsertOpFromOrAndImm(SDNode *N, SelectionDAG *CurDAG) {
 
   // Compute the Known Zero for the AND as this allows us to catch more general
   // cases than just looking for AND with imm.
-  APInt KnownZero, KnownOne;
-  CurDAG->computeKnownBits(And, KnownZero, KnownOne);
+  KnownBits Known;
+  CurDAG->computeKnownBits(And, Known);
 
   // Non-zero in the sense that they're not provably zero, which is the key
   // point if we want to use this value.
-  uint64_t NotKnownZero = (~KnownZero).getZExtValue();
+  uint64_t NotKnownZero = (~Known.Zero).getZExtValue();
 
   // The KnownZero mask must be a shifted mask (e.g., 1110..011, 11100..00).
-  if (!isShiftedMask(KnownZero.getZExtValue(), VT))
+  if (!isShiftedMask(Known.Zero.getZExtValue(), VT))
     return false;
 
   // The bits being inserted must only set those bits that are known to be zero.
@@ -2259,15 +2301,15 @@ static bool tryBitfieldInsertOpFromOr(SDNode *N, const APInt &UsefulBits,
     // This allows to catch more general case than just looking for
     // AND with imm. Indeed, simplify-demanded-bits may have removed
     // the AND instruction because it proves it was useless.
-    APInt KnownZero, KnownOne;
-    CurDAG->computeKnownBits(OrOpd1Val, KnownZero, KnownOne);
+    KnownBits Known;
+    CurDAG->computeKnownBits(OrOpd1Val, Known);
 
     // Check if there is enough room for the second operand to appear
     // in the first one
     APInt BitsToBeInserted =
-        APInt::getBitsSet(KnownZero.getBitWidth(), DstLSB, DstLSB + Width);
+        APInt::getBitsSet(Known.getBitWidth(), DstLSB, DstLSB + Width);
 
-    if ((BitsToBeInserted & ~KnownZero) != 0)
+    if ((BitsToBeInserted & ~Known.Zero) != 0)
       continue;
 
     // Set the first operand
@@ -2524,7 +2566,7 @@ bool AArch64DAGToDAGISel::tryWriteRegister(SDNode *N) {
   // pstatefield for the MSR (immediate) instruction, we also require that an
   // immediate value has been provided as an argument, we know that this is
   // the case as it has been ensured by semantic checking.
-  auto PMapper = AArch64PState::lookupPStateByName(RegString->getString());;
+  auto PMapper = AArch64PState::lookupPStateByName(RegString->getString());
   if (PMapper) {
     assert (isa<ConstantSDNode>(N->getOperand(2))
               && "Expected a constant integer expression.");

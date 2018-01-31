@@ -1,7 +1,7 @@
 ; RUN: opt -S -mtriple=amdgcn-- -codegenprepare < %s | FileCheck -check-prefix=OPT %s
-; RUN: opt -S -mtriple=amdgcn-- -mcpu=tonga -codegenprepare < %s | FileCheck -check-prefix=OPT %s
+; RUN: opt -S -mtriple=amdgcn-- -mcpu=tonga -mattr=-flat-for-global -codegenprepare < %s | FileCheck -check-prefix=OPT %s
 ; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
 
 ; This particular case will actually be worse in terms of code size
 ; from sinking into both.
@@ -36,7 +36,7 @@
 ; GCN: BB0_3:
 ; GCN: buffer_store_dword
 ; GCN: s_endpgm
-define void @sink_ubfe_i32(i32 addrspace(1)* %out, i32 %arg1) #0 {
+define amdgpu_kernel void @sink_ubfe_i32(i32 addrspace(1)* %out, i32 %arg1) #0 {
 entry:
   %shr = lshr i32 %arg1, 8
   br i1 undef, label %bb0, label %bb1
@@ -76,7 +76,7 @@ ret:
 ; OPT: ret
 
 ; GCN-LABEL: {{^}}sink_sbfe_i32:
-define void @sink_sbfe_i32(i32 addrspace(1)* %out, i32 %arg1) #0 {
+define amdgpu_kernel void @sink_sbfe_i32(i32 addrspace(1)* %out, i32 %arg1) #0 {
 entry:
   %shr = ashr i32 %arg1, 8
   br i1 undef, label %bb0, label %bb1
@@ -120,20 +120,21 @@ ret:
 
 ; GCN-LABEL: {{^}}sink_ubfe_i16:
 ; GCN-NOT: lshr
-; VI: s_bfe_u32 s0, s0, 0xc0004
+; VI: s_load_dword [[ARG:s[0-9]+]], s[0:1], 0x2c
+; VI: s_bfe_u32 [[BFE:s[0-9]+]], [[ARG]], 0xc0004
 ; GCN: s_cbranch_scc1
 
 ; SI: s_bfe_u32 s{{[0-9]+}}, s{{[0-9]+}}, 0x80004
-; VI: s_and_b32 s0, s0, 0xff
+; VI: s_and_b32 s{{[0-9]+}}, [[BFE]], 0xff
 
 ; GCN: BB2_2:
 ; SI: s_bfe_u32 s{{[0-9]+}}, s{{[0-9]+}}, 0x70004
-; VI: s_and_b32 s0, s0, 0x7f
+; VI: s_and_b32 s{{[0-9]+}}, [[BFE]], 0x7f
 
 ; GCN: BB2_3:
 ; GCN: buffer_store_short
 ; GCN: s_endpgm
-define void @sink_ubfe_i16(i16 addrspace(1)* %out, i16 %arg1) #0 {
+define amdgpu_kernel void @sink_ubfe_i16(i16 addrspace(1)* %out, i16 %arg1) #0 {
 entry:
   %shr = lshr i16 %arg1, 4
   br i1 undef, label %bb0, label %bb1
@@ -186,7 +187,7 @@ ret:
 
 ; GCN: BB3_3:
 ; GCN: buffer_store_dwordx2
-define void @sink_ubfe_i64_span_midpoint(i64 addrspace(1)* %out, i64 %arg1) #0 {
+define amdgpu_kernel void @sink_ubfe_i64_span_midpoint(i64 addrspace(1)* %out, i64 %arg1) #0 {
 entry:
   %shr = lshr i64 %arg1, 30
   br i1 undef, label %bb0, label %bb1
@@ -235,7 +236,7 @@ ret:
 
 ; GCN: BB4_3:
 ; GCN: buffer_store_dwordx2
-define void @sink_ubfe_i64_low32(i64 addrspace(1)* %out, i64 %arg1) #0 {
+define amdgpu_kernel void @sink_ubfe_i64_low32(i64 addrspace(1)* %out, i64 %arg1) #0 {
 entry:
   %shr = lshr i64 %arg1, 15
   br i1 undef, label %bb0, label %bb1
@@ -282,7 +283,7 @@ ret:
 
 ; GCN: BB5_3:
 ; GCN: buffer_store_dwordx2
-define void @sink_ubfe_i64_high32(i64 addrspace(1)* %out, i64 %arg1) #0 {
+define amdgpu_kernel void @sink_ubfe_i64_high32(i64 addrspace(1)* %out, i64 %arg1) #0 {
 entry:
   %shr = lshr i64 %arg1, 35
   br i1 undef, label %bb0, label %bb1

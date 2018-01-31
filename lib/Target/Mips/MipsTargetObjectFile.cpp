@@ -10,13 +10,13 @@
 #include "MipsTargetObjectFile.h"
 #include "MipsSubtarget.h"
 #include "MipsTargetMachine.h"
+#include "llvm/BinaryFormat/ELF.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/MC/MCContext.h"
 #include "llvm/MC/MCSectionELF.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Support/ELF.h"
 #include "llvm/Target/TargetMachine.h"
 using namespace llvm;
 
@@ -147,4 +147,12 @@ MCSection *MipsTargetObjectFile::getSectionForConstant(const DataLayout &DL,
 
   // Otherwise, we work the same as ELF.
   return TargetLoweringObjectFileELF::getSectionForConstant(DL, Kind, C, Align);
+}
+
+const MCExpr *
+MipsTargetObjectFile::getDebugThreadLocalSymbol(const MCSymbol *Sym) const {
+  const MCExpr *Expr =
+      MCSymbolRefExpr::create(Sym, MCSymbolRefExpr::VK_None, getContext());
+  return MCBinaryExpr::createAdd(
+      Expr, MCConstantExpr::create(0x8000, getContext()), getContext());
 }
