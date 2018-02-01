@@ -827,7 +827,7 @@ DEF_CALL_HANDLER(__atomic_exchange_8, {
   if (EnablePthreads) {
     return getAssign(CI) + '(' + (OnlyWebAssembly ? "i64_atomics_exchange" : "_emscripten_atomic_exchange_u64") + '(' + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
   } else {
-    return getStore(CI, CI->getOperand(0), CI->getType(), getValueAsStr(CI->getOperand(1)), 0);
+    return getAssign(CI) + getStore(CI, CI->getOperand(0), CI->getType(), getValueAsStr(CI->getOperand(1)), 0);
   }
 })
 
@@ -2266,15 +2266,20 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(emscripten_atomic_fence);
 
   if (OnlyWebAssembly) {
-    SETUP_CALL_HANDLER(__atomic_exchange_8);
-    SETUP_CALL_HANDLER(__atomic_compare_exchange_8);
     SETUP_CALL_HANDLER(__atomic_load_8);
     SETUP_CALL_HANDLER(__atomic_store_8);
-    SETUP_CALL_HANDLER(__atomic_fetch_add_8);
-    SETUP_CALL_HANDLER(__atomic_fetch_sub_8);
-    SETUP_CALL_HANDLER(__atomic_fetch_and_8);
-    SETUP_CALL_HANDLER(__atomic_fetch_or_8);
-    SETUP_CALL_HANDLER(__atomic_fetch_xor_8);
+    if (EnablePthreads) {
+      // If targeting Wasm multithreading, route 64-bit atomic ops directly to wasm opcodes.
+      // Otherwise these will be passed through to JS/C library functions that do the
+      // equivalent operations, e.g. for asm.js that doesn't have 64-bit atomics.
+      SETUP_CALL_HANDLER(__atomic_exchange_8);
+      SETUP_CALL_HANDLER(__atomic_compare_exchange_8);
+      SETUP_CALL_HANDLER(__atomic_fetch_add_8);
+      SETUP_CALL_HANDLER(__atomic_fetch_sub_8);
+      SETUP_CALL_HANDLER(__atomic_fetch_and_8);
+      SETUP_CALL_HANDLER(__atomic_fetch_or_8);
+      SETUP_CALL_HANDLER(__atomic_fetch_xor_8);
+    }
   }
 
   SETUP_CALL_HANDLER(abs);
