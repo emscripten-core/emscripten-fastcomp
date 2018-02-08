@@ -3653,6 +3653,9 @@ void JSWriter::printModuleBody() {
         case Intrinsic::memmove:
         case Intrinsic::expect:
         case Intrinsic::flt_rounds:
+        case Intrinsic::ctlz:
+        case Intrinsic::cttz:
+        case Intrinsic::ctpop:
           continue;
         }
       }
