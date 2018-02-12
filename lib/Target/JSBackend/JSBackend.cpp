@@ -2632,7 +2632,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         if (BinaryOperator::isFNeg(I)) {
-          Code << ensureFloat("-" + getValueAsStr(BinaryOperator::getFNegArgument(I)), I->getType());
+          Code << ensureFloat("- " + getValueAsStr(BinaryOperator::getFNegArgument(I)), I->getType());
         } else {
           Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " - " + getValueAsStr(I->getOperand(1)), I->getType());
         }
