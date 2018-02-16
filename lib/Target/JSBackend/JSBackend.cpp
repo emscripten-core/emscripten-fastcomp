@@ -244,6 +244,7 @@ namespace {
     StringMap Aliases;
     BlockAddressMap BlockAddresses;
     std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
+    std::map<std::string, std::string> EmJsFunctions; // name => code
     NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
     std::vector<std::string> ExtraFunctions;
     std::set<const Function*> DeclaresNeedingTypeDeclarations; // list of declared funcs whose type we must declare asm.js-style with a usage, as they may not have another usage
@@ -631,6 +632,33 @@ namespace {
       }
     }
 
+    std::string escapeCode(std::string code) {
+      // replace newlines quotes with escaped newlines
+      size_t curr = 0;
+      while ((curr = code.find("\\n", curr)) != std::string::npos) {
+        code = code.replace(curr, 2, "\\\\n");
+        curr += 3; // skip this one
+      }
+      // replace tabs with escaped tabs
+      curr = 0;
+      while ((curr = code.find("\t", curr)) != std::string::npos) {
+        code = code.replace(curr, 1, "\\\\t");
+        curr += 3; // skip this one
+      }
+      // replace double quotes with escaped single quotes
+      curr = 0;
+      while ((curr = code.find('"', curr)) != std::string::npos) {
+        if (curr == 0 || code[curr-1] != '\\') {
+          code = code.replace(curr, 1, "\\" "\"");
+          curr += 2; // skip this one
+        } else { // already escaped, escape the slash as well
+          code = code.replace(curr, 1, "\\" "\\" "\"");
+          curr += 3; // skip this one
+        }
+      }
+      return code;
+    }
+
     // Transform the string input into emscripten_asm_const_*(str, args1, arg2)
     // into an id. We emit a map of id => string contents, and emscripten
     // wraps it up so that calling that id calls that function.
@@ -642,30 +670,7 @@ namespace {
         code = " ";
       } else {
         const ConstantDataSequential *CDS = cast<ConstantDataSequential>(CI);
-        code = CDS->getAsString();
-        // replace newlines quotes with escaped newlines
-        size_t curr = 0;
-        while ((curr = code.find("\\n", curr)) != std::string::npos) {
-          code = code.replace(curr, 2, "\\\\n");
-          curr += 3; // skip this one
-        }
-        // replace tabs with escaped tabs
-        curr = 0;
-        while ((curr = code.find("\t", curr)) != std::string::npos) {
-          code = code.replace(curr, 1, "\\\\t");
-          curr += 3; // skip this one
-        }
-        // replace double quotes with escaped single quotes
-        curr = 0;
-        while ((curr = code.find('"', curr)) != std::string::npos) {
-          if (curr == 0 || code[curr-1] != '\\') {
-            code = code.replace(curr, 1, "\\" "\"");
-            curr += 2; // skip this one
-          } else { // already escaped, escape the slash as well
-            code = code.replace(curr, 1, "\\" "\\" "\"");
-            curr += 3; // skip this one
-          }
-        }
+        code = escapeCode(CDS->getAsString());
       }
       unsigned Id;
       if (AsmConsts.count(code) > 0) {
@@ -679,6 +684,26 @@ namespace {
         AsmConsts[code] = Info;
       }
       return Id;
+    }
+
+    void handleEmJsFunctions() {
+      for (Module::const_iterator II = TheModule->begin(), E = TheModule->end();
+           II != E; ++II) {
+        const Function* F = &*II;
+        StringRef EmJsPrefix("__em_js__");
+        StringRef Name(F->getName());
+        if (!Name.startswith(EmJsPrefix)) {
+          continue;
+        }
+        std::string RealName = "_" + Name.slice(EmJsPrefix.size(), Name.size()).str();
+        const Instruction* I = &*F->begin()->begin();
+        const ReturnInst* Ret = cast<ReturnInst>(I);
+        const ConstantExpr* CE = cast<ConstantExpr>(Ret->getReturnValue());
+        const GlobalVariable* G = cast<GlobalVariable>(CE->getOperand(0));
+        const ConstantDataSequential* CDS = cast<ConstantDataSequential>(G->getInitializer());
+        std::string Code = CDS->getAsString();
+        EmJsFunctions[RealName] = escapeCode(Code);
+      }
     }
 
     // Test whether the given value is known to be an absolute value or one we turn into an absolute value
@@ -3495,6 +3520,7 @@ void JSWriter::printFunction(const Function *F) {
 
 void JSWriter::printModuleBody() {
   processConstants();
+  handleEmJsFunctions();
 
   if (Relocatable) {
     for (Module::const_alias_iterator I = TheModule->alias_begin(), E = TheModule->alias_end();
@@ -3666,6 +3692,9 @@ void JSWriter::printModuleBody() {
         if (IndexedFunctions.find(fullName) == IndexedFunctions.end()) {
           continue;
         }
+      }
+      if (EmJsFunctions.count(fullName) > 0) {
+        continue;
       }
 
       if (first) {
@@ -3856,6 +3885,22 @@ void JSWriter::printModuleBody() {
     Out << "]]";
   }
   Out << "}";
+
+  if (EmJsFunctions.size() > 0) {
+    Out << ", \"emJsFuncs\": {";
+    first = true;
+    for (auto Pair : EmJsFunctions) {
+      auto Name = Pair.first;
+      auto Code = Pair.second;
+      if (first) {
+        first = false;
+      } else {
+        Out << ", ";
+      }
+      Out << "\"" << Name << "\": \"" << Code.c_str() << "\"";
+    }
+    Out << "}";
+  }
 
   if (EnableCyberDWARF) {
     Out << ",\"cyberdwarf_data\": {\n";
