@@ -191,6 +191,8 @@ namespace {
   #define ASM_FORCE_FLOAT_AS_INTBITS 32 // if the value is a float, it should be returned as an integer representing the float bits (or NaN canonicalization will eat them away). This flag cannot be used with ASM_UNSIGNED set.
   typedef unsigned AsmCast;
 
+  const StringRef EM_JS_PREFIX("__em_js__");
+
   typedef std::map<const Value*,std::string> ValueMap;
   typedef std::set<std::string> NameSet;
   typedef std::set<int> IntSet;
@@ -690,12 +692,11 @@ namespace {
       for (Module::const_iterator II = TheModule->begin(), E = TheModule->end();
            II != E; ++II) {
         const Function* F = &*II;
-        StringRef EmJsPrefix("__em_js__");
         StringRef Name(F->getName());
-        if (!Name.startswith(EmJsPrefix)) {
+        if (!Name.startswith(EM_JS_PREFIX)) {
           continue;
         }
-        std::string RealName = "_" + Name.slice(EmJsPrefix.size(), Name.size()).str();
+        std::string RealName = "_" + Name.slice(EM_JS_PREFIX.size(), Name.size()).str();
         const Instruction* I = &*F->begin()->begin();
         const ReturnInst* Ret = cast<ReturnInst>(I);
         const ConstantExpr* CE = cast<ConstantExpr>(Ret->getReturnValue());
@@ -3693,6 +3694,9 @@ void JSWriter::printModuleBody() {
           continue;
         }
       }
+      // Do not emit EM_JS functions as "declare"s, they're handled specially
+      // as "emJsFuncs". Emitting them here causes Emscripten library code to
+      // generate stubs that throw "missing library function" when called.
       if (EmJsFunctions.count(fullName) > 0) {
         continue;
       }
