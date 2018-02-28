@@ -22,7 +22,7 @@ define i32 @simple_integer_math(i32 %a, i32 %b) nounwind {
 ; CHECK: function _fneg(
 ; CHECK:   [[VAL_D:\$[a-z]+]] = +[[VAL_D]]
 ; CHECK:   [[VAL_F:\$[a-z]+]] = +0
-; CHECK:   [[VAL_F]] = -[[VAL_D]]
+; CHECK:   [[VAL_F]] = - [[VAL_D]]
 ; CHECK:   return (+[[VAL_F]]);
 define double @fneg(double %d) nounwind {
   %f = fsub double -0.0, %d
