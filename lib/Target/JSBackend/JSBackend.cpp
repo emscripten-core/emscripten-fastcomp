@@ -3371,6 +3371,13 @@ void JSWriter::printFunctionBody(const Function *F) {
   if (Relocatable) {
     if (!F->hasInternalLinkage()) {
       Exports.push_back(getJSName(F));
+      // In wasm shared module mode with emulated function pointers, put all exported functions in the table. That lets us
+      // use a simple i64-based ABI for everything, using function pointers for dlsym etc. (otherwise, if we used an
+      // export which is callable by JS - not using the i64 ABI - that would not be a proper function pointer for
+      // a wasm->wasm call).
+      if (WebAssembly && EmulatedFunctionPointers) {
+        getFunctionIndex(F);
+      }
     }
   }
 }
@@ -3924,6 +3931,21 @@ void JSWriter::printModuleBody() {
       first_elem = false;
     }
     Out << "}\n}";
+  }
+
+  // for wasm shared emulated function pointers, we need to know a function pointer for each function name
+  if (WebAssembly && Relocatable && EmulatedFunctionPointers) {
+    Out << ", \"functionPointers\": {";
+    first = true;
+    for (auto& I : IndexedFunctions) {
+      if (first) {
+        first = false;
+      } else {
+        Out << ", ";
+      }
+      Out << "\"" << I.first << "\": " << utostr(I.second) << "";
+    }
+    Out << "}";
   }
 
   Out << "\n}\n";
