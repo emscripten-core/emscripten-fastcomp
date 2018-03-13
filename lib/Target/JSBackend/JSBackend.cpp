@@ -3934,17 +3934,19 @@ void JSWriter::printModuleBody() {
   }
 
   // for wasm shared emulated function pointers, we need to know a function pointer for each function name
-  Out << ", \"functionPointers\": {";
-  first = true;
-  for (auto& I : IndexedFunctions) {
-    if (first) {
-      first = false;
-    } else {
-      Out << ", ";
+  if (WebAssembly && Relocatable && EmulatedFunctionPointers) {
+    Out << ", \"functionPointers\": {";
+    first = true;
+    for (auto& I : IndexedFunctions) {
+      if (first) {
+        first = false;
+      } else {
+        Out << ", ";
+      }
+      Out << "\"" << I.first << "\": " << utostr(I.second) << "";
     }
-    Out << "\"" << I.first << "\": " << utostr(I.second) << "";
+    Out << "}";
   }
-  Out << "}";
 
   Out << "\n}\n";
 }
