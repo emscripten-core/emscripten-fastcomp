@@ -344,31 +344,21 @@ struct Debugging {
 
 // C API - useful for binding to other languages
 
-#ifdef _WIN32
-  #ifdef RELOOPERDLL_EXPORTS
-    #define RELOOPERDLL_API __declspec(dllexport)
-  #else
-    #define RELOOPERDLL_API __declspec(dllimport)
-  #endif
-#else
-  #define RELOOPERDLL_API
-#endif
-
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-RELOOPERDLL_API void  rl_set_output_buffer(char *buffer, int size);
-RELOOPERDLL_API void  rl_make_output_buffer(int size);
-RELOOPERDLL_API void  rl_set_asm_js_mode(int on);
-RELOOPERDLL_API void *rl_new_block(const char *text, const char *branch_var);
-RELOOPERDLL_API void  rl_delete_block(void *block);
-RELOOPERDLL_API void  rl_block_add_branch_to(void *from, void *to, const char *condition, const char *code);
-RELOOPERDLL_API void *rl_new_relooper();
-RELOOPERDLL_API void  rl_delete_relooper(void *relooper);
-RELOOPERDLL_API void  rl_relooper_add_block(void *relooper, void *block);
-RELOOPERDLL_API void  rl_relooper_calculate(void *relooper, void *entry);
-RELOOPERDLL_API void  rl_relooper_render(void *relooper);
+void  rl_set_output_buffer(char *buffer, int size);
+void  rl_make_output_buffer(int size);
+void  rl_set_asm_js_mode(int on);
+void *rl_new_block(const char *text, const char *branch_var);
+void  rl_delete_block(void *block);
+void  rl_block_add_branch_to(void *from, void *to, const char *condition, const char *code);
+void *rl_new_relooper();
+void  rl_delete_relooper(void *relooper);
+void  rl_relooper_add_block(void *relooper, void *block);
+void  rl_relooper_calculate(void *relooper, void *entry);
+void  rl_relooper_render(void *relooper);
 
 #ifdef __cplusplus
 }
