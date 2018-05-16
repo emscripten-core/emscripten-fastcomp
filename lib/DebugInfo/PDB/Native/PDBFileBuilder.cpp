@@ -15,6 +15,7 @@
 #include "llvm/DebugInfo/PDB/GenericError.h"
 #include "llvm/DebugInfo/PDB/Native/DbiStream.h"
 #include "llvm/DebugInfo/PDB/Native/DbiStreamBuilder.h"
+#include "llvm/DebugInfo/PDB/Native/GSIStreamBuilder.h"
 #include "llvm/DebugInfo/PDB/Native/InfoStream.h"
 #include "llvm/DebugInfo/PDB/Native/InfoStreamBuilder.h"
 #include "llvm/DebugInfo/PDB/Native/PDBStringTableBuilder.h"
@@ -32,6 +33,8 @@ using namespace llvm::support;
 
 PDBFileBuilder::PDBFileBuilder(BumpPtrAllocator &Allocator)
     : Allocator(Allocator) {}
+
+PDBFileBuilder::~PDBFileBuilder() {}
 
 Error PDBFileBuilder::initialize(uint32_t BlockSize) {
   auto ExpectedMsf = MSFBuilder::create(Allocator, BlockSize);
@@ -71,6 +74,12 @@ PDBStringTableBuilder &PDBFileBuilder::getStringTableBuilder() {
   return Strings;
 }
 
+GSIStreamBuilder &PDBFileBuilder::getGsiBuilder() {
+  if (!Gsi)
+    Gsi = llvm::make_unique<GSIStreamBuilder>(*Msf);
+  return *Gsi;
+}
+
 Error PDBFileBuilder::addNamedStream(StringRef Name, uint32_t Size) {
   auto ExpectedStream = Msf->addStream(Size);
   if (!ExpectedStream)
@@ -96,8 +105,6 @@ Expected<msf::MSFLayout> PDBFileBuilder::finalizeMsfLayout() {
     return std::move(EC);
   if (auto EC = addNamedStream("/LinkInfo", 0))
     return std::move(EC);
-  if (auto EC = addNamedStream("/src/headerblock", 0))
-    return std::move(EC);
 
   if (Info) {
     if (auto EC = Info->finalizeMsfLayout())
@@ -115,6 +122,15 @@ Expected<msf::MSFLayout> PDBFileBuilder::finalizeMsfLayout() {
     if (auto EC = Ipi->finalizeMsfLayout())
       return std::move(EC);
   }
+  if (Gsi) {
+    if (auto EC = Gsi->finalizeMsfLayout())
+      return std::move(EC);
+    if (Dbi) {
+      Dbi->setPublicsStreamIndex(Gsi->getPublicsStreamIndex());
+      Dbi->setGlobalsStreamIndex(Gsi->getGlobalsStreamIndex());
+      Dbi->setSymbolRecordStreamIndex(Gsi->getRecordStreamIdx());
+    }
+  }
 
   return Msf->build();
 }
@@ -126,6 +142,31 @@ Expected<uint32_t> PDBFileBuilder::getNamedStreamIndex(StringRef Name) const {
   return SN;
 }
 
+void PDBFileBuilder::commitFpm(WritableBinaryStream &MsfBuffer,
+                               const MSFLayout &Layout) {
+  auto FpmStream =
+      WritableMappedBlockStream::createFpmStream(Layout, MsfBuffer, Allocator);
+
+  // We only need to create the alt fpm stream so that it gets initialized.
+  WritableMappedBlockStream::createFpmStream(Layout, MsfBuffer, Allocator,
+                                             true);
+
+  uint32_t BI = 0;
+  BinaryStreamWriter FpmWriter(*FpmStream);
+  while (BI < Layout.SB->NumBlocks) {
+    uint8_t ThisByte = 0;
+    for (uint32_t I = 0; I < 8; ++I) {
+      bool IsFree =
+          (BI < Layout.SB->NumBlocks) ? Layout.FreePageMap.test(BI) : true;
+      uint8_t Mask = uint8_t(IsFree) << I;
+      ThisByte |= Mask;
+      ++BI;
+    }
+    cantFail(FpmWriter.writeObject(ThisByte));
+  }
+  assert(FpmWriter.bytesRemaining() == 0);
+}
+
 Error PDBFileBuilder::commit(StringRef Filename) {
   assert(!Filename.empty());
   auto ExpectedLayout = finalizeMsfLayout();
@@ -135,15 +176,17 @@ Error PDBFileBuilder::commit(StringRef Filename) {
 
   uint64_t Filesize = Layout.SB->BlockSize * Layout.SB->NumBlocks;
   auto OutFileOrError = FileOutputBuffer::create(Filename, Filesize);
-  if (OutFileOrError.getError())
-    return llvm::make_error<pdb::GenericError>(generic_error_code::invalid_path,
-                                               Filename);
+  if (auto E = OutFileOrError.takeError())
+    return E;
   FileBufferByteStream Buffer(std::move(*OutFileOrError),
                               llvm::support::little);
   BinaryStreamWriter Writer(Buffer);
 
   if (auto EC = Writer.writeObject(*Layout.SB))
     return EC;
+
+  commitFpm(Buffer, Layout);
+
   uint32_t BlockMapOffset =
       msf::blockToOffset(Layout.SB->BlockMapAddr, Layout.SB->BlockSize);
   Writer.setOffset(BlockMapOffset);
@@ -191,6 +234,11 @@ Error PDBFileBuilder::commit(StringRef Filename) {
 
   if (Ipi) {
     if (auto EC = Ipi->commit(Layout, Buffer))
+      return EC;
+  }
+
+  if (Gsi) {
+    if (auto EC = Gsi->commit(Layout, Buffer))
       return EC;
   }
 

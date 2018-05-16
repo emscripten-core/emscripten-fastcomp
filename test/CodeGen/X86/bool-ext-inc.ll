@@ -5,7 +5,7 @@
 
 define i32 @sext_inc(i1 zeroext %x) nounwind {
 ; CHECK-LABEL: sext_inc:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    xorb $1, %dil
 ; CHECK-NEXT:    movzbl %dil, %eax
 ; CHECK-NEXT:    retq
@@ -18,8 +18,8 @@ define i32 @sext_inc(i1 zeroext %x) nounwind {
 
 define <4 x i32> @sext_inc_vec(<4 x i1> %x) nounwind {
 ; CHECK-LABEL: sext_inc_vec:
-; CHECK:       # BB#0:
-; CHECK-NEXT:    vbroadcastss {{.*}}(%rip), %xmm1
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    vbroadcastss {{.*#+}} xmm1 = [1,1,1,1]
 ; CHECK-NEXT:    vandnps %xmm1, %xmm0, %xmm0
 ; CHECK-NEXT:    retq
   %ext = sext <4 x i1> %x to <4 x i32>
@@ -29,9 +29,9 @@ define <4 x i32> @sext_inc_vec(<4 x i1> %x) nounwind {
 
 define <4 x i32> @cmpgt_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) nounwind {
 ; CHECK-LABEL: cmpgt_sext_inc_vec:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    vpcmpgtd %xmm1, %xmm0, %xmm0
-; CHECK-NEXT:    vpbroadcastd {{.*}}(%rip), %xmm1
+; CHECK-NEXT:    vpbroadcastd {{.*#+}} xmm1 = [1,1,1,1]
 ; CHECK-NEXT:    vpandn %xmm1, %xmm0, %xmm0
 ; CHECK-NEXT:    retq
   %cmp = icmp sgt <4 x i32> %x, %y
@@ -42,7 +42,7 @@ define <4 x i32> @cmpgt_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) nounwind {
 
 define <4 x i32> @cmpne_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) nounwind {
 ; CHECK-LABEL: cmpne_sext_inc_vec:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    vpcmpeqd %xmm1, %xmm0, %xmm0
 ; CHECK-NEXT:    vpsrld $31, %xmm0, %xmm0
 ; CHECK-NEXT:    retq
@@ -54,9 +54,9 @@ define <4 x i32> @cmpne_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) nounwind {
 
 define <4 x i64> @cmpgt_sext_inc_vec256(<4 x i64> %x, <4 x i64> %y) nounwind {
 ; CHECK-LABEL: cmpgt_sext_inc_vec256:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    vpcmpgtq %ymm1, %ymm0, %ymm0
-; CHECK-NEXT:    vpbroadcastq {{.*}}(%rip), %ymm1
+; CHECK-NEXT:    vpbroadcastq {{.*#+}} ymm1 = [1,1,1,1]
 ; CHECK-NEXT:    vpandn %ymm1, %ymm0, %ymm0
 ; CHECK-NEXT:    retq
   %cmp = icmp sgt <4 x i64> %x, %y
@@ -67,7 +67,7 @@ define <4 x i64> @cmpgt_sext_inc_vec256(<4 x i64> %x, <4 x i64> %y) nounwind {
 
 define i32 @bool_logic_and_math(i32 %a, i32 %b, i32 %c, i32 %d) nounwind {
 ; CHECK-LABEL: bool_logic_and_math:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    cmpl %esi, %edi
 ; CHECK-NEXT:    sete %al
 ; CHECK-NEXT:    cmpl %ecx, %edx
@@ -85,13 +85,13 @@ define i32 @bool_logic_and_math(i32 %a, i32 %b, i32 %c, i32 %d) nounwind {
 
 define <4 x i32> @bool_logic_and_math_vec(<4 x i32> %a, <4 x i32> %b, <4 x i32> %c, <4 x i32> %d) nounwind {
 ; CHECK-LABEL: bool_logic_and_math_vec:
-; CHECK:       # BB#0:
+; CHECK:       # %bb.0:
 ; CHECK-NEXT:    vpcmpeqd %xmm1, %xmm0, %xmm0
 ; CHECK-NEXT:    vpcmpeqd %xmm3, %xmm2, %xmm1
 ; CHECK-NEXT:    vpcmpeqd %xmm2, %xmm2, %xmm2
 ; CHECK-NEXT:    vpxor %xmm2, %xmm1, %xmm1
 ; CHECK-NEXT:    vpandn %xmm1, %xmm0, %xmm0
-; CHECK-NEXT:    vpbroadcastd {{.*}}(%rip), %xmm1
+; CHECK-NEXT:    vpbroadcastd {{.*#+}} xmm1 = [1,1,1,1]
 ; CHECK-NEXT:    vpandn %xmm1, %xmm0, %xmm0
 ; CHECK-NEXT:    retq
   %cmp1 = icmp ne <4 x i32> %a, %b

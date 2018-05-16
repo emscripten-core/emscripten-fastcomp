@@ -5,13 +5,13 @@
 
 define float @Test1(float %f1, float %f2, float %f3, float %f4, float %f5, float %f6) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test1:BB#0
+; CHECK:       Test1:%bb.0
 
 ; CHECK:       VMULS
 ; > VMULS common latency = 5
 ; CHECK:       Latency            : 5
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMULS read-advanced latency to VMLAS = 0
 ; CHECK-SAME:  Latency=0
 
@@ -20,7 +20,7 @@ define float @Test1(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; > VMLAS common latency = 9
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAS read-advanced latency to the next VMLAS = 4
 ; CHECK-SAME:  Latency=4
 
@@ -28,7 +28,7 @@ define float @Test1(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; CHECK-FAST:    VFMAS
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAS not-optimized latency to VMOVRS = 9
 ; CHECK-SAME:  Latency=9
 
@@ -44,13 +44,13 @@ define float @Test1(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; ASIMD form
 define <2 x float> @Test2(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 x float> %f4, <2 x float> %f5, <2 x float> %f6) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test2:BB#0
+; CHECK:       Test2:%bb.0
 
 ; CHECK:       VMULfd
 ; > VMULfd common latency = 5
 ; CHECK:       Latency            : 5
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; VMULfd read-advanced latency to VMLAfd = 0
 ; CHECK-SAME:  Latency=0
 
@@ -59,7 +59,7 @@ define <2 x float> @Test2(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 ; > VMLAfd common latency = 9
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAfd read-advanced latency to the next VMLAfd = 4
 ; CHECK-SAME:  Latency=4
 
@@ -67,7 +67,7 @@ define <2 x float> @Test2(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 ; CHECK-FAST:    VFMAfd
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAfd not-optimized latency to VMOVRRD = 9
 ; CHECK-SAME:  Latency=9
 
@@ -82,13 +82,13 @@ define <2 x float> @Test2(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 
 define float @Test3(float %f1, float %f2, float %f3, float %f4, float %f5, float %f6) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test3:BB#0
+; CHECK:       Test3:%bb.0
 
 ; CHECK:       VMULS
 ; > VMULS common latency = 5
 ; CHECK:       Latency            : 5
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMULS read-advanced latency to VMLSS = 0
 ; CHECK-SAME:  Latency=0
 
@@ -97,7 +97,7 @@ define float @Test3(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; > VMLSS common latency = 9
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLSS read-advanced latency to the next VMLSS = 4
 ; CHECK-SAME:  Latency=4
 
@@ -105,7 +105,7 @@ define float @Test3(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; CHECK-FAST:    VFMSS
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLSS not-optimized latency to VMOVRS = 9
 ; CHECK-SAME:  Latency=9
 
@@ -121,13 +121,13 @@ define float @Test3(float %f1, float %f2, float %f3, float %f4, float %f5, float
 ; ASIMD form
 define <2 x float> @Test4(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 x float> %f4, <2 x float> %f5, <2 x float> %f6) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test4:BB#0
+; CHECK:       Test4:%bb.0
 
 ; CHECK:       VMULfd
 ; > VMULfd common latency = 5
 ; CHECK:       Latency            : 5
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; VMULfd read-advanced latency to VMLSfd = 0
 ; CHECK-SAME:  Latency=0
 
@@ -136,7 +136,7 @@ define <2 x float> @Test4(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 ; > VMLSfd common latency = 9
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLSfd read-advanced latency to the next VMLSfd = 4
 ; CHECK-SAME:  Latency=4
 
@@ -144,7 +144,7 @@ define <2 x float> @Test4(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 ; CHECK-FAST:    VFMSfd
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLSfd not-optimized latency to VMOVRRD = 9
 ; CHECK-SAME:  Latency=9
 
@@ -159,13 +159,13 @@ define <2 x float> @Test4(<2 x float> %f1, <2 x float> %f2, <2 x float> %f3, <2 
 
 define float @Test5(float %f1, float %f2, float %f3) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test5:BB#0
+; CHECK:       Test5:%bb.0
 
 ; CHECK-DEFAULT: VNMLS
 ; CHECK-FAST:    VFNMS
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAS not-optimized latency to VMOVRS = 9
 ; CHECK-SAME:  Latency=9
 
@@ -178,13 +178,13 @@ define float @Test5(float %f1, float %f2, float %f3) {
 
 define float @Test6(float %f1, float %f2, float %f3) {
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:       Test6:BB#0
+; CHECK:       Test6:%bb.0
 
 ; CHECK-DEFAULT: VNMLA
 ; CHECK-FAST:    VFNMA
 ; CHECK:       Latency            : 9
 ; CHECK:       Successors:
-; CHECK:       data
+; CHECK:       Data
 ; > VMLAS not-optimized latency to VMOVRS = 9
 ; CHECK-SAME:  Latency=9
 

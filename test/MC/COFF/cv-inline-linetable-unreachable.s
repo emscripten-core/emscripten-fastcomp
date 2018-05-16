@@ -18,7 +18,7 @@ Lfunc_begin0:
 	.cv_func_id 0
 	.cv_inline_site_id 1 within 0 inlined_at 1 1 1
 	.cv_loc	0 1 7 0 is_stmt 0       # <stdin>:7:0
-# BB#0:                                 # %entry
+# %bb.0:                                # %entry
 	pushl	%ebp
 	movl	%esp, %ebp
 	.cv_loc	1 1 4 3                 # <stdin>:4:3
@@ -76,7 +76,7 @@ Ltmp6:
 	.short	4429
 	.asciz	"\000\000\000\000\000\000\000\000\003\020\000"
 	.cv_inline_linetable	1 1 3 Lfunc_begin0 Lfunc_end0
-# CHECK:    InlineSite {
+# CHECK:    InlineSiteSym {
 # CHECK:      PtrParent: 0x0
 # CHECK:      PtrEnd: 0x0
 # CHECK:      Inlinee: f (0x1003)

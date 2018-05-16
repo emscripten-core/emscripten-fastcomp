@@ -24,6 +24,7 @@
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
 #include "llvm/MC/MCSubtargetInfo.h"
+#include "llvm/MC/MCTargetOptions.h"
 #include "llvm/MC/MCValue.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/Format.h"
@@ -209,10 +210,9 @@ static unsigned adjustFixupValue(const MCFixup &Fixup, uint64_t Value,
   return Value;
 }
 
-MCObjectWriter *
+std::unique_ptr<MCObjectWriter>
 MipsAsmBackend::createObjectWriter(raw_pwrite_stream &OS) const {
-  return createMipsELFObjectWriter(OS,
-    MCELFObjectTargetWriter::getOSABI(OSType), IsLittle, Is64Bit);
+  return createMipsELFObjectWriter(OS, TheTriple, IsN32);
 }
 
 // Little-endian fixup data byte ordering:
@@ -235,10 +235,12 @@ static unsigned calculateMMLEIndex(unsigned i) {
 /// ApplyFixup - Apply the \p Value for given \p Fixup into the provided
 /// data fragment, at the offset specified by the fixup and following the
 /// fixup kind as appropriate.
-void MipsAsmBackend::applyFixup(const MCFixup &Fixup, char *Data,
-                                unsigned DataSize, uint64_t Value, bool IsPCRel,
-                                MCContext &Ctx) const {
+void MipsAsmBackend::applyFixup(const MCAssembler &Asm, const MCFixup &Fixup,
+                                const MCValue &Target,
+                                MutableArrayRef<char> Data, uint64_t Value,
+                                bool IsResolved) const {
   MCFixupKind Kind = Fixup.getKind();
+  MCContext &Ctx = Asm.getContext();
   Value = adjustFixupValue(Fixup, Value, Ctx);
 
   if (!Value)
@@ -473,34 +475,10 @@ bool MipsAsmBackend::writeNopData(uint64_t Count, MCObjectWriter *OW) const {
   return true;
 }
 
-// MCAsmBackend
-MCAsmBackend *llvm::createMipsAsmBackendEL32(const Target &T,
-                                             const MCRegisterInfo &MRI,
-                                             const Triple &TT, StringRef CPU,
-                                             const MCTargetOptions &Options) {
-  return new MipsAsmBackend(T, TT.getOS(), /*IsLittle*/ true,
-                            /*Is64Bit*/ false);
-}
-
-MCAsmBackend *llvm::createMipsAsmBackendEB32(const Target &T,
-                                             const MCRegisterInfo &MRI,
-                                             const Triple &TT, StringRef CPU,
-                                             const MCTargetOptions &Options) {
-  return new MipsAsmBackend(T, TT.getOS(), /*IsLittle*/ false,
-                            /*Is64Bit*/ false);
-}
-
-MCAsmBackend *llvm::createMipsAsmBackendEL64(const Target &T,
-                                             const MCRegisterInfo &MRI,
-                                             const Triple &TT, StringRef CPU,
-                                             const MCTargetOptions &Options) {
-  return new MipsAsmBackend(T, TT.getOS(), /*IsLittle*/ true, /*Is64Bit*/ true);
-}
-
-MCAsmBackend *llvm::createMipsAsmBackendEB64(const Target &T,
-                                             const MCRegisterInfo &MRI,
-                                             const Triple &TT, StringRef CPU,
-                                             const MCTargetOptions &Options) {
-  return new MipsAsmBackend(T, TT.getOS(), /*IsLittle*/ false,
-                            /*Is64Bit*/ true);
+MCAsmBackend *llvm::createMipsAsmBackend(const Target &T,
+                                         const MCSubtargetInfo &STI,
+                                         const MCRegisterInfo &MRI,
+                                         const MCTargetOptions &Options) {
+  return new MipsAsmBackend(T, MRI, STI.getTargetTriple(), STI.getCPU(),
+                            Options.ABIName == "n32");
 }

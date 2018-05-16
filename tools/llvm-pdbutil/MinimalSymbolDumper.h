@@ -23,10 +23,12 @@ class LinePrinter;
 class MinimalSymbolDumper : public codeview::SymbolVisitorCallbacks {
 public:
   MinimalSymbolDumper(LinePrinter &P, bool RecordBytes,
+                      codeview::LazyRandomTypeCollection &Ids,
                       codeview::LazyRandomTypeCollection &Types)
-      : P(P), Types(Types) {}
+      : P(P), RecordBytes(RecordBytes), Ids(Ids), Types(Types) {}
 
   Error visitSymbolBegin(codeview::CVSymbol &Record) override;
+  Error visitSymbolBegin(codeview::CVSymbol &Record, uint32_t Offset) override;
   Error visitSymbolEnd(codeview::CVSymbol &Record) override;
 
 #define SYMBOL_RECORD(EnumName, EnumVal, Name)                                 \
@@ -36,9 +38,14 @@ public:
 #include "llvm/DebugInfo/CodeView/CodeViewSymbols.def"
 
 private:
+  std::string typeOrIdIndex(codeview::TypeIndex TI, bool IsType) const;
+
   std::string typeIndex(codeview::TypeIndex TI) const;
+  std::string idIndex(codeview::TypeIndex TI) const;
 
   LinePrinter &P;
+  bool RecordBytes;
+  codeview::LazyRandomTypeCollection &Ids;
   codeview::LazyRandomTypeCollection &Types;
 };
 } // namespace pdb

@@ -22,7 +22,7 @@
 
 namespace llvm {
 namespace bitc {
-// The only top-level block types are MODULE, IDENTIFICATION and STRTAB.
+// The only top-level block types are MODULE, IDENTIFICATION, STRTAB and SYMTAB.
 enum BlockIDs {
   // Blocks
   MODULE_BLOCK_ID = FIRST_APPLICATION_BLOCKID,
@@ -57,6 +57,10 @@ enum BlockIDs {
   STRTAB_BLOCK_ID,
 
   FULL_LTO_GLOBALVAL_SUMMARY_BLOCK_ID,
+
+  SYMTAB_BLOCK_ID,
+
+  SYNC_SCOPE_NAMES_BLOCK_ID,
 };
 
 /// Identification block contains a string that describes the producer details,
@@ -168,6 +172,10 @@ enum TypeCodes {
 
 enum OperandBundleTagCode {
   OPERAND_BUNDLE_TAG = 1, // TAG: [strchr x N]
+};
+
+enum SyncScopeNameCode {
+  SYNC_SCOPE_NAME = 1,
 };
 
 // Value symbol table codes.
@@ -387,6 +395,20 @@ enum OverflowingBinaryOperatorOptionalFlags {
   OBO_NO_SIGNED_WRAP = 1
 };
 
+/// FastMath Flags
+/// This is a fixed layout derived from the bitcode emitted by LLVM 5.0
+/// intended to decouple the in-memory representation from the serialization.
+enum FastMathMap {
+  UnsafeAlgebra   = (1 << 0), // Legacy
+  NoNaNs          = (1 << 1),
+  NoInfs          = (1 << 2),
+  NoSignedZeros   = (1 << 3),
+  AllowReciprocal = (1 << 4),
+  AllowContract   = (1 << 5),
+  ApproxFunc      = (1 << 6),
+  AllowReassoc    = (1 << 7)
+};
+
 /// PossiblyExactOperatorOptionalFlags - Flags for serializing
 /// PossiblyExactOperator's SubclassOptionalData contents.
 enum PossiblyExactOperatorOptionalFlags { PEO_EXACT = 0 };
@@ -400,12 +422,6 @@ enum AtomicOrderingCodes {
   ORDERING_RELEASE = 4,
   ORDERING_ACQREL = 5,
   ORDERING_SEQCST = 6
-};
-
-/// Encoded SynchronizationScope values.
-enum AtomicSynchScopeCodes {
-  SYNCHSCOPE_SINGLETHREAD = 0,
-  SYNCHSCOPE_CROSSTHREAD = 1
 };
 
 /// Markers and flags for call instruction.
@@ -556,7 +572,9 @@ enum AttributeKindCodes {
   ATTR_KIND_INACCESSIBLEMEM_OR_ARGMEMONLY = 50,
   ATTR_KIND_ALLOC_SIZE = 51,
   ATTR_KIND_WRITEONLY = 52,
-  ATTR_KIND_SPECULATABLE = 53
+  ATTR_KIND_SPECULATABLE = 53,
+  ATTR_KIND_STRICT_FP = 54,
+  ATTR_KIND_SANITIZE_HWADDRESS = 55,
 };
 
 enum ComdatSelectionKindCodes {
@@ -569,6 +587,10 @@ enum ComdatSelectionKindCodes {
 
 enum StrtabCodes {
   STRTAB_BLOB = 1,
+};
+
+enum SymtabCodes {
+  SYMTAB_BLOB = 1,
 };
 
 } // End bitc namespace

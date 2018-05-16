@@ -1,9 +1,21 @@
 from __future__ import absolute_import
+import difflib
+import errno
+import functools
+import itertools
+import getopt
 import os, signal, subprocess, sys
 import re
+import stat
 import platform
+import shutil
 import tempfile
 import threading
+
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 from lit.ShCommands import GlobItem
 import lit.ShUtil as ShUtil
@@ -212,7 +224,20 @@ def quote_windows_command(seq):
 # cmd is export or env
 def updateEnv(env, cmd):
     arg_idx = 1
+    unset_next_env_var = False
     for arg_idx, arg in enumerate(cmd.args[1:]):
+        # Support for the -u flag (unsetting) for env command
+        # e.g., env -u FOO -u BAR will remove both FOO and BAR
+        # from the environment.
+        if arg == '-u':
+            unset_next_env_var = True
+            continue
+        if unset_next_env_var:
+            unset_next_env_var = False
+            if arg in env.env:
+                del env.env[arg]
+            continue
+
         # Partition the string into KEY=VALUE.
         key, eq, val = arg.partition('=')
         # Stop if there was no equals.
@@ -220,6 +245,306 @@ def updateEnv(env, cmd):
             break
         env.env[key] = val
     cmd.args = cmd.args[arg_idx+1:]
+
+def executeBuiltinEcho(cmd, shenv):
+    """Interpret a redirected echo command"""
+    opened_files = []
+    stdin, stdout, stderr = processRedirects(cmd, subprocess.PIPE, shenv,
+                                             opened_files)
+    if stdin != subprocess.PIPE or stderr != subprocess.PIPE:
+        raise InternalShellError(
+                cmd, "stdin and stderr redirects not supported for echo")
+
+    # Some tests have un-redirected echo commands to help debug test failures.
+    # Buffer our output and return it to the caller.
+    is_redirected = True
+    encode = lambda x : x
+    if stdout == subprocess.PIPE:
+        is_redirected = False
+        stdout = StringIO()
+    elif kIsWindows:
+        # Reopen stdout in binary mode to avoid CRLF translation. The versions
+        # of echo we are replacing on Windows all emit plain LF, and the LLVM
+        # tests now depend on this.
+        # When we open as binary, however, this also means that we have to write
+        # 'bytes' objects to stdout instead of 'str' objects.
+        encode = lit.util.to_bytes
+        stdout = open(stdout.name, stdout.mode + 'b')
+        opened_files.append((None, None, stdout, None))
+
+    # Implement echo flags. We only support -e and -n, and not yet in
+    # combination. We have to ignore unknown flags, because `echo "-D FOO"`
+    # prints the dash.
+    args = cmd.args[1:]
+    interpret_escapes = False
+    write_newline = True
+    while len(args) >= 1 and args[0] in ('-e', '-n'):
+        flag = args[0]
+        args = args[1:]
+        if flag == '-e':
+            interpret_escapes = True
+        elif flag == '-n':
+            write_newline = False
+
+    def maybeUnescape(arg):
+        if not interpret_escapes:
+            return arg
+
+        arg = lit.util.to_bytes(arg)
+        codec = 'string_escape' if sys.version_info < (3,0) else 'unicode_escape'
+        return arg.decode(codec)
+
+    if args:
+        for arg in args[:-1]:
+            stdout.write(encode(maybeUnescape(arg)))
+            stdout.write(encode(' '))
+        stdout.write(encode(maybeUnescape(args[-1])))
+    if write_newline:
+        stdout.write(encode('\n'))
+
+    for (name, mode, f, path) in opened_files:
+        f.close()
+
+    if not is_redirected:
+        return stdout.getvalue()
+    return ""
+
+def executeBuiltinMkdir(cmd, cmd_shenv):
+    """executeBuiltinMkdir - Create new directories."""
+    args = expand_glob_expressions(cmd.args, cmd_shenv.cwd)[1:]
+    try:
+        opts, args = getopt.gnu_getopt(args, 'p')
+    except getopt.GetoptError as err:
+        raise InternalShellError(cmd, "Unsupported: 'mkdir':  %s" % str(err))
+
+    parent = False
+    for o, a in opts:
+        if o == "-p":
+            parent = True
+        else:
+            assert False, "unhandled option"
+
+    if len(args) == 0:
+        raise InternalShellError(cmd, "Error: 'mkdir' is missing an operand")
+
+    stderr = StringIO()
+    exitCode = 0
+    for dir in args:
+        if not os.path.isabs(dir):
+            dir = os.path.realpath(os.path.join(cmd_shenv.cwd, dir))
+        if parent:
+            lit.util.mkdir_p(dir)
+        else:
+            try:
+                os.mkdir(dir)
+            except OSError as err:
+                stderr.write("Error: 'mkdir' command failed, %s\n" % str(err))
+                exitCode = 1
+    return ShellCommandResult(cmd, "", stderr.getvalue(), exitCode, False)
+
+def executeBuiltinDiff(cmd, cmd_shenv):
+    """executeBuiltinDiff - Compare files line by line."""
+    args = expand_glob_expressions(cmd.args, cmd_shenv.cwd)[1:]
+    try:
+        opts, args = getopt.gnu_getopt(args, "wbu", ["strip-trailing-cr"])
+    except getopt.GetoptError as err:
+        raise InternalShellError(cmd, "Unsupported: 'diff':  %s" % str(err))
+
+    filelines, filepaths = ([] for i in range(2))
+    ignore_all_space = False
+    ignore_space_change = False
+    unified_diff = False
+    strip_trailing_cr = False
+    for o, a in opts:
+        if o == "-w":
+            ignore_all_space = True
+        elif o == "-b":
+            ignore_space_change = True
+        elif o == "-u":
+            unified_diff = True
+        elif o == "--strip-trailing-cr":
+            strip_trailing_cr = True
+        else:
+            assert False, "unhandled option"
+
+    if len(args) != 2:
+        raise InternalShellError(cmd, "Error:  missing or extra operand")
+
+    stderr = StringIO()
+    stdout = StringIO()
+    exitCode = 0
+    try:
+        for file in args:
+            if not os.path.isabs(file):
+                file = os.path.realpath(os.path.join(cmd_shenv.cwd, file))
+            filepaths.append(file)
+            with open(file, 'r') as f:
+                filelines.append(f.readlines())
+
+        def compose2(f, g):
+            return lambda x: f(g(x))
+
+        f = lambda x: x
+        if strip_trailing_cr:
+            f = compose2(lambda line: line.rstrip('\r'), f)
+        if ignore_all_space or ignore_space_change:
+            ignoreSpace = lambda line, separator: separator.join(line.split())
+            ignoreAllSpaceOrSpaceChange = functools.partial(ignoreSpace, separator='' if ignore_all_space else ' ')
+            f = compose2(ignoreAllSpaceOrSpaceChange, f)
+
+        for idx, lines in enumerate(filelines):
+            filelines[idx]= [f(line) for line in lines]
+
+        func = difflib.unified_diff if unified_diff else difflib.context_diff
+        for diff in func(filelines[0], filelines[1], filepaths[0], filepaths[1]):
+            stdout.write(diff)
+            exitCode = 1
+    except IOError as err:
+        stderr.write("Error: 'diff' command failed, %s\n" % str(err))
+        exitCode = 1
+
+    return ShellCommandResult(cmd, stdout.getvalue(), stderr.getvalue(), exitCode, False)
+
+def executeBuiltinRm(cmd, cmd_shenv):
+    """executeBuiltinRm - Removes (deletes) files or directories."""
+    args = expand_glob_expressions(cmd.args, cmd_shenv.cwd)[1:]
+    try:
+        opts, args = getopt.gnu_getopt(args, "frR", ["--recursive"])
+    except getopt.GetoptError as err:
+        raise InternalShellError(cmd, "Unsupported: 'rm':  %s" % str(err))
+
+    force = False
+    recursive = False
+    for o, a in opts:
+        if o == "-f":
+            force = True
+        elif o in ("-r", "-R", "--recursive"):
+            recursive = True
+        else:
+            assert False, "unhandled option"
+
+    if len(args) == 0:
+        raise InternalShellError(cmd, "Error: 'rm' is missing an operand")
+
+    def on_rm_error(func, path, exc_info):
+        # path contains the path of the file that couldn't be removed
+        # let's just assume that it's read-only and remove it.
+        os.chmod(path, stat.S_IMODE( os.stat(path).st_mode) | stat.S_IWRITE)
+        os.remove(path)
+
+    stderr = StringIO()
+    exitCode = 0
+    for path in args:
+        if not os.path.isabs(path):
+            path = os.path.realpath(os.path.join(cmd_shenv.cwd, path))
+        if force and not os.path.exists(path):
+            continue
+        try:
+            if os.path.isdir(path):
+                if not recursive:
+                    stderr.write("Error: %s is a directory\n" % path)
+                    exitCode = 1
+                shutil.rmtree(path, onerror = on_rm_error if force else None)
+            else:
+                if force and not os.access(path, os.W_OK):
+                    os.chmod(path,
+                             stat.S_IMODE(os.stat(path).st_mode) | stat.S_IWRITE)
+                os.remove(path)
+        except OSError as err:
+            stderr.write("Error: 'rm' command failed, %s" % str(err))
+            exitCode = 1
+    return ShellCommandResult(cmd, "", stderr.getvalue(), exitCode, False)
+
+def processRedirects(cmd, stdin_source, cmd_shenv, opened_files):
+    """Return the standard fds for cmd after applying redirects
+
+    Returns the three standard file descriptors for the new child process.  Each
+    fd may be an open, writable file object or a sentinel value from the
+    subprocess module.
+    """
+
+    # Apply the redirections, we use (N,) as a sentinel to indicate stdin,
+    # stdout, stderr for N equal to 0, 1, or 2 respectively. Redirects to or
+    # from a file are represented with a list [file, mode, file-object]
+    # where file-object is initially None.
+    redirects = [(0,), (1,), (2,)]
+    for (op, filename) in cmd.redirects:
+        if op == ('>',2):
+            redirects[2] = [filename, 'w', None]
+        elif op == ('>>',2):
+            redirects[2] = [filename, 'a', None]
+        elif op == ('>&',2) and filename in '012':
+            redirects[2] = redirects[int(filename)]
+        elif op == ('>&',) or op == ('&>',):
+            redirects[1] = redirects[2] = [filename, 'w', None]
+        elif op == ('>',):
+            redirects[1] = [filename, 'w', None]
+        elif op == ('>>',):
+            redirects[1] = [filename, 'a', None]
+        elif op == ('<',):
+            redirects[0] = [filename, 'r', None]
+        else:
+            raise InternalShellError(cmd, "Unsupported redirect: %r" % ((op, filename),))
+
+    # Open file descriptors in a second pass.
+    std_fds = [None, None, None]
+    for (index, r) in enumerate(redirects):
+        # Handle the sentinel values for defaults up front.
+        if isinstance(r, tuple):
+            if r == (0,):
+                fd = stdin_source
+            elif r == (1,):
+                if index == 0:
+                    raise InternalShellError(cmd, "Unsupported redirect for stdin")
+                elif index == 1:
+                    fd = subprocess.PIPE
+                else:
+                    fd = subprocess.STDOUT
+            elif r == (2,):
+                if index != 2:
+                    raise InternalShellError(cmd, "Unsupported redirect on stdout")
+                fd = subprocess.PIPE
+            else:
+                raise InternalShellError(cmd, "Bad redirect")
+            std_fds[index] = fd
+            continue
+
+        (filename, mode, fd) = r
+
+        # Check if we already have an open fd. This can happen if stdout and
+        # stderr go to the same place.
+        if fd is not None:
+            std_fds[index] = fd
+            continue
+
+        redir_filename = None
+        name = expand_glob(filename, cmd_shenv.cwd)
+        if len(name) != 1:
+           raise InternalShellError(cmd, "Unsupported: glob in "
+                                    "redirect expanded to multiple files")
+        name = name[0]
+        if kAvoidDevNull and name == '/dev/null':
+            fd = tempfile.TemporaryFile(mode=mode)
+        elif kIsWindows and name == '/dev/tty':
+            # Simulate /dev/tty on Windows.
+            # "CON" is a special filename for the console.
+            fd = open("CON", mode)
+        else:
+            # Make sure relative paths are relative to the cwd.
+            redir_filename = os.path.join(cmd_shenv.cwd, name)
+            fd = open(redir_filename, mode)
+        # Workaround a Win32 and/or subprocess bug when appending.
+        #
+        # FIXME: Actually, this is probably an instance of PR6753.
+        if mode == 'a':
+            fd.seek(0, 2)
+        # Mutate the underlying redirect list so that we can redirect stdout
+        # and stderr to the same place without opening the file twice.
+        r[2] = fd
+        opened_files.append((filename, mode, fd) + (redir_filename,))
+        std_fds[index] = fd
+
+    return std_fds
 
 def _executeShCmd(cmd, shenv, results, timeoutHelper):
     if timeoutHelper.timeoutReached():
@@ -269,6 +594,17 @@ def _executeShCmd(cmd, shenv, results, timeoutHelper):
         # following Popen calls will fail instead.
         return 0
 
+    # Handle "echo" as a builtin if it is not part of a pipeline. This greatly
+    # speeds up tests that construct input files by repeatedly echo-appending to
+    # a file.
+    # FIXME: Standardize on the builtin echo implementation. We can use a
+    # temporary file to sidestep blocking pipe write issues.
+    if cmd.commands[0].args[0] == 'echo' and len(cmd.commands) == 1:
+        output = executeBuiltinEcho(cmd.commands[0], shenv)
+        results.append(ShellCommandResult(cmd.commands[0], output, "", 0,
+                                          False))
+        return 0
+
     if cmd.commands[0].args[0] == 'export':
         if len(cmd.commands) != 1:
             raise ValueError("'export' cannot be part of a pipeline")
@@ -277,8 +613,32 @@ def _executeShCmd(cmd, shenv, results, timeoutHelper):
         updateEnv(shenv, cmd.commands[0])
         return 0
 
+    if cmd.commands[0].args[0] == 'mkdir':
+        if len(cmd.commands) != 1:
+            raise InternalShellError(cmd.commands[0], "Unsupported: 'mkdir' "
+                                     "cannot be part of a pipeline")
+        cmdResult = executeBuiltinMkdir(cmd.commands[0], shenv)
+        results.append(cmdResult)
+        return cmdResult.exitCode
+
+    if cmd.commands[0].args[0] == 'diff':
+        if len(cmd.commands) != 1:
+            raise InternalShellError(cmd.commands[0], "Unsupported: 'diff' "
+                                     "cannot be part of a pipeline")
+        cmdResult = executeBuiltinDiff(cmd.commands[0], shenv)
+        results.append(cmdResult)
+        return cmdResult.exitCode
+
+    if cmd.commands[0].args[0] == 'rm':
+        if len(cmd.commands) != 1:
+            raise InternalShellError(cmd.commands[0], "Unsupported: 'rm' "
+                                     "cannot be part of a pipeline")
+        cmdResult = executeBuiltinRm(cmd.commands[0], shenv)
+        results.append(cmdResult)
+        return cmdResult.exitCode
+
     procs = []
-    input = subprocess.PIPE
+    default_stdin = subprocess.PIPE
     stderrTempFiles = []
     opened_files = []
     named_temp_files = []
@@ -295,72 +655,8 @@ def _executeShCmd(cmd, shenv, results, timeoutHelper):
             cmd_shenv = ShellEnvironment(shenv.cwd, shenv.env)
             updateEnv(cmd_shenv, j)
 
-        # Apply the redirections, we use (N,) as a sentinel to indicate stdin,
-        # stdout, stderr for N equal to 0, 1, or 2 respectively. Redirects to or
-        # from a file are represented with a list [file, mode, file-object]
-        # where file-object is initially None.
-        redirects = [(0,), (1,), (2,)]
-        for r in j.redirects:
-            if r[0] == ('>',2):
-                redirects[2] = [r[1], 'w', None]
-            elif r[0] == ('>>',2):
-                redirects[2] = [r[1], 'a', None]
-            elif r[0] == ('>&',2) and r[1] in '012':
-                redirects[2] = redirects[int(r[1])]
-            elif r[0] == ('>&',) or r[0] == ('&>',):
-                redirects[1] = redirects[2] = [r[1], 'w', None]
-            elif r[0] == ('>',):
-                redirects[1] = [r[1], 'w', None]
-            elif r[0] == ('>>',):
-                redirects[1] = [r[1], 'a', None]
-            elif r[0] == ('<',):
-                redirects[0] = [r[1], 'r', None]
-            else:
-                raise InternalShellError(j,"Unsupported redirect: %r" % (r,))
-
-        # Map from the final redirections to something subprocess can handle.
-        final_redirects = []
-        for index,r in enumerate(redirects):
-            if r == (0,):
-                result = input
-            elif r == (1,):
-                if index == 0:
-                    raise InternalShellError(j,"Unsupported redirect for stdin")
-                elif index == 1:
-                    result = subprocess.PIPE
-                else:
-                    result = subprocess.STDOUT
-            elif r == (2,):
-                if index != 2:
-                    raise InternalShellError(j,"Unsupported redirect on stdout")
-                result = subprocess.PIPE
-            else:
-                if r[2] is None:
-                    redir_filename = None
-                    name = expand_glob(r[0], cmd_shenv.cwd)
-                    if len(name) != 1:
-                       raise InternalShellError(j,"Unsupported: glob in redirect expanded to multiple files")
-                    name = name[0]
-                    if kAvoidDevNull and name == '/dev/null':
-                        r[2] = tempfile.TemporaryFile(mode=r[1])
-                    elif kIsWindows and name == '/dev/tty':
-                        # Simulate /dev/tty on Windows.
-                        # "CON" is a special filename for the console.
-                        r[2] = open("CON", r[1])
-                    else:
-                        # Make sure relative paths are relative to the cwd.
-                        redir_filename = os.path.join(cmd_shenv.cwd, name)
-                        r[2] = open(redir_filename, r[1])
-                    # Workaround a Win32 and/or subprocess bug when appending.
-                    #
-                    # FIXME: Actually, this is probably an instance of PR6753.
-                    if r[1] == 'a':
-                        r[2].seek(0, 2)
-                    opened_files.append(tuple(r) + (redir_filename,))
-                result = r[2]
-            final_redirects.append(result)
-
-        stdin, stdout, stderr = final_redirects
+        stdin, stdout, stderr = processRedirects(j, default_stdin, cmd_shenv,
+                                                 opened_files)
 
         # If stderr wants to come from stdout, but stdout isn't a pipe, then put
         # stderr on a pipe and treat it as stdout.
@@ -428,11 +724,11 @@ def _executeShCmd(cmd, shenv, results, timeoutHelper):
 
         # Update the current stdin source.
         if stdout == subprocess.PIPE:
-            input = procs[-1].stdout
+            default_stdin = procs[-1].stdout
         elif stderrIsStdout:
-            input = procs[-1].stderr
+            default_stdin = procs[-1].stderr
         else:
-            input = subprocess.PIPE
+            default_stdin = subprocess.PIPE
 
     # Explicitly close any redirected files. We need to do this now because we
     # need to release any handles we may have on the temporary files (important
@@ -610,10 +906,13 @@ def executeScript(test, litConfig, tmpBase, commands, cwd):
       mode += 'b'  # Avoid CRLFs when writing bash scripts.
     f = open(script, mode)
     if isWin32CMDEXE:
+        f.write('@echo off\n')
         f.write('\nif %ERRORLEVEL% NEQ 0 EXIT\n'.join(commands))
     else:
         if test.config.pipefail:
             f.write('set -o pipefail;')
+        if litConfig.echo_all_commands:
+            f.write('set -x;')
         f.write('{ ' + '; } &&\n{ '.join(commands) + '; }')
     f.write('\n')
     f.close()
@@ -684,9 +983,13 @@ def parseIntegratedTestScriptCommands(source_path, keywords):
             # command. Note that we take care to return regular strings in
             # Python 2, to avoid other code having to differentiate between the
             # str and unicode types.
+            #
+            # Opening the file in binary mode prevented Windows \r newline
+            # characters from being converted to Unix \n newlines, so manually
+            # strip those from the yielded lines.
             keyword,ln = match.groups()
             yield (line_number, to_string(keyword.decode('utf-8')),
-                   to_string(ln.decode('utf-8')))
+                   to_string(ln.decode('utf-8').rstrip('\r')))
     finally:
         f.close()
 
@@ -698,6 +1001,13 @@ def getTempPaths(test):
     tmpDir = os.path.join(execdir, 'Output')
     tmpBase = os.path.join(tmpDir, execbase)
     return tmpDir, tmpBase
+
+def colonNormalizePath(path):
+    if kIsWindows:
+        return re.sub(r'^(.):', r'\1', path.replace('\\', '/'))
+    else:
+        assert path[0] == '/'
+        return path[1:]
 
 def getDefaultSubstitutions(test, tmpDir, tmpBase, normalize_slashes=False):
     sourcepath = test.getSourcePath()
@@ -734,23 +1044,15 @@ def getDefaultSubstitutions(test, tmpDir, tmpBase, normalize_slashes=False):
             ('%/T', tmpDir.replace('\\', '/')),
             ])
 
-    # "%:[STpst]" are paths without colons.
-    if kIsWindows:
-        substitutions.extend([
-                ('%:s', re.sub(r'^(.):', r'\1', sourcepath)),
-                ('%:S', re.sub(r'^(.):', r'\1', sourcedir)),
-                ('%:p', re.sub(r'^(.):', r'\1', sourcedir)),
-                ('%:t', re.sub(r'^(.):', r'\1', tmpBase) + '.tmp'),
-                ('%:T', re.sub(r'^(.):', r'\1', tmpDir)),
-                ])
-    else:
-        substitutions.extend([
-                ('%:s', sourcepath),
-                ('%:S', sourcedir),
-                ('%:p', sourcedir),
-                ('%:t', tmpBase + '.tmp'),
-                ('%:T', tmpDir),
-                ])
+    # "%:[STpst]" are normalized paths without colons and without a leading
+    # slash.
+    substitutions.extend([
+            ('%:s', colonNormalizePath(sourcepath)),
+            ('%:S', colonNormalizePath(sourcedir)),
+            ('%:p', colonNormalizePath(sourcedir)),
+            ('%:t', colonNormalizePath(tmpBase + '.tmp')),
+            ('%:T', colonNormalizePath(tmpDir)),
+            ])
     return substitutions
 
 def applySubstitutions(script, substitutions):

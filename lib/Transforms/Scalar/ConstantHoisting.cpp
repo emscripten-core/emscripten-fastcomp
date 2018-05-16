@@ -34,16 +34,39 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/Transforms/Scalar/ConstantHoisting.h"
-#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/APInt.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/None.h"
+#include "llvm/ADT/Optional.h"
+#include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
+#include "llvm/Analysis/BlockFrequencyInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Constants.h"
+#include "llvm/IR/Dominators.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/InstrTypes.h"
+#include "llvm/IR/Instruction.h"
+#include "llvm/IR/Instructions.h"
 #include "llvm/IR/IntrinsicInst.h"
+#include "llvm/IR/Value.h"
 #include "llvm/Pass.h"
+#include "llvm/Support/BlockFrequency.h"
+#include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Scalar.h"
+#include "llvm/Transforms/Utils/Local.h"
+#include "llvm/IR/DebugInfoMetadata.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <iterator>
 #include <tuple>
+#include <utility>
 
 using namespace llvm;
 using namespace consthoist;
@@ -54,16 +77,18 @@ STATISTIC(NumConstantsHoisted, "Number of constants hoisted");
 STATISTIC(NumConstantsRebased, "Number of constants rebased");
 
 static cl::opt<bool> ConstHoistWithBlockFrequency(
-    "consthoist-with-block-frequency", cl::init(false), cl::Hidden,
+    "consthoist-with-block-frequency", cl::init(true), cl::Hidden,
     cl::desc("Enable the use of the block frequency analysis to reduce the "
              "chance to execute const materialization more frequently than "
              "without hoisting."));
 
 namespace {
+
 /// \brief The constant hoisting pass.
 class ConstantHoistingLegacyPass : public FunctionPass {
 public:
   static char ID; // Pass identification, replacement for typeid
+
   ConstantHoistingLegacyPass() : FunctionPass(ID) {
     initializeConstantHoistingLegacyPassPass(*PassRegistry::getPassRegistry());
   }
@@ -85,9 +110,11 @@ public:
 private:
   ConstantHoistingPass Impl;
 };
-}
+
+} // end anonymous namespace
 
 char ConstantHoistingLegacyPass::ID = 0;
+
 INITIALIZE_PASS_BEGIN(ConstantHoistingLegacyPass, "consthoist",
                       "Constant Hoisting", false, false)
 INITIALIZE_PASS_DEPENDENCY(BlockFrequencyInfoWrapperPass)
@@ -125,7 +152,6 @@ bool ConstantHoistingLegacyPass::runOnFunction(Function &Fn) {
 
   return MadeChange;
 }
-
 
 /// \brief Find the constant materialization insertion point.
 Instruction *ConstantHoistingPass::findMatInsertPt(Instruction *Inst,
@@ -215,8 +241,9 @@ static void findBestInsertionSet(DominatorTree &DT, BlockFrequencyInfo &BFI,
   }
 
   // Visit Orders in bottom-up order.
-  typedef std::pair<SmallPtrSet<BasicBlock *, 16>, BlockFrequency>
-      InsertPtsCostPair;
+  using InsertPtsCostPair =
+      std::pair<SmallPtrSet<BasicBlock *, 16>, BlockFrequency>;
+
   // InsertPtsMap is a map from a BB to the best insertion points for the
   // subtree of BB (subtree not including the BB itself).
   DenseMap<BasicBlock *, InsertPtsCostPair> InsertPtsMap;
@@ -230,7 +257,8 @@ static void findBestInsertionSet(DominatorTree &DT, BlockFrequencyInfo &BFI,
     // Return the optimal insert points in BBs.
     if (Node == Entry) {
       BBs.clear();
-      if (InsertPtsFreq > BFI.getBlockFreq(Node))
+      if (InsertPtsFreq > BFI.getBlockFreq(Node) ||
+          (InsertPtsFreq == BFI.getBlockFreq(Node) && InsertPts.size() > 1))
         BBs.insert(Entry);
       else
         BBs.insert(InsertPts.begin(), InsertPts.end());
@@ -243,7 +271,15 @@ static void findBestInsertionSet(DominatorTree &DT, BlockFrequencyInfo &BFI,
     SmallPtrSet<BasicBlock *, 16> &ParentInsertPts = InsertPtsMap[Parent].first;
     BlockFrequency &ParentPtsFreq = InsertPtsMap[Parent].second;
     // Choose to insert in Node or in subtree of Node.
-    if (InsertPtsFreq > BFI.getBlockFreq(Node) || NodeInBBs) {
+    // Don't hoist to EHPad because we may not find a proper place to insert
+    // in EHPad.
+    // If the total frequency of InsertPts is the same as the frequency of the
+    // target Node, and InsertPts contains more than one nodes, choose hoisting
+    // to reduce code size.
+    if (NodeInBBs ||
+        (!Node->isEHPad() &&
+         (InsertPtsFreq > BFI.getBlockFreq(Node) ||
+          (InsertPtsFreq == BFI.getBlockFreq(Node) && InsertPts.size() > 1)))) {
       ParentInsertPts.insert(Node);
       ParentPtsFreq += BFI.getBlockFreq(Node);
     } else {
@@ -299,7 +335,6 @@ SmallPtrSet<Instruction *, 8> ConstantHoistingPass::findConstantInsertionPoint(
   return InsertPts;
 }
 
-
 /// \brief Record constant integer ConstInt for instruction Inst at operand
 /// index Idx.
 ///
@@ -340,6 +375,47 @@ void ConstantHoistingPass::collectConstantCandidates(
   }
 }
 
+/// \brief Check the operand for instruction Inst at index Idx.
+void ConstantHoistingPass::collectConstantCandidates(
+    ConstCandMapType &ConstCandMap, Instruction *Inst, unsigned Idx) {
+  Value *Opnd = Inst->getOperand(Idx);
+
+  // Visit constant integers.
+  if (auto ConstInt = dyn_cast<ConstantInt>(Opnd)) {
+    collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
+    return;
+  }
+
+  // Visit cast instructions that have constant integers.
+  if (auto CastInst = dyn_cast<Instruction>(Opnd)) {
+    // Only visit cast instructions, which have been skipped. All other
+    // instructions should have already been visited.
+    if (!CastInst->isCast())
+      return;
+
+    if (auto *ConstInt = dyn_cast<ConstantInt>(CastInst->getOperand(0))) {
+      // Pretend the constant is directly used by the instruction and ignore
+      // the cast instruction.
+      collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
+      return;
+    }
+  }
+
+  // Visit constant expressions that have constant integers.
+  if (auto ConstExpr = dyn_cast<ConstantExpr>(Opnd)) {
+    // Only visit constant cast expressions.
+    if (!ConstExpr->isCast())
+      return;
+
+    if (auto ConstInt = dyn_cast<ConstantInt>(ConstExpr->getOperand(0))) {
+      // Pretend the constant is directly used by the instruction and ignore
+      // the constant expression.
+      collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
+      return;
+    }
+  }
+}
+
 /// \brief Scan the instruction for expensive integer constants and record them
 /// in the constant candidate vector.
 void ConstantHoistingPass::collectConstantCandidates(
@@ -348,60 +424,14 @@ void ConstantHoistingPass::collectConstantCandidates(
   if (Inst->isCast())
     return;
 
-  // Can't handle inline asm. Skip it.
-  if (auto Call = dyn_cast<CallInst>(Inst))
-    if (isa<InlineAsm>(Call->getCalledValue()))
-      return;
-
-  // Switch cases must remain constant, and if the value being tested is
-  // constant the entire thing should disappear.
-  if (isa<SwitchInst>(Inst))
-    return;
-
-  // Static allocas (constant size in the entry block) are handled by
-  // prologue/epilogue insertion so they're free anyway. We definitely don't
-  // want to make them non-constant.
-  auto AI = dyn_cast<AllocaInst>(Inst);
-  if (AI && AI->isStaticAlloca())
-    return;
-
   // Scan all operands.
   for (unsigned Idx = 0, E = Inst->getNumOperands(); Idx != E; ++Idx) {
-    Value *Opnd = Inst->getOperand(Idx);
-
-    // Visit constant integers.
-    if (auto ConstInt = dyn_cast<ConstantInt>(Opnd)) {
-      collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
-      continue;
-    }
-
-    // Visit cast instructions that have constant integers.
-    if (auto CastInst = dyn_cast<Instruction>(Opnd)) {
-      // Only visit cast instructions, which have been skipped. All other
-      // instructions should have already been visited.
-      if (!CastInst->isCast())
-        continue;
-
-      if (auto *ConstInt = dyn_cast<ConstantInt>(CastInst->getOperand(0))) {
-        // Pretend the constant is directly used by the instruction and ignore
-        // the cast instruction.
-        collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
-        continue;
-      }
-    }
-
-    // Visit constant expressions that have constant integers.
-    if (auto ConstExpr = dyn_cast<ConstantExpr>(Opnd)) {
-      // Only visit constant cast expressions.
-      if (!ConstExpr->isCast())
-        continue;
-
-      if (auto ConstInt = dyn_cast<ConstantInt>(ConstExpr->getOperand(0))) {
-        // Pretend the constant is directly used by the instruction and ignore
-        // the constant expression.
-        collectConstantCandidates(ConstCandMap, Inst, Idx, ConstInt);
-        continue;
-      }
+    // The cost of materializing the constants (defined in
+    // `TargetTransformInfo::getIntImmCost`) for instructions which only take
+    // constant variables is lower than `TargetTransformInfo::TCC_Basic`. So
+    // it's safe for us to collect constant candidates from all IntrinsicInsts.
+    if (canReplaceOperandWithVariable(Inst, Idx) || isa<IntrinsicInst>(Inst)) {
+      collectConstantCandidates(ConstCandMap, Inst, Idx);
     }
   } // end of for all operands
 }
@@ -419,9 +449,8 @@ void ConstantHoistingPass::collectConstantCandidates(Function &Fn) {
 // bit widths (APInt Operator- does not like that). If the value cannot be
 // represented in uint64 we return an "empty" APInt. This is then interpreted
 // as the value is not in range.
-static llvm::Optional<APInt> calculateOffsetDiff(const APInt &V1,
-                                                 const APInt &V2) {
-  llvm::Optional<APInt> Res = None;
+static Optional<APInt> calculateOffsetDiff(const APInt &V1, const APInt &V2) {
+  Optional<APInt> Res = None;
   unsigned BW = V1.getBitWidth() > V2.getBitWidth() ?
                 V1.getBitWidth() : V2.getBitWidth();
   uint64_t LimVal1 = V1.getLimitedValue();
@@ -488,9 +517,9 @@ ConstantHoistingPass::maximizeConstantsInRange(ConstCandVecType::iterator S,
       DEBUG(dbgs() << "Cost: " << Cost << "\n");
 
       for (auto C2 = S; C2 != E; ++C2) {
-        llvm::Optional<APInt> Diff = calculateOffsetDiff(
-                                      C2->ConstInt->getValue(),
-                                      ConstCand->ConstInt->getValue());
+        Optional<APInt> Diff = calculateOffsetDiff(
+                                   C2->ConstInt->getValue(),
+                                   ConstCand->ConstInt->getValue());
         if (Diff) {
           const int ImmCosts =
             TTI->getIntImmCodeSizeCost(Opcode, OpndIdx, Diff.getValue(), Ty);
@@ -688,6 +717,9 @@ bool ConstantHoistingPass::emitBaseConstants() {
       IntegerType *Ty = ConstInfo.BaseConstant->getType();
       Instruction *Base =
           new BitCastInst(ConstInfo.BaseConstant, Ty, "const", IP);
+
+      Base->setDebugLoc(IP->getDebugLoc());
+
       DEBUG(dbgs() << "Hoist constant (" << *ConstInfo.BaseConstant
                    << ") to BB " << IP->getParent()->getName() << '\n'
                    << *Base << '\n');
@@ -706,6 +738,8 @@ bool ConstantHoistingPass::emitBaseConstants() {
             emitBaseConstants(Base, RCI.Offset, U);
             ReBasesNum++;
           }
+
+          Base->setDebugLoc(DILocation::getMergedLocation(Base->getDebugLoc(), U.Inst->getDebugLoc()));
         }
       }
       UsesNum = Uses;
@@ -714,7 +748,6 @@ bool ConstantHoistingPass::emitBaseConstants() {
       assert(!Base->use_empty() && "The use list is empty!?");
       assert(isa<Instruction>(Base->user_back()) &&
              "All uses should be instructions.");
-      Base->setDebugLoc(cast<Instruction>(Base->user_back())->getDebugLoc());
     }
     (void)UsesNum;
     (void)ReBasesNum;

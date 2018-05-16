@@ -4,7 +4,7 @@
 ; GCN-LABEL: {{^}}v_test_add_i16:
 ; VI: flat_load_ushort [[A:v[0-9]+]]
 ; VI: flat_load_ushort [[B:v[0-9]+]]
-; VI: v_add_u16_e32 [[ADD:v[0-9]+]], [[B]], [[A]]
+; VI: v_add_u16_e32 [[ADD:v[0-9]+]], [[A]], [[B]]
 ; VI-NEXT: buffer_store_short [[ADD]]
 define amdgpu_kernel void @v_test_add_i16(i16 addrspace(1)* %out, i16 addrspace(1)* %in0, i16 addrspace(1)* %in1) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -67,7 +67,7 @@ define amdgpu_kernel void @v_test_add_i16_inline_neg1(i16 addrspace(1)* %out, i1
 ; GCN-LABEL: {{^}}v_test_add_i16_zext_to_i32:
 ; VI: flat_load_ushort [[A:v[0-9]+]]
 ; VI: flat_load_ushort [[B:v[0-9]+]]
-; VI: v_add_u16_e32 [[ADD:v[0-9]+]], [[B]], [[A]]
+; VI: v_add_u16_e32 [[ADD:v[0-9]+]], [[A]], [[B]]
 ; VI-NEXT: buffer_store_dword [[ADD]]
 define amdgpu_kernel void @v_test_add_i16_zext_to_i32(i32 addrspace(1)* %out, i16 addrspace(1)* %in0, i16 addrspace(1)* %in1) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()
@@ -86,7 +86,7 @@ define amdgpu_kernel void @v_test_add_i16_zext_to_i32(i32 addrspace(1)* %out, i1
 ; GCN-LABEL: {{^}}v_test_add_i16_zext_to_i64:
 ; VI: flat_load_ushort [[A:v[0-9]+]]
 ; VI: flat_load_ushort [[B:v[0-9]+]]
-; VI-DAG: v_add_u16_e32 v[[ADD:[0-9]+]], [[B]], [[A]]
+; VI-DAG: v_add_u16_e32 v[[ADD:[0-9]+]], [[A]], [[B]]
 ; VI: buffer_store_dwordx2 v{{\[}}[[ADD]]:{{[0-9]+\]}}, off, {{s\[[0-9]+:[0-9]+\]}}, 0{{$}}
 define amdgpu_kernel void @v_test_add_i16_zext_to_i64(i64 addrspace(1)* %out, i16 addrspace(1)* %in0, i16 addrspace(1)* %in1) #1 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x()

@@ -10,8 +10,22 @@
 #include "llvm/Support/Host.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Triple.h"
+#include "llvm/Support/FileSystem.h"
+#include "llvm/Support/Path.h"
+#include "llvm/Support/Program.h"
 
 #include "gtest/gtest.h"
+
+#define ASSERT_NO_ERROR(x)                                                     \
+  if (std::error_code ASSERT_NO_ERROR_ec = x) {                                \
+    SmallString<128> MessageStorage;                                           \
+    raw_svector_ostream Message(MessageStorage);                               \
+    Message << #x ": did not return errc::success.\n"                          \
+            << "error number: " << ASSERT_NO_ERROR_ec.value() << "\n"          \
+            << "error message: " << ASSERT_NO_ERROR_ec.message() << "\n";      \
+    GTEST_FATAL_FAILURE_(MessageStorage.c_str());                              \
+  } else {                                                                     \
+  }
 
 using namespace llvm;
 
@@ -91,6 +105,18 @@ TEST(getLinuxHostCPUName, AArch64) {
   EXPECT_EQ(sys::detail::getHostCPUNameForARM("CPU implementer : 0x51\n"
                                               "CPU part        : 0x201"),
             "kryo");
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM("CPU implementer : 0x51\n"
+                                              "CPU part        : 0x800"),
+            "cortex-a73");
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM("CPU implementer : 0x51\n"
+                                              "CPU part        : 0x801"),
+            "cortex-a73");
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM("CPU implementer : 0x51\n"
+                                              "CPU part        : 0xc00"),
+            "falkor");
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM("CPU implementer : 0x51\n"
+                                              "CPU part        : 0xc01"),
+            "saphira");
 
   // MSM8992/4 weirdness
   StringRef MSM8992ProcCpuInfo = R"(
@@ -113,4 +139,83 @@ Hardware        : Qualcomm Technologies, Inc MSM8992
 
   EXPECT_EQ(sys::detail::getHostCPUNameForARM(MSM8992ProcCpuInfo),
             "cortex-a53");
+
+  // Exynos big.LITTLE weirdness
+  const std::string ExynosProcCpuInfo = R"(
+processor       : 0
+Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32
+CPU implementer : 0x41
+CPU architecture: 8
+CPU variant     : 0x0
+CPU part        : 0xd03
+
+processor       : 1
+Features        : fp asimd evtstrm aes pmull sha1 sha2 crc32
+CPU implementer : 0x53
+CPU architecture: 8
+)";
+
+  // Verify default for Exynos.
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM(ExynosProcCpuInfo +
+                                              "CPU variant     : 0xc\n"
+                                              "CPU part        : 0xafe"),
+            "exynos-m1");
+  // Verify Exynos M1.
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM(ExynosProcCpuInfo +
+                                              "CPU variant     : 0x1\n"
+                                              "CPU part        : 0x001"),
+            "exynos-m1");
+  // Verify Exynos M2.
+  EXPECT_EQ(sys::detail::getHostCPUNameForARM(ExynosProcCpuInfo +
+                                              "CPU variant     : 0x4\n"
+                                              "CPU part        : 0x001"),
+            "exynos-m2");
 }
+
+#if defined(__APPLE__)
+TEST_F(HostTest, getMacOSHostVersion) {
+  using namespace llvm::sys;
+  llvm::Triple HostTriple(getProcessTriple());
+  if (!HostTriple.isMacOSX())
+    return;
+
+  SmallString<128> TestDirectory;
+  ASSERT_NO_ERROR(fs::createUniqueDirectory("host_test", TestDirectory));
+  SmallString<128> OutputFile(TestDirectory);
+  path::append(OutputFile, "out");
+
+  const char *SwVersPath = "/usr/bin/sw_vers";
+  const char *argv[] = {SwVersPath, "-productVersion", nullptr};
+  StringRef OutputPath = OutputFile.str();
+  const Optional<StringRef> Redirects[] = {/*STDIN=*/None,
+                                           /*STDOUT=*/OutputPath,
+                                           /*STDERR=*/None};
+  int RetCode = ExecuteAndWait(SwVersPath, argv, /*env=*/nullptr, Redirects);
+  ASSERT_EQ(0, RetCode);
+
+  int FD = 0;
+  ASSERT_NO_ERROR(fs::openFileForRead(OutputPath, FD));
+  off_t Size = ::lseek(FD, 0, SEEK_END);
+  ASSERT_NE(-1, Size);
+  ::lseek(FD, 0, SEEK_SET);
+  std::unique_ptr<char[]> Buffer = llvm::make_unique<char[]>(Size);
+  ASSERT_EQ(::read(FD, Buffer.get(), Size), Size);
+  ::close(FD);
+
+  // Ensure that the two versions match.
+  StringRef SystemVersion(Buffer.get(), Size);
+  unsigned SystemMajor, SystemMinor, SystemMicro;
+  ASSERT_EQ(llvm::Triple((Twine("x86_64-apple-macos") + SystemVersion))
+                .getMacOSXVersion(SystemMajor, SystemMinor, SystemMicro),
+            true);
+  unsigned HostMajor, HostMinor, HostMicro;
+  ASSERT_EQ(HostTriple.getMacOSXVersion(HostMajor, HostMinor, HostMicro), true);
+
+  // Don't compare the 'Micro' version, as it's always '0' for the 'Darwin'
+  // triples.
+  ASSERT_EQ(std::tie(SystemMajor, SystemMinor), std::tie(HostMajor, HostMinor));
+
+  ASSERT_NO_ERROR(fs::remove(OutputPath));
+  ASSERT_NO_ERROR(fs::remove(TestDirectory.str()));
+}
+#endif

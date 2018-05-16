@@ -16,8 +16,9 @@
 #include "SystemZ.h"
 #include "SystemZInstrBuilder.h"
 #include "SystemZSubtarget.h"
+#include "llvm/ADT/Statistic.h"
 #include "llvm/CodeGen/LiveInterval.h"
-#include "llvm/CodeGen/LiveIntervalAnalysis.h"
+#include "llvm/CodeGen/LiveIntervals.h"
 #include "llvm/CodeGen/LiveVariables.h"
 #include "llvm/CodeGen/MachineBasicBlock.h"
 #include "llvm/CodeGen/MachineFrameInfo.h"
@@ -27,14 +28,14 @@
 #include "llvm/CodeGen/MachineOperand.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/CodeGen/SlotIndexes.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
 #include "llvm/MC/MCInstrDesc.h"
 #include "llvm/MC/MCRegisterInfo.h"
 #include "llvm/Support/BranchProbability.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/MathExtras.h"
-#include "llvm/Target/TargetInstrInfo.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
 #include <cassert>
 #include <cstdint>
 #include <iterator>
@@ -44,6 +45,9 @@ using namespace llvm;
 #define GET_INSTRINFO_CTOR_DTOR
 #define GET_INSTRMAP_INFO
 #include "SystemZGenInstrInfo.inc"
+
+#define DEBUG_TYPE "systemz-II"
+STATISTIC(LOCRMuxJumps, "Number of LOCRMux jump-sequences (lower is better)");
 
 // Return a mask with Count low bits set.
 static uint64_t allOnes(unsigned int Count) {
@@ -209,6 +213,8 @@ void SystemZInstrInfo::expandLOCRPseudo(MachineInstr &MI, unsigned LowOpcode,
     MI.setDesc(get(LowOpcode));
   else if (DestIsHigh && SrcIsHigh)
     MI.setDesc(get(HighOpcode));
+  else
+    LOCRMuxJumps++;
 
   // If we were unable to implement the pseudo with a single instruction, we
   // need to convert it back into a branch sequence.  This cannot be done here
@@ -869,6 +875,37 @@ void SystemZInstrInfo::copyPhysReg(MachineBasicBlock &MBB,
     return;
   }
 
+  // Move 128-bit floating-point values between VR128 and FP128.
+  if (SystemZ::VR128BitRegClass.contains(DestReg) &&
+      SystemZ::FP128BitRegClass.contains(SrcReg)) {
+    unsigned SrcRegHi =
+      RI.getMatchingSuperReg(RI.getSubReg(SrcReg, SystemZ::subreg_h64),
+                             SystemZ::subreg_r64, &SystemZ::VR128BitRegClass);
+    unsigned SrcRegLo =
+      RI.getMatchingSuperReg(RI.getSubReg(SrcReg, SystemZ::subreg_l64),
+                             SystemZ::subreg_r64, &SystemZ::VR128BitRegClass);
+
+    BuildMI(MBB, MBBI, DL, get(SystemZ::VMRHG), DestReg)
+      .addReg(SrcRegHi, getKillRegState(KillSrc))
+      .addReg(SrcRegLo, getKillRegState(KillSrc));
+    return;
+  }
+  if (SystemZ::FP128BitRegClass.contains(DestReg) &&
+      SystemZ::VR128BitRegClass.contains(SrcReg)) {
+    unsigned DestRegHi =
+      RI.getMatchingSuperReg(RI.getSubReg(DestReg, SystemZ::subreg_h64),
+                             SystemZ::subreg_r64, &SystemZ::VR128BitRegClass);
+    unsigned DestRegLo =
+      RI.getMatchingSuperReg(RI.getSubReg(DestReg, SystemZ::subreg_l64),
+                             SystemZ::subreg_r64, &SystemZ::VR128BitRegClass);
+
+    if (DestRegHi != SrcReg)
+      copyPhysReg(MBB, MBBI, DL, DestRegHi, SrcReg, false);
+    BuildMI(MBB, MBBI, DL, get(SystemZ::VREPG), DestRegLo)
+      .addReg(SrcReg, getKillRegState(KillSrc)).addImm(1);
+    return;
+  }
+
   // Everything else needs only one instruction.
   unsigned Opcode;
   if (SystemZ::GR64BitRegClass.contains(DestReg, SrcReg))
@@ -1434,6 +1471,7 @@ SystemZII::Branch
 SystemZInstrInfo::getBranchInfo(const MachineInstr &MI) const {
   switch (MI.getOpcode()) {
   case SystemZ::BR:
+  case SystemZ::BI:
   case SystemZ::J:
   case SystemZ::JG:
     return SystemZII::Branch(SystemZII::BranchNormal, SystemZ::CCMASK_ANY,

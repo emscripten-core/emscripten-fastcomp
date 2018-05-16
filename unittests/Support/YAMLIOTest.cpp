@@ -7,6 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Endian.h"
@@ -230,6 +231,22 @@ TEST(YAMLIO, TestSequenceMapWriteAndRead) {
     EXPECT_EQ(map2.foo, 257);
     EXPECT_EQ(map2.bar, 0);
   }
+}
+
+//
+// Test YAML filename handling.
+//
+static void testErrorFilename(const llvm::SMDiagnostic &Error, void *) {
+  EXPECT_EQ(Error.getFilename(), "foo.yaml");
+}
+
+TEST(YAMLIO, TestGivenFilename) {
+  auto Buffer = llvm::MemoryBuffer::getMemBuffer("{ x: 42 }", "foo.yaml");
+  Input yin(*Buffer, nullptr, testErrorFilename);
+  FooBar Value;
+  yin >> Value;
+
+  EXPECT_TRUE(!!yin.error());
 }
 
 
@@ -844,7 +861,7 @@ namespace yaml {
           return "malformed by";
       }
     }
-    static bool mustQuote(StringRef) { return true; }
+    static QuotingType mustQuote(StringRef) { return QuotingType::Single; }
   };
 }
 }
@@ -1029,7 +1046,8 @@ TEST(YAMLIO, TestReadWriteBlockScalarValue) {
 
 LLVM_YAML_STRONG_TYPEDEF(int, MyNumber)
 LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(MyNumber)
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(llvm::StringRef)
+LLVM_YAML_STRONG_TYPEDEF(llvm::StringRef, MyString)
+LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(MyString)
 
 namespace llvm {
 namespace yaml {
@@ -1047,14 +1065,27 @@ namespace yaml {
       return StringRef();
     }
 
-    static bool mustQuote(StringRef) { return false; }
+    static QuotingType mustQuote(StringRef) { return QuotingType::None; }
+  };
+
+  template <> struct ScalarTraits<MyString> {
+    using Impl = ScalarTraits<StringRef>;
+    static void output(const MyString &V, void *Ctx, raw_ostream &OS) {
+      Impl::output(V, Ctx, OS);
+    }
+    static StringRef input(StringRef S, void *Ctx, MyString &V) {
+      return Impl::input(S, Ctx, V.value);
+    }
+    static QuotingType mustQuote(StringRef S) {
+      return Impl::mustQuote(S);
+    }
   };
 }
 }
 
 struct NameAndNumbers {
   llvm::StringRef               name;
-  std::vector<llvm::StringRef>  strings;
+  std::vector<MyString>         strings;
   std::vector<MyNumber>         single;
   std::vector<MyNumber>         numbers;
 };
@@ -1128,8 +1159,8 @@ TEST(YAMLIO, TestReadWriteMyFlowSequence) {
     EXPECT_FALSE(yin.error());
     EXPECT_TRUE(map2.name.equals("hello"));
     EXPECT_EQ(map2.strings.size(), 2UL);
-    EXPECT_TRUE(map2.strings[0].equals("one"));
-    EXPECT_TRUE(map2.strings[1].equals("two"));
+    EXPECT_TRUE(map2.strings[0].value.equals("one"));
+    EXPECT_TRUE(map2.strings[1].value.equals("two"));
     EXPECT_EQ(map2.single.size(), 1UL);
     EXPECT_EQ(1,       map2.single[0]);
     EXPECT_EQ(map2.numbers.size(), 3UL);
@@ -1739,7 +1770,6 @@ TEST(YAMLIO, TestFlagsReadError) {
 //
 // Test error handling reading built-in uint8_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(uint8_t)
 TEST(YAMLIO, TestReadBuiltInTypesUint8Error) {
   std::vector<uint8_t> seq;
   Input yin("---\n"
@@ -1758,7 +1788,6 @@ TEST(YAMLIO, TestReadBuiltInTypesUint8Error) {
 //
 // Test error handling reading built-in uint16_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(uint16_t)
 TEST(YAMLIO, TestReadBuiltInTypesUint16Error) {
   std::vector<uint16_t> seq;
   Input yin("---\n"
@@ -1777,7 +1806,6 @@ TEST(YAMLIO, TestReadBuiltInTypesUint16Error) {
 //
 // Test error handling reading built-in uint32_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(uint32_t)
 TEST(YAMLIO, TestReadBuiltInTypesUint32Error) {
   std::vector<uint32_t> seq;
   Input yin("---\n"
@@ -1796,7 +1824,6 @@ TEST(YAMLIO, TestReadBuiltInTypesUint32Error) {
 //
 // Test error handling reading built-in uint64_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(uint64_t)
 TEST(YAMLIO, TestReadBuiltInTypesUint64Error) {
   std::vector<uint64_t> seq;
   Input yin("---\n"
@@ -1815,7 +1842,6 @@ TEST(YAMLIO, TestReadBuiltInTypesUint64Error) {
 //
 // Test error handling reading built-in int8_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(int8_t)
 TEST(YAMLIO, TestReadBuiltInTypesint8OverError) {
   std::vector<int8_t> seq;
   Input yin("---\n"
@@ -1853,7 +1879,6 @@ TEST(YAMLIO, TestReadBuiltInTypesint8UnderError) {
 //
 // Test error handling reading built-in int16_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(int16_t)
 TEST(YAMLIO, TestReadBuiltInTypesint16UnderError) {
   std::vector<int16_t> seq;
   Input yin("---\n"
@@ -1892,7 +1917,6 @@ TEST(YAMLIO, TestReadBuiltInTypesint16OverError) {
 //
 // Test error handling reading built-in int32_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(int32_t)
 TEST(YAMLIO, TestReadBuiltInTypesint32UnderError) {
   std::vector<int32_t> seq;
   Input yin("---\n"
@@ -1930,7 +1954,6 @@ TEST(YAMLIO, TestReadBuiltInTypesint32OverError) {
 //
 // Test error handling reading built-in int64_t type
 //
-LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(int64_t)
 TEST(YAMLIO, TestReadBuiltInTypesint64UnderError) {
   std::vector<int64_t> seq;
   Input yin("---\n"
@@ -1967,7 +1990,6 @@ TEST(YAMLIO, TestReadBuiltInTypesint64OverError) {
 //
 // Test error handling reading built-in float type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(float)
 TEST(YAMLIO, TestReadBuiltInTypesFloatError) {
   std::vector<float> seq;
   Input yin("---\n"
@@ -1986,7 +2008,6 @@ TEST(YAMLIO, TestReadBuiltInTypesFloatError) {
 //
 // Test error handling reading built-in float type
 //
-LLVM_YAML_IS_SEQUENCE_VECTOR(double)
 TEST(YAMLIO, TestReadBuiltInTypesDoubleError) {
   std::vector<double> seq;
   Input yin("---\n"
@@ -2214,7 +2235,7 @@ struct ScalarTraits<FlowSeq> {
     return "";
   }
 
-  static bool mustQuote(StringRef S) { return false; }
+  static QuotingType mustQuote(StringRef S) { return QuotingType::None; }
 };
 }
 }
@@ -2430,10 +2451,34 @@ TEST(YAMLIO, TestCustomMappingStruct) {
   EXPECT_EQ(4, y["bar"].bar);
 }
 
-TEST(YAMLIO, InvalidInput) {
-  // polluting 1 value in the sequence
-  Input yin("---\n- foo:  3\n  bar:  5\n1\n- foo:  3\n  bar:  5\n...\n");
-  std::vector<FooBar> Data;
-  yin >> Data;
-  EXPECT_TRUE((bool)yin.error());
+static void TestEscaped(llvm::StringRef Input, llvm::StringRef Expected) {
+  std::string out;
+  llvm::raw_string_ostream ostr(out);
+  Output xout(ostr, nullptr, 0);
+
+  llvm::yaml::EmptyContext Ctx;
+  yamlize(xout, Input, true, Ctx);
+
+  ostr.flush();
+  EXPECT_EQ(Expected, out);
+}
+
+TEST(YAMLIO, TestEscaped) {
+  // Single quote
+  TestEscaped("@abc@", "'@abc@'");
+  // No quote
+  TestEscaped("abc/", "abc/");
+  // Double quote non-printable
+  TestEscaped("\01@abc@", "\"\\x01@abc@\"");
+  // Double quote inside single quote
+  TestEscaped("abc\"fdf", "'abc\"fdf'");
+  // Double quote inside double quote
+  TestEscaped("\01bc\"fdf", "\"\\x01bc\\\"fdf\"");
+  // Single quote inside single quote
+  TestEscaped("abc'fdf", "'abc''fdf'");
+  // UTF8
+  TestEscaped("/*параметр*/", "\"/*параметр*/\"");
+  // UTF8 with single quote inside double quote
+  TestEscaped("parameter 'параметр' is unused",
+              "\"parameter 'параметр' is unused\"");
 }

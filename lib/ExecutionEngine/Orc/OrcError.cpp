@@ -45,6 +45,8 @@ public:
       return "Could not negotiate RPC function";
     case OrcErrorCode::RPCResponseAbandoned:
       return "RPC response abandoned";
+    case OrcErrorCode::JITSymbolNotFound:
+      return "JIT symbol not found";
     case OrcErrorCode::UnexpectedRPCCall:
       return "Unexpected RPC call";
     case OrcErrorCode::UnexpectedRPCResponse:
@@ -52,6 +54,8 @@ public:
     case OrcErrorCode::UnknownErrorCodeFromRemote:
       return "Unknown error returned from remote RPC function "
              "(Use StringError to get error message)";
+    case OrcErrorCode::UnknownResourceHandle:
+      return "Unknown resource handle";
     }
     llvm_unreachable("Unhandled error code");
   }
@@ -63,9 +67,28 @@ static ManagedStatic<OrcErrorCategory> OrcErrCat;
 namespace llvm {
 namespace orc {
 
+char JITSymbolNotFound::ID = 0;
+
 std::error_code orcError(OrcErrorCode ErrCode) {
   typedef std::underlying_type<OrcErrorCode>::type UT;
   return std::error_code(static_cast<UT>(ErrCode), *OrcErrCat);
+}
+
+JITSymbolNotFound::JITSymbolNotFound(std::string SymbolName)
+  : SymbolName(std::move(SymbolName)) {}
+
+std::error_code JITSymbolNotFound::convertToErrorCode() const {
+  typedef std::underlying_type<OrcErrorCode>::type UT;
+  return std::error_code(static_cast<UT>(OrcErrorCode::JITSymbolNotFound),
+                         *OrcErrCat);
+}
+
+void JITSymbolNotFound::log(raw_ostream &OS) const {
+  OS << "Could not find symbol '" << SymbolName << "'";
+}
+
+const std::string &JITSymbolNotFound::getSymbolName() const {
+  return SymbolName;
 }
 
 }

@@ -15,6 +15,7 @@
 #include "llvm/Support/Error.h"
 
 #include "llvm/DebugInfo/PDB/Native/PDBFile.h"
+#include "llvm/DebugInfo/PDB/Native/PDBStringTableBuilder.h"
 #include "llvm/DebugInfo/PDB/Native/RawConstants.h"
 #include "llvm/DebugInfo/PDB/PDBTypes.h"
 #include "llvm/Support/BinaryByteStream.h"
@@ -54,10 +55,15 @@ public:
   // Add given bytes as a new stream.
   Error addDbgStream(pdb::DbgHeaderType Type, ArrayRef<uint8_t> Data);
 
+  uint32_t addECName(StringRef Name);
+
   uint32_t calculateSerializedLength() const;
 
+  void setGlobalsStreamIndex(uint32_t Index);
+  void setPublicsStreamIndex(uint32_t Index);
+  void setSymbolRecordStreamIndex(uint32_t Index);
+
   Expected<DbiModuleDescriptorBuilder &> addModuleInfo(StringRef ModuleName);
-  Error addModuleSourceFile(StringRef Module, StringRef File);
   Error addModuleSourceFile(DbiModuleDescriptorBuilder &Module, StringRef File);
   Expected<uint32_t> getSourceFileNameIndex(StringRef FileName);
 
@@ -65,8 +71,9 @@ public:
 
   Error commit(const msf::MSFLayout &Layout, WritableBinaryStreamRef MsfBuffer);
 
-  void addSectionContrib(DbiModuleDescriptorBuilder *ModuleDbi,
-                         const llvm::object::coff_section *SecHdr);
+  void addSectionContrib(const SectionContrib &SC) {
+    SectionContribs.emplace_back(SC);
+  }
 
   // A helper function to create a Section Map from a COFF section header.
   static std::vector<SecMapEntry>
@@ -75,7 +82,7 @@ public:
 private:
   struct DebugStream {
     ArrayRef<uint8_t> Data;
-    uint16_t StreamNumber = 0;
+    uint16_t StreamNumber = kInvalidStreamIndex;
   };
 
   Error finalize();
@@ -87,7 +94,6 @@ private:
   uint32_t calculateNamesBufferSize() const;
   uint32_t calculateDbgStreamsSize() const;
 
-  Error generateModiSubstream();
   Error generateFileInfoSubstream();
 
   msf::MSFBuilder &Msf;
@@ -100,14 +106,17 @@ private:
   uint16_t PdbDllRbld;
   uint16_t Flags;
   PDB_Machine MachineType;
+  uint32_t GlobalsStreamIndex = kInvalidStreamIndex;
+  uint32_t PublicsStreamIndex = kInvalidStreamIndex;
+  uint32_t SymRecordStreamIndex = kInvalidStreamIndex;
 
   const DbiStreamHeader *Header;
 
-  StringMap<std::unique_ptr<DbiModuleDescriptorBuilder>> ModiMap;
-  std::vector<DbiModuleDescriptorBuilder *> ModiList;
+  std::vector<std::unique_ptr<DbiModuleDescriptorBuilder>> ModiList;
 
   StringMap<uint32_t> SourceFileNames;
 
+  PDBStringTableBuilder ECNamesBuilder;
   WritableBinaryStreamRef NamesBuffer;
   MutableBinaryByteStream FileInfoBuffer;
   std::vector<SectionContrib> SectionContribs;

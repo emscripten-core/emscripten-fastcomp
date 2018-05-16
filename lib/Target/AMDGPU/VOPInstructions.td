@@ -51,12 +51,8 @@ class VOP3Common <dag outs, dag ins, string asm = "",
 
   let VOP3 = 1;
 
-  let AsmMatchConverter =
-    !if(!eq(VOP3Only,1),
-        "cvtVOP3",
-        !if(!eq(HasMods,1), "cvtVOP3_2_mod", ""));
-
   let AsmVariantName = AMDGPUAsmVariants.VOP3;
+  let AsmMatchConverter = !if(!eq(HasMods,1), "cvtVOP3", "");
 
   let isCodeGenOnly = 0;
 
@@ -69,8 +65,13 @@ class VOP3Common <dag outs, dag ins, string asm = "",
 }
 
 class VOP3_Pseudo <string opName, VOPProfile P, list<dag> pattern = [],
-                   bit VOP3Only = 0, bit isVOP3P = 0> :
-  InstSI <P.Outs64, !if(!and(isVOP3P, P.IsPacked), P.InsVOP3P, P.Ins64), "", pattern>,
+                   bit VOP3Only = 0, bit isVOP3P = 0, bit isVop3OpSel = 0> :
+  InstSI <P.Outs64,
+          !if(isVop3OpSel,
+              P.InsVOP3OpSel,
+              !if(!and(isVOP3P, P.IsPacked), P.InsVOP3P, P.Ins64)),
+          "",
+          pattern>,
   VOP <opName>,
   SIMCInstr<opName#"_e64", SIEncodingFamily.NONE>,
   MnemonicAlias<opName#"_e64", opName> {
@@ -78,9 +79,13 @@ class VOP3_Pseudo <string opName, VOPProfile P, list<dag> pattern = [],
   let isPseudo = 1;
   let isCodeGenOnly = 1;
   let UseNamedOperandTable = 1;
+  let VOP3_OPSEL = isVop3OpSel;
+  let IsPacked = P.IsPacked;
 
   string Mnemonic = opName;
-  string AsmOperands = !if(!and(isVOP3P, P.IsPacked), P.AsmVOP3P, P.Asm64);
+  string AsmOperands = !if(isVop3OpSel,
+                           P.AsmVOP3OpSel,
+                           !if(!and(isVOP3P, P.IsPacked), P.AsmVOP3P, P.Asm64));
 
   let Size = 8;
   let mayLoad = 0;
@@ -102,17 +107,19 @@ class VOP3_Pseudo <string opName, VOPProfile P, list<dag> pattern = [],
   let VOP3 = 1;
   let VALU = 1;
   let FPClamp = P.HasFPClamp;
+  let IntClamp = P.HasIntClamp;
+  let ClampLo = P.HasClampLo;
+  let ClampHi = P.HasClampHi;
+
   let Uses = [EXEC];
 
   let AsmVariantName = AMDGPUAsmVariants.VOP3;
   let AsmMatchConverter =
-    !if(!eq(VOP3Only,1),
-        !if(!and(P.IsPacked, isVOP3P), "cvtVOP3P", "cvtVOP3"),
-        !if(!eq(P.HasModifiers, 1),
-            "cvtVOP3_2_mod",
-            !if(!eq(P.HasOMod, 1), "cvtVOP3OMod", "")
-        )
-    );
+    !if(isVOP3P,
+        "cvtVOP3P",
+        !if(!or(P.HasModifiers, !or(P.HasOMod, P.HasIntClamp)),
+            "cvtVOP3",
+            ""));
 
   VOPProfile Pfl = P;
 }
@@ -142,6 +149,8 @@ class VOP3_Real <VOP3_Pseudo ps, int EncodingFamily> :
   let TSFlags            = ps.TSFlags;
   let UseNamedOperandTable = ps.UseNamedOperandTable;
   let Uses                 = ps.Uses;
+
+  VOPProfile Pfl = ps.Pfl;
 }
 
 // XXX - Is there any reason to distingusih this from regular VOP3
@@ -150,11 +159,11 @@ class VOP3P_Real<VOP3P_Pseudo ps, int EncodingFamily> :
   VOP3_Real<ps, EncodingFamily>;
 
 class VOP3a<VOPProfile P> : Enc64 {
-  bits<2> src0_modifiers;
+  bits<4> src0_modifiers;
   bits<9> src0;
-  bits<2> src1_modifiers;
+  bits<3> src1_modifiers;
   bits<9> src1;
-  bits<2> src2_modifiers;
+  bits<3> src2_modifiers;
   bits<9> src2;
   bits<1> clamp;
   bits<2> omod;
@@ -191,6 +200,32 @@ class VOP3e_si <bits<9> op, VOPProfile P> : VOP3a_si <op, P> {
 class VOP3e_vi <bits<10> op, VOPProfile P> : VOP3a_vi <op, P> {
   bits<8> vdst;
   let Inst{7-0} = !if(P.EmitDst, vdst{7-0}, 0);
+}
+
+class VOP3OpSel_gfx9 <bits<10> op, VOPProfile P> : VOP3e_vi <op, P> {
+  let Inst{11} = !if(P.HasSrc0, src0_modifiers{2}, 0);
+  let Inst{12} = !if(P.HasSrc1, src1_modifiers{2}, 0);
+  let Inst{13} = !if(P.HasSrc2, src2_modifiers{2}, 0);
+  let Inst{14} = !if(P.HasDst,  src0_modifiers{3}, 0);
+}
+
+// NB: For V_INTERP* opcodes, src0 is encoded as src1 and vice versa
+class VOP3Interp_vi <bits<10> op, VOPProfile P> : VOP3e_vi <op, P> {
+  bits<2> attrchan;
+  bits<6> attr;
+  bits<1> high;
+
+  let Inst{8}     = 0; // No modifiers for src0
+  let Inst{61}    = 0;
+
+  let Inst{9}     = !if(P.HasSrc0Mods, src0_modifiers{1}, 0);
+  let Inst{62}    = !if(P.HasSrc0Mods, src0_modifiers{0}, 0);
+
+  let Inst{37-32} = attr;
+  let Inst{39-38} = attrchan;
+  let Inst{40}    = !if(P.HasHigh, high, 0);
+
+  let Inst{49-41} = src0;
 }
 
 class VOP3be <VOPProfile P> : Enc64 {
@@ -232,11 +267,11 @@ class VOP3Pe <bits<10> op, VOPProfile P> : Enc64 {
   let Inst{9} = !if(P.HasSrc1Mods, src1_modifiers{1}, 0); // neg_hi src1
   let Inst{10} = !if(P.HasSrc2Mods, src2_modifiers{1}, 0); // neg_hi src2
 
-  let Inst{11} = !if(P.HasOpSel, src0_modifiers{2}, 0); // op_sel(0)
-  let Inst{12} = !if(P.HasOpSel, src1_modifiers{2}, 0); // op_sel(1)
-  let Inst{13} = !if(P.HasOpSel, src2_modifiers{2}, 0); // op_sel(2)
+  let Inst{11} = !if(!and(P.HasSrc0, P.HasOpSel), src0_modifiers{2}, 0); // op_sel(0)
+  let Inst{12} = !if(!and(P.HasSrc1, P.HasOpSel), src1_modifiers{2}, 0); // op_sel(1)
+  let Inst{13} = !if(!and(P.HasSrc2, P.HasOpSel), src2_modifiers{2}, 0); // op_sel(2)
 
-  let Inst{14} = !if(P.HasOpSel, src2_modifiers{3}, 0); // op_sel_hi(2)
+  let Inst{14} = !if(!and(P.HasSrc2, P.HasOpSel), src2_modifiers{3}, 0); // op_sel_hi(2)
 
   let Inst{15} = !if(P.HasClamp, clamp{0}, 0);
 
@@ -245,8 +280,8 @@ class VOP3Pe <bits<10> op, VOPProfile P> : Enc64 {
   let Inst{40-32} = !if(P.HasSrc0, src0, 0);
   let Inst{49-41} = !if(P.HasSrc1, src1, 0);
   let Inst{58-50} = !if(P.HasSrc2, src2, 0);
-  let Inst{59}    = !if(P.HasOpSel, src0_modifiers{3}, 0); // op_sel_hi(0)
-  let Inst{60}    = !if(P.HasOpSel, src1_modifiers{3}, 0); // op_sel_hi(1)
+  let Inst{59}    = !if(!and(P.HasSrc0, P.HasOpSel), src0_modifiers{3}, 0); // op_sel_hi(0)
+  let Inst{60}    = !if(!and(P.HasSrc1, P.HasOpSel), src1_modifiers{3}, 0); // op_sel_hi(1)
   let Inst{61}    = !if(P.HasSrc0Mods, src0_modifiers{0}, 0); // neg (lo)
   let Inst{62}    = !if(P.HasSrc1Mods, src1_modifiers{0}, 0); // neg (lo)
   let Inst{63}    = !if(P.HasSrc2Mods, src2_modifiers{0}, 0); // neg (lo)
@@ -299,6 +334,19 @@ class VOP_SDWAe<VOPProfile P> : Enc64 {
   let Inst{59}    = !if(P.HasSrc1IntMods, src1_modifiers{0}, 0);
   let Inst{61-60} = !if(P.HasSrc1FloatMods, src1_modifiers{1-0}, 0);
 }
+
+// GFX9 adds two features to SDWA:
+// 1.	Add 3 fields to the SDWA microcode word: S0, S1 and OMOD.
+//    a. S0 and S1 indicate that source 0 and 1 respectively are SGPRs rather
+//       than VGPRs (at most 1 can be an SGPR);
+//    b. OMOD is the standard output modifier (result *2, *4, /2)
+// 2.	Add a new version of the SDWA microcode word for VOPC: SDWAB. This
+//    replaces OMOD and the dest fields with SD and SDST (SGPR destination)
+//    field.
+//    a. When SD=1, the SDST is used as the destination for the compare result;
+//    b. When SD=0, VCC is used.
+//
+// In GFX9, V_MAC_F16, V_MAC_F32 opcodes cannot be used with SDWA
 
 // gfx9 SDWA basic encoding
 class VOP_SDWA9e<VOPProfile P> : Enc64 {
@@ -353,6 +401,7 @@ class VOP_SDWA_Pseudo <string opName, VOPProfile P, list<dag> pattern=[]> :
 
   string Mnemonic = opName;
   string AsmOperands = P.AsmSDWA;
+  string AsmOperands9 = P.AsmSDWA9;
 
   let Size = 8;
   let mayLoad = 0;
@@ -372,53 +421,9 @@ class VOP_SDWA_Pseudo <string opName, VOPProfile P, list<dag> pattern=[]> :
   VOPProfile Pfl = P;
 }
 
-// GFX9 adds two features to SDWA:
-// 1.	Add 3 fields to the SDWA microcode word: S0, S1 and OMOD.
-//    a. S0 and S1 indicate that source 0 and 1 respectively are SGPRs rather
-//       than VGPRs (at most 1 can be an SGPR);
-//    b. OMOD is the standard output modifier (result *2, *4, /2)
-// 2.	Add a new version of the SDWA microcode word for VOPC: SDWAB. This
-//    replaces OMOD and the dest fields with SD and SDST (SGPR destination)
-//    field.
-//    a. When SD=1, the SDST is used as the destination for the compare result;
-//    b.when SD=0, VCC is used.
-// 
-// In GFX9, V_MAC_F16, V_MAC_F32 opcodes cannot be used with SDWA
-
-class VOP_SDWA9_Pseudo <string opName, VOPProfile P, list<dag> pattern=[]> :
-  InstSI <P.OutsSDWA9, P.InsSDWA9, "", pattern>,
-  VOP <opName>,
-  SIMCInstr <opName#"_sdwa9", SIEncodingFamily.NONE>,
-  MnemonicAlias <opName#"_sdwa9", opName> {
-
-  let isPseudo = 1;
-  let isCodeGenOnly = 1;
-  let UseNamedOperandTable = 1;
-
-  string Mnemonic = opName;
-  string AsmOperands = P.AsmSDWA9;
-
-  let Size = 8;
-  let mayLoad = 0;
-  let mayStore = 0;
-  let hasSideEffects = 0;
-
-  let VALU = 1;
-  let SDWA = 1;
-  let Uses = [EXEC];
-
-  let SubtargetPredicate = !if(P.HasSDWA9, HasSDWA9, DisableInst);
-  let AssemblerPredicate = !if(P.HasSDWA9, HasSDWA9, DisableInst);
-  let AsmVariantName = !if(P.HasSDWA9, AMDGPUAsmVariants.SDWA9,
-                                     AMDGPUAsmVariants.Disable);
-  let DecoderNamespace = "SDWA9";
-
-  VOPProfile Pfl = P;
-}
-
 class VOP_SDWA_Real <VOP_SDWA_Pseudo ps> :
   InstSI <ps.OutOperandList, ps.InOperandList, ps.Mnemonic # ps.AsmOperands, []>,
-  SIMCInstr <ps.PseudoInstr, SIEncodingFamily.VI> {
+  SIMCInstr <ps.PseudoInstr, SIEncodingFamily.SDWA> {
 
   let isPseudo = 0;
   let isCodeGenOnly = 0;
@@ -443,9 +448,9 @@ class VOP_SDWA_Real <VOP_SDWA_Pseudo ps> :
   let TSFlags              = ps.TSFlags;
 }
 
-class VOP_SDWA9_Real <VOP_SDWA9_Pseudo ps> :
-  InstSI <ps.OutOperandList, ps.InOperandList, ps.Mnemonic # ps.AsmOperands, []>,
-  SIMCInstr <ps.PseudoInstr, SIEncodingFamily.VI> {
+class VOP_SDWA9_Real <VOP_SDWA_Pseudo ps> :
+  InstSI <ps.OutOperandList, ps.InOperandList, ps.Mnemonic # ps.AsmOperands9, []>,
+  SIMCInstr <ps.PseudoInstr, SIEncodingFamily.SDWA9> {
 
   let isPseudo = 0;
   let isCodeGenOnly = 0;
@@ -458,13 +463,15 @@ class VOP_SDWA9_Real <VOP_SDWA9_Pseudo ps> :
   let Constraints     = ps.Constraints;
   let DisableEncoding = ps.DisableEncoding;
 
+  let SubtargetPredicate = !if(ps.Pfl.HasSDWA9, HasSDWA9, DisableInst);
+  let AssemblerPredicate = !if(ps.Pfl.HasSDWA9, HasSDWA9, DisableInst);
+  let AsmVariantName = !if(ps.Pfl.HasSDWA9, AMDGPUAsmVariants.SDWA9,
+                                            AMDGPUAsmVariants.Disable);
+  let DecoderNamespace = "SDWA9";
+
   // Copy relevant pseudo op flags
-  let SubtargetPredicate   = ps.SubtargetPredicate;
-  let AssemblerPredicate   = ps.AssemblerPredicate;
   let AsmMatchConverter    = ps.AsmMatchConverter;
-  let AsmVariantName       = ps.AsmVariantName;
   let UseNamedOperandTable = ps.UseNamedOperandTable;
-  let DecoderNamespace     = ps.DecoderNamespace;
   let Constraints          = ps.Constraints;
   let DisableEncoding      = ps.DisableEncoding;
   let TSFlags              = ps.TSFlags;
@@ -508,6 +515,8 @@ class VOP_DPP <string OpName, VOPProfile P> :
   let AssemblerPredicate = !if(P.HasExt, HasDPP, DisableInst);
   let AsmVariantName = !if(P.HasExt, AMDGPUAsmVariants.DPP,
                                      AMDGPUAsmVariants.Disable);
+  let Constraints = !if(P.NumSrcArgs, "$old = $vdst", "");
+  let DisableEncoding = !if(P.NumSrcArgs, "$old", "");
   let DecoderNamespace = "DPP";
 }
 

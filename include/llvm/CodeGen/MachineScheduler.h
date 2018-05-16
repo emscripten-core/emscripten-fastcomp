@@ -26,13 +26,13 @@
 // The default scheduler, ScheduleDAGMILive, builds the DAG and drives list
 // scheduling while updating the instruction stream, register pressure, and live
 // intervals. Most targets don't need to override the DAG builder and list
-// schedulier, but subtargets that require custom scheduling heuristics may
+// scheduler, but subtargets that require custom scheduling heuristics may
 // plugin an alternate MachineSchedStrategy. The strategy is responsible for
 // selecting the highest priority node from the list:
 //
 // ScheduleDAGInstrs *<Target>PassConfig::
 // createMachineScheduler(MachineSchedContext *C) {
-//   return new ScheduleDAGMI(C, CustomStrategy(C));
+//   return new ScheduleDAGMILive(C, CustomStrategy(C));
 // }
 //
 // The DAG builder can also be customized in a sense by adding DAG mutations
@@ -203,7 +203,7 @@ public:
                           MachineBasicBlock::iterator End,
                           unsigned NumRegionInstrs) {}
 
-  virtual void dumpPolicy() {}
+  virtual void dumpPolicy() const {}
 
   /// Check if pressure tracking is needed before building the DAG and
   /// initializing this strategy. Called after initPolicy.
@@ -214,8 +214,19 @@ public:
   /// This has to be enabled in combination with shouldTrackPressure().
   virtual bool shouldTrackLaneMasks() const { return false; }
 
+  // If this method returns true, handling of the scheduling regions
+  // themselves (in case of a scheduling boundary in MBB) will be done
+  // beginning with the topmost region of MBB.
+  virtual bool doMBBSchedRegionsTopDown() const { return false; }
+
   /// Initialize the strategy after building the DAG for a new region.
   virtual void initialize(ScheduleDAGMI *DAG) = 0;
+
+  /// Tell the strategy that MBB is about to be processed.
+  virtual void enterMBB(MachineBasicBlock *MBB) {};
+
+  /// Tell the strategy that current MBB is done.
+  virtual void leaveMBB() {};
 
   /// Notify this strategy that all roots have been released (including those
   /// that depend on EntrySU or ExitSU).
@@ -284,6 +295,13 @@ public:
   // Provide a vtable anchor
   ~ScheduleDAGMI() override;
 
+  /// If this method returns true, handling of the scheduling regions
+  /// themselves (in case of a scheduling boundary in MBB) will be done
+  /// beginning with the topmost region of MBB.
+  bool doMBBSchedRegionsTopDown() const override {
+    return SchedImpl->doMBBSchedRegionsTopDown();
+  }
+
   // Returns LiveIntervals instance for use in DAG mutators and such.
   LiveIntervals *getLIS() const { return LIS; }
 
@@ -325,6 +343,9 @@ public:
   /// Implement ScheduleDAGInstrs interface for scheduling a sequence of
   /// reorderable instructions.
   void schedule() override;
+
+  void startBlock(MachineBasicBlock *bb) override;
+  void finishBlock() override;
 
   /// Change the position of an instruction within the basic block and update
   /// live ranges and region boundary iterators.
@@ -555,7 +576,7 @@ public:
     return Queue.begin() + idx;
   }
 
-  void dump();
+  void dump() const;
 };
 
 /// Summarize the unscheduled region.
@@ -755,9 +776,7 @@ public:
   /// available instruction, or NULL if there are multiple candidates.
   SUnit *pickOnlyChoice();
 
-#ifndef NDEBUG
-  void dumpScheduledState();
-#endif
+  void dumpScheduledState() const;
 };
 
 /// Base class for GenericScheduler. This class maintains information about
@@ -890,7 +909,7 @@ public:
                   MachineBasicBlock::iterator End,
                   unsigned NumRegionInstrs) override;
 
-  void dumpPolicy() override;
+  void dumpPolicy() const override;
 
   bool shouldTrackPressure() const override {
     return RegionPolicy.ShouldTrackPressure;

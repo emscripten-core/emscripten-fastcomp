@@ -3,7 +3,7 @@
 
 define i32 @sext_inc(i1 zeroext %x) {
 ; CHECK-LABEL: sext_inc:
-; CHECK:       @ BB#0:
+; CHECK:       @ %bb.0:
 ; CHECK-NEXT:    eor r0, r0, #1
 ; CHECK-NEXT:    mov pc, lr
   %ext = sext i1 %x to i32
@@ -13,11 +13,11 @@ define i32 @sext_inc(i1 zeroext %x) {
 
 define <4 x i32> @sext_inc_vec(<4 x i1> %x) {
 ; CHECK-LABEL: sext_inc_vec:
-; CHECK:       @ BB#0:
+; CHECK:       @ %bb.0:
 ; CHECK-NEXT:    vmov.i16 d16, #0x1
 ; CHECK-NEXT:    vmov d17, r0, r1
-; CHECK-NEXT:    vmov.i32 q9, #0x1
 ; CHECK-NEXT:    veor d16, d17, d16
+; CHECK-NEXT:    vmov.i32 q9, #0x1
 ; CHECK-NEXT:    vmovl.u16 q8, d16
 ; CHECK-NEXT:    vand q8, q8, q9
 ; CHECK-NEXT:    vmov r0, r1, d16
@@ -30,14 +30,14 @@ define <4 x i32> @sext_inc_vec(<4 x i1> %x) {
 
 define <4 x i32> @cmpgt_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) {
 ; CHECK-LABEL: cmpgt_sext_inc_vec:
-; CHECK:       @ BB#0:
-; CHECK-NEXT:    mov r12, sp
-; CHECK-NEXT:    vmov d19, r2, r3
-; CHECK-NEXT:    vmov.i32 q10, #0x1
-; CHECK-NEXT:    vld1.64 {d16, d17}, [r12]
-; CHECK-NEXT:    vmov d18, r0, r1
-; CHECK-NEXT:    vcge.s32 q8, q8, q9
-; CHECK-NEXT:    vand q8, q8, q10
+; CHECK:       @ %bb.0:
+; CHECK-NEXT:    vmov d17, r2, r3
+; CHECK-NEXT:    vmov d16, r0, r1
+; CHECK-NEXT:    mov r0, sp
+; CHECK-NEXT:    vld1.64 {d18, d19}, [r0]
+; CHECK-NEXT:    vcge.s32 q8, q9, q8
+; CHECK-NEXT:    vmov.i32 q9, #0x1
+; CHECK-NEXT:    vand q8, q8, q9
 ; CHECK-NEXT:    vmov r0, r1, d16
 ; CHECK-NEXT:    vmov r2, r3, d17
 ; CHECK-NEXT:    mov pc, lr
@@ -49,14 +49,14 @@ define <4 x i32> @cmpgt_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) {
 
 define <4 x i32> @cmpne_sext_inc_vec(<4 x i32> %x, <4 x i32> %y) {
 ; CHECK-LABEL: cmpne_sext_inc_vec:
-; CHECK:       @ BB#0:
+; CHECK:       @ %bb.0:
+; CHECK-NEXT:    vmov d17, r2, r3
 ; CHECK-NEXT:    mov r12, sp
-; CHECK-NEXT:    vmov d19, r2, r3
-; CHECK-NEXT:    vmov.i32 q10, #0x1
-; CHECK-NEXT:    vld1.64 {d16, d17}, [r12]
-; CHECK-NEXT:    vmov d18, r0, r1
-; CHECK-NEXT:    vceq.i32 q8, q9, q8
-; CHECK-NEXT:    vand q8, q8, q10
+; CHECK-NEXT:    vld1.64 {d18, d19}, [r12]
+; CHECK-NEXT:    vmov d16, r0, r1
+; CHECK-NEXT:    vceq.i32 q8, q8, q9
+; CHECK-NEXT:    vmov.i32 q9, #0x1
+; CHECK-NEXT:    vand q8, q8, q9
 ; CHECK-NEXT:    vmov r0, r1, d16
 ; CHECK-NEXT:    vmov r2, r3, d17
 ; CHECK-NEXT:    mov pc, lr

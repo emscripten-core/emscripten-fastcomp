@@ -1,4 +1,4 @@
-; RUN: llc -march=amdgcn -mcpu=verde -amdgpu-early-ifcvt=1 -verify-machineinstrs < %s | FileCheck -check-prefix=GCN %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=verde -amdgpu-early-ifcvt=1 -verify-machineinstrs < %s | FileCheck -check-prefix=GCN %s
 ; XUN: llc -march=amdgcn -mcpu=tonga -amdgpu-early-ifcvt=1 -verify-machineinstrs < %s | FileCheck -check-prefix=GCN %s
 
 ; FIXME: This leaves behind a now unnecessary and with exec
@@ -382,7 +382,7 @@ done:
 }
 
 ; GCN-LABEL: {{^}}ifcvt_undef_scc:
-; GCN: {{^}}; BB#0:
+; GCN: {{^}}; %bb.0:
 ; GCN-NEXT: s_load_dwordx2
 ; GCN-NEXT: s_cselect_b32 s{{[0-9]+}}, 1, 0
 define amdgpu_kernel void @ifcvt_undef_scc(i32 %cond, i32 addrspace(1)* %out) {

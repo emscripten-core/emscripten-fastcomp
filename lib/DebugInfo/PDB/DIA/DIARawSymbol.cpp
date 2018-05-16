@@ -125,16 +125,16 @@ PrivateGetDIAValue(IDiaSymbol *Symbol,
   return Result8;
 }
 
-PDB_UniqueId
+codeview::GUID
 PrivateGetDIAValue(IDiaSymbol *Symbol,
                    HRESULT (__stdcall IDiaSymbol::*Method)(GUID *)) {
   GUID Result;
   if (S_OK != (Symbol->*Method)(&Result))
-    return PDB_UniqueId();
+    return codeview::GUID();
 
-  static_assert(sizeof(PDB_UniqueId) == sizeof(GUID),
-                "PDB_UniqueId is the wrong size!");
-  PDB_UniqueId IdResult;
+  static_assert(sizeof(codeview::GUID) == sizeof(GUID),
+                "GUID is the wrong size!");
+  codeview::GUID IdResult;
   ::memcpy(&IdResult, &Result, sizeof(GUID));
   return IdResult;
 }
@@ -437,6 +437,20 @@ void DIARawSymbol::getDataBytes(llvm::SmallVector<uint8_t, 32> &bytes) const {
 
   bytes.resize(DataSize);
   Symbol->get_dataBytes(DataSize, &DataSize, bytes.data());
+}
+
+std::string
+DIARawSymbol::getUndecoratedNameEx(PDB_UndnameFlags Flags) const {
+  CComBSTR Result16;
+  if (S_OK != Symbol->get_undecoratedNameEx((DWORD)Flags, &Result16))
+    return std::string();
+
+  const char *SrcBytes = reinterpret_cast<const char *>(Result16.m_str);
+  llvm::ArrayRef<char> SrcByteArray(SrcBytes, Result16.ByteLength());
+  std::string Result8;
+  if (!llvm::convertUTF16ToUTF8String(SrcByteArray, Result8))
+    return std::string();
+  return Result8;
 }
 
 PDB_MemberAccess DIARawSymbol::getAccess() const {
@@ -746,7 +760,7 @@ PDB_SymType DIARawSymbol::getSymTag() const {
                                                 &IDiaSymbol::get_symTag);
 }
 
-PDB_UniqueId DIARawSymbol::getGuid() const {
+codeview::GUID DIARawSymbol::getGuid() const {
   return PrivateGetDIAValue(Symbol, &IDiaSymbol::get_guid);
 }
 

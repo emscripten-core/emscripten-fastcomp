@@ -96,6 +96,7 @@ public:
   uint32_t getTypeId() const override;
   uint32_t getUavSlot() const override;
   std::string getUndecoratedName() const override;
+  std::string getUndecoratedNameEx(PDB_UndnameFlags Flags) const override;
   uint32_t getUnmodifiedTypeId() const override;
   uint32_t getUpperBoundId() const override;
   Variant getValue() const override;
@@ -106,7 +107,7 @@ public:
   getVirtualBaseTableType() const override;
   PDB_DataKind getDataKind() const override;
   PDB_SymType getSymTag() const override;
-  PDB_UniqueId getGuid() const override;
+  codeview::GUID getGuid() const override;
   int32_t getOffset() const override;
   int32_t getThisAdjust() const override;
   int32_t getVirtualBasePointerOffset() const override;

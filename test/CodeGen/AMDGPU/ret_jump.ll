@@ -11,7 +11,6 @@
 ; GCN-NEXT: ; %else
 
 ; GCN: s_and_saveexec_b64 [[SAVE_EXEC:s\[[0-9]+:[0-9]+\]]], vcc
-; GCN-NEXT: s_xor_b64 [[XOR_EXEC:s\[[0-9]+:[0-9]+\]]], exec, [[SAVE_EXEC]]
 ; GCN-NEXT: ; mask branch [[FLOW:BB[0-9]+_[0-9]+]]
 
 ; GCN: BB{{[0-9]+_[0-9]+}}: ; %unreachable.bb
@@ -23,7 +22,7 @@
 ; GCN-NEXT: [[RET_BB]]:
 ; GCN-NEXT: ; return
 ; GCN-NEXT: .Lfunc_end0
-define amdgpu_ps <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, float, float, float, float, float, float, float, float, float, float, float, float, float, float }> @uniform_br_trivial_ret_divergent_br_trivial_unreachable([9 x <16 x i8>] addrspace(2)* byval %arg, [17 x <16 x i8>] addrspace(2)* byval %arg1, [17 x <8 x i32>] addrspace(2)* byval %arg2, i32 addrspace(2)* byval %arg3, float inreg %arg4, i32 inreg %arg5, <2 x i32> %arg6, <2 x i32> %arg7, <2 x i32> %arg8, <3 x i32> %arg9, <2 x i32> %arg10, <2 x i32> %arg11, <2 x i32> %arg12, float %arg13, float %arg14, float %arg15, float %arg16, i32 inreg %arg17, i32 %arg18, i32 %arg19, float %arg20, i32 %arg21) #0 {
+define amdgpu_ps <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, float, float, float, float, float, float, float, float, float, float, float, float, float, float }> @uniform_br_trivial_ret_divergent_br_trivial_unreachable([9 x <4 x i32>] addrspace(2)* byval %arg, [17 x <4 x i32>] addrspace(2)* byval %arg1, [17 x <8 x i32>] addrspace(2)* byval %arg2, i32 addrspace(2)* byval %arg3, float inreg %arg4, i32 inreg %arg5, <2 x i32> %arg6, <2 x i32> %arg7, <2 x i32> %arg8, <3 x i32> %arg9, <2 x i32> %arg10, <2 x i32> %arg11, <2 x i32> %arg12, float %arg13, float %arg14, float %arg15, float %arg16, i32 inreg %arg17, i32 %arg18, i32 %arg19, float %arg20, i32 %arg21) #0 {
 entry:
   %i.i = extractelement <2 x i32> %arg7, i32 0
   %j.i = extractelement <2 x i32> %arg7, i32 1
@@ -58,9 +57,8 @@ ret.bb:                                          ; preds = %else, %main_body
 ; GCN-LABEL: {{^}}uniform_br_nontrivial_ret_divergent_br_nontrivial_unreachable:
 ; GCN: s_cbranch_vccnz [[RET_BB:BB[0-9]+_[0-9]+]]
 
-; GCN: ; BB#{{[0-9]+}}: ; %else
+; GCN: ; %bb.{{[0-9]+}}: ; %else
 ; GCN: s_and_saveexec_b64 [[SAVE_EXEC:s\[[0-9]+:[0-9]+\]]], vcc
-; GCN-NEXT: s_xor_b64 [[XOR_EXEC:s\[[0-9]+:[0-9]+\]]], exec, [[SAVE_EXEC]]
 ; GCN-NEXT: ; mask branch [[FLOW1:BB[0-9]+_[0-9]+]]
 
 ; GCN-NEXT:  ; %unreachable.bb
@@ -75,7 +73,7 @@ ret.bb:                                          ; preds = %else, %main_body
 ; GCN-NEXT: s_waitcnt
 ; GCN-NEXT: ; return
 ; GCN-NEXT: .Lfunc_end
-define amdgpu_ps <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, float, float, float, float, float, float, float, float, float, float, float, float, float, float }> @uniform_br_nontrivial_ret_divergent_br_nontrivial_unreachable([9 x <16 x i8>] addrspace(2)* byval %arg, [17 x <16 x i8>] addrspace(2)* byval %arg1, [17 x <8 x i32>] addrspace(2)* byval %arg2, i32 addrspace(2)* byval %arg3, float inreg %arg4, i32 inreg %arg5, <2 x i32> %arg6, <2 x i32> %arg7, <2 x i32> %arg8, <3 x i32> %arg9, <2 x i32> %arg10, <2 x i32> %arg11, <2 x i32> %arg12, float %arg13, float %arg14, float %arg15, float %arg16, float %arg17, i32 inreg %arg18, i32 %arg19, float %arg20, i32 %arg21) #0 {
+define amdgpu_ps <{ i32, i32, i32, i32, i32, i32, i32, i32, i32, float, float, float, float, float, float, float, float, float, float, float, float, float, float }> @uniform_br_nontrivial_ret_divergent_br_nontrivial_unreachable([9 x <4 x i32>] addrspace(2)* byval %arg, [17 x <4 x i32>] addrspace(2)* byval %arg1, [17 x <8 x i32>] addrspace(2)* byval %arg2, i32 addrspace(2)* byval %arg3, float inreg %arg4, i32 inreg %arg5, <2 x i32> %arg6, <2 x i32> %arg7, <2 x i32> %arg8, <3 x i32> %arg9, <2 x i32> %arg10, <2 x i32> %arg11, <2 x i32> %arg12, float %arg13, float %arg14, float %arg15, float %arg16, float %arg17, i32 inreg %arg18, i32 %arg19, float %arg20, i32 %arg21) #0 {
 main_body:
   %i.i = extractelement <2 x i32> %arg7, i32 0
   %j.i = extractelement <2 x i32> %arg7, i32 1
@@ -117,9 +115,6 @@ declare float @llvm.amdgcn.interp.p2(float, float, i32, i32, i32) #1
 
 ; Function Attrs: nounwind readnone
 declare float @llvm.amdgcn.interp.mov(i32, i32, i32, i32) #1
-
-; Function Attrs: nounwind readnone
-declare float @llvm.SI.load.const(<16 x i8>, i32) #1
 
 ; Function Attrs: nounwind readnone
 declare float @llvm.fabs.f32(float) #1

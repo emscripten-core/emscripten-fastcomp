@@ -15,7 +15,6 @@
 #include "llvm/DebugInfo/CodeView/TypeCollection.h"
 #include "llvm/DebugInfo/CodeView/TypeIndex.h"
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
-#include "llvm/Support/BinaryByteStream.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/ScopedPrinter.h"
 
@@ -354,7 +353,7 @@ Error TypeDumpVisitor::visitKnownRecord(CVType &CVR, FuncIdRecord &Func) {
 }
 
 Error TypeDumpVisitor::visitKnownRecord(CVType &CVR, TypeServer2Record &TS) {
-  W->printString("Guid", formatv("{0}", fmt_guid(TS.getGuid())).str());
+  W->printString("Guid", formatv("{0}", TS.getGuid()).str());
   W->printNumber("Age", TS.getAge());
   W->printString("Name", TS.getName());
   return Error::success();

@@ -312,11 +312,9 @@ static void HandleVRSaveUpdate(MachineInstr &MI, const TargetInstrInfo &TII) {
 
   // Live in and live out values already must be in the mask, so don't bother
   // marking them.
-  for (MachineRegisterInfo::livein_iterator
-       I = MF->getRegInfo().livein_begin(),
-       E = MF->getRegInfo().livein_end(); I != E; ++I) {
-    unsigned RegNo = TRI->getEncodingValue(I->first);
-    if (VRRegNo[RegNo] == I->first)        // If this really is a vector reg.
+  for (std::pair<unsigned, unsigned> LI : MF->getRegInfo().liveins()) {
+    unsigned RegNo = TRI->getEncodingValue(LI.first);
+    if (VRRegNo[RegNo] == LI.first)        // If this really is a vector reg.
       UsedRegMask &= ~(1 << (31-RegNo));   // Doesn't need to be marked.
   }
 
@@ -435,22 +433,19 @@ unsigned PPCFrameLowering::determineFrameLayout(MachineFunction &MF,
 
   const PPCRegisterInfo *RegInfo = Subtarget.getRegisterInfo();
 
-  // If we are a leaf function, and use up to 224 bytes of stack space,
-  // don't have a frame pointer, calls, or dynamic alloca then we do not need
-  // to adjust the stack pointer (we fit in the Red Zone).
-  // The 32-bit SVR4 ABI has no Red Zone. However, it can still generate
-  // stackless code if all local vars are reg-allocated.
-  bool DisableRedZone = MF.getFunction()->hasFnAttribute(Attribute::NoRedZone);
   unsigned LR = RegInfo->getRARegister();
-  if (!DisableRedZone &&
-      (Subtarget.isPPC64() ||                      // 32-bit SVR4, no stack-
-       !Subtarget.isSVR4ABI() ||                   //   allocated locals.
-        FrameSize == 0) &&
-      FrameSize <= 224 &&                          // Fits in red zone.
-      !MFI.hasVarSizedObjects() &&                 // No dynamic alloca.
-      !MFI.adjustsStack() &&                       // No calls.
-      !MustSaveLR(MF, LR) &&
-      !RegInfo->hasBasePointer(MF)) { // No special alignment.
+  bool DisableRedZone = MF.getFunction().hasFnAttribute(Attribute::NoRedZone);
+  bool CanUseRedZone = !MFI.hasVarSizedObjects() && // No dynamic alloca.
+                       !MFI.adjustsStack() &&       // No calls.
+                       !MustSaveLR(MF, LR) &&       // No need to save LR.
+                       !RegInfo->hasBasePointer(MF); // No special alignment.
+
+  // Note: for PPC32 SVR4ABI (Non-DarwinABI), we can still generate stackless
+  // code if all local vars are reg-allocated.
+  bool FitsInRedZone = FrameSize <= Subtarget.getRedZoneSize();
+
+  // Check whether we can skip adjusting the stack pointer (by using red zone)
+  if (!DisableRedZone && CanUseRedZone && FitsInRedZone) {
     // No need for frame
     if (UpdateMF)
       MFI.setStackSize(0);
@@ -504,7 +499,7 @@ bool PPCFrameLowering::needsFP(const MachineFunction &MF) const {
 
   // Naked functions have no stack frame pushed, so we don't have a frame
   // pointer.
-  if (MF.getFunction()->hasFnAttribute(Attribute::Naked))
+  if (MF.getFunction().hasFnAttribute(Attribute::Naked))
     return false;
 
   return MF.getTarget().Options.DisableFramePointerElim(MF) ||
@@ -521,7 +516,7 @@ void PPCFrameLowering::replaceFPWithRealFP(MachineFunction &MF) const {
   const PPCRegisterInfo *RegInfo = Subtarget.getRegisterInfo();
   bool HasBP = RegInfo->hasBasePointer(MF);
   unsigned BPReg  = HasBP ? (unsigned) RegInfo->getBaseRegister(MF) : FPReg;
-  unsigned BP8Reg = HasBP ? (unsigned) PPC::X30 : FPReg;
+  unsigned BP8Reg = HasBP ? (unsigned) PPC::X30 : FP8Reg;
 
   for (MachineFunction::iterator BI = MF.begin(), BE = MF.end();
        BI != BE; ++BI)
@@ -697,7 +692,7 @@ void PPCFrameLowering::emitPrologue(MachineFunction &MF,
   const MCRegisterInfo *MRI = MMI.getContext().getRegisterInfo();
   DebugLoc dl;
   bool needsCFI = MMI.hasDebugInfo() ||
-    MF.getFunction()->needsUnwindTableEntry();
+    MF.getFunction().needsUnwindTableEntry();
 
   // Get processor type.
   bool isPPC64 = Subtarget.isPPC64();
@@ -1510,7 +1505,7 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
     unsigned RetOpcode = MBBI->getOpcode();
     if (MF.getTarget().Options.GuaranteedTailCallOpt &&
         (RetOpcode == PPC::BLR || RetOpcode == PPC::BLR8) &&
-        MF.getFunction()->getCallingConv() == CallingConv::Fast) {
+        MF.getFunction().getCallingConv() == CallingConv::Fast) {
       PPCFunctionInfo *FI = MF.getInfo<PPCFunctionInfo>();
       unsigned CallerAllocatedAmt = FI->getMinReservedArea();
 
@@ -1536,11 +1531,11 @@ void PPCFrameLowering::emitEpilogue(MachineFunction &MF,
 
 void PPCFrameLowering::createTailCallBranchInstr(MachineBasicBlock &MBB) const {
   MachineBasicBlock::iterator MBBI = MBB.getFirstTerminator();
-  DebugLoc dl;
 
-  if (MBBI != MBB.end())
-    dl = MBBI->getDebugLoc();
+  // If we got this far a first terminator should exist.
+  assert(MBBI != MBB.end() && "Failed to find the first terminator.");
 
+  DebugLoc dl = MBBI->getDebugLoc();
   const PPCInstrInfo &TII = *Subtarget.getInstrInfo();
 
   // Create branch instruction for pseudo tail call return instruction
@@ -1869,8 +1864,13 @@ void PPCFrameLowering::processFunctionBeforeFrameFinalized(MachineFunction &MF,
   }
 
   if (HasVRSaveArea) {
-    // Insert alignment padding, we need 16-byte alignment.
-    LowerBound = (LowerBound - 15) & ~(15);
+    // Insert alignment padding, we need 16-byte alignment. Note: for postive
+    // number the alignment formula is : y = (x + (n-1)) & (~(n-1)). But since
+    // we are using negative number here (the stack grows downward). We should
+    // use formula : y = x & (~(n-1)). Where x is the size before aligning, n
+    // is the alignment size ( n = 16 here) and y is the size after aligning.
+    assert(LowerBound <= 0 && "Expect LowerBound have a non-positive value!");
+    LowerBound &= ~(15);
 
     for (unsigned i = 0, e = VRegs.size(); i != e; ++i) {
       int FI = VRegs[i].getFrameIdx();
@@ -2065,7 +2065,7 @@ eliminateCallFramePseudoInstr(MachineFunction &MF, MachineBasicBlock &MBB,
 bool
 PPCFrameLowering::restoreCalleeSavedRegisters(MachineBasicBlock &MBB,
                                         MachineBasicBlock::iterator MI,
-                                        const std::vector<CalleeSavedInfo> &CSI,
+                                        std::vector<CalleeSavedInfo> &CSI,
                                         const TargetRegisterInfo *TRI) const {
 
   // Currently, this function only handles SVR4 32- and 64-bit ABIs.

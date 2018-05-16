@@ -108,6 +108,7 @@ public:
   virtual uint32_t getTypeId() const = 0;
   virtual uint32_t getUavSlot() const = 0;
   virtual std::string getUndecoratedName() const = 0;
+  virtual std::string getUndecoratedNameEx(PDB_UndnameFlags Flags) const = 0;
   virtual uint32_t getUnmodifiedTypeId() const = 0;
   virtual uint32_t getUpperBoundId() const = 0;
   virtual Variant getValue() const = 0;
@@ -118,7 +119,7 @@ public:
   virtual uint32_t getVirtualTableShapeId() const = 0;
   virtual PDB_DataKind getDataKind() const = 0;
   virtual PDB_SymType getSymTag() const = 0;
-  virtual PDB_UniqueId getGuid() const = 0;
+  virtual codeview::GUID getGuid() const = 0;
   virtual int32_t getOffset() const = 0;
   virtual int32_t getThisAdjust() const = 0;
   virtual int32_t getVirtualBasePointerOffset() const = 0;

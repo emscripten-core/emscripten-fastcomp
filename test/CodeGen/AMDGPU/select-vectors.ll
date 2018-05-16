@@ -1,6 +1,6 @@
-; RUN: llc -verify-machineinstrs -march=amdgcn < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -verify-machineinstrs -march=amdgcn -mcpu=tonga -mattr=-flat-for-global < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
-; RUN: llc -verify-machineinstrs -march=amdgcn -mcpu=gfx900 -mattr=-flat-for-global < %s | FileCheck -check-prefix=GCN -check-prefix=GFX9 %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false -verify-machineinstrs -march=amdgcn -mcpu=tahiti < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false -verify-machineinstrs -march=amdgcn -mcpu=tonga -mattr=-flat-for-global < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false -verify-machineinstrs -march=amdgcn -mcpu=gfx900 -mattr=-flat-for-global < %s | FileCheck -check-prefix=GCN -check-prefix=GFX9 %s
 
 ; Test expansion of scalar selects on vectors.
 ; Evergreen not enabled since it seems to be having problems with doubles.
@@ -66,7 +66,7 @@ define amdgpu_kernel void @v_select_v16i8(<16 x i8> addrspace(1)* %out, <16 x i8
 }
 
 ; GCN-LABEL: {{^}}select_v4i8:
-; GCN: v_cndmask_b32_e32
+; GCN: v_cndmask_b32
 ; GCN-NOT: cndmask
 define amdgpu_kernel void @select_v4i8(<4 x i8> addrspace(1)* %out, <4 x i8> %a, <4 x i8> %b, i8 %c) #0 {
   %cmp = icmp eq i8 %c, 0
@@ -215,9 +215,9 @@ define amdgpu_kernel void @select_v8i32(<8 x i32> addrspace(1)* %out, <8 x i32> 
 ; GCN-DAG: v_mov_b32_e32 v{{[0-9]+}}, s[[ALO]]
 ; GCN-DAG: v_cmp_eq_u32_e64 vcc, s{{[0-9]+}}, 0{{$}}
 
-; GCN: v_cndmask_b32_e32
-; GCN: v_mov_b32_e32 v{{[0-9]+}}, s[[BLO]]
-; GCN: v_cndmask_b32_e32
+; GCN-DAG: v_cndmask_b32_e32
+; GCN-DAG: v_mov_b32_e32 v{{[0-9]+}}, s[[BLO]]
+; GCN-DAG: v_cndmask_b32_e32
 ; GCN: buffer_store_dwordx2
 define amdgpu_kernel void @s_select_v2f32(<2 x float> addrspace(1)* %out, <2 x float> %a, <2 x float> %b, i32 %c) #0 {
   %cmp = icmp eq i32 %c, 0

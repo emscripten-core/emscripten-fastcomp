@@ -53,7 +53,7 @@ public:
   }
 
   bool runOnMachineFunction(MachineFunction &MF) override {
-    ForCodeSize = MF.getFunction()->optForSize();
+    ForCodeSize = MF.getFunction().optForSize();
     Subtarget = &MF.getSubtarget<AArch64Subtarget>();
     return SelectionDAGISel::runOnMachineFunction(MF);
   }
@@ -201,7 +201,7 @@ private:
 
   bool SelectCVTFixedPosOperand(SDValue N, SDValue &FixedPos, unsigned Width);
 
-  void SelectCMP_SWAP(SDNode *N);
+  bool SelectCMP_SWAP(SDNode *N);
 
 };
 } // end anonymous namespace
@@ -239,10 +239,17 @@ bool AArch64DAGToDAGISel::SelectInlineAsmMemoryOperand(
   case InlineAsm::Constraint_i:
   case InlineAsm::Constraint_m:
   case InlineAsm::Constraint_Q:
-    // Require the address to be in a register.  That is safe for all AArch64
-    // variants and it is hard to do anything much smarter without knowing
-    // how the operand is used.
-    OutOps.push_back(Op);
+    // We need to make sure that this one operand does not end up in XZR, thus
+    // require the address to be in a PointerRegClass register.
+    const TargetRegisterInfo *TRI = Subtarget->getRegisterInfo();
+    const TargetRegisterClass *TRC = TRI->getPointerRegClass(*MF);
+    SDLoc dl(Op);
+    SDValue RC = CurDAG->getTargetConstant(TRC->getID(), dl, MVT::i64);
+    SDValue NewOp =
+        SDValue(CurDAG->getMachineNode(TargetOpcode::COPY_TO_REGCLASS,
+                                       dl, Op.getValueType(),
+                                       Op, RC), 0);
+    OutOps.push_back(NewOp);
     return false;
   }
   return true;
@@ -2609,9 +2616,13 @@ bool AArch64DAGToDAGISel::tryWriteRegister(SDNode *N) {
 }
 
 /// We've got special pseudo-instructions for these
-void AArch64DAGToDAGISel::SelectCMP_SWAP(SDNode *N) {
+bool AArch64DAGToDAGISel::SelectCMP_SWAP(SDNode *N) {
   unsigned Opcode;
   EVT MemTy = cast<MemSDNode>(N)->getMemoryVT();
+
+  // Leave IR for LSE if subtarget supports it.
+  if (Subtarget->hasLSE()) return false;
+
   if (MemTy == MVT::i8)
     Opcode = AArch64::CMP_SWAP_8;
   else if (MemTy == MVT::i16)
@@ -2637,6 +2648,8 @@ void AArch64DAGToDAGISel::SelectCMP_SWAP(SDNode *N) {
   ReplaceUses(SDValue(N, 0), SDValue(CmpSwap, 0));
   ReplaceUses(SDValue(N, 1), SDValue(CmpSwap, 2));
   CurDAG->RemoveDeadNode(N);
+
+  return true;
 }
 
 void AArch64DAGToDAGISel::Select(SDNode *Node) {
@@ -2660,8 +2673,9 @@ void AArch64DAGToDAGISel::Select(SDNode *Node) {
     break;
 
   case ISD::ATOMIC_CMP_SWAP:
-    SelectCMP_SWAP(Node);
-    return;
+    if (SelectCMP_SWAP(Node))
+      return;
+    break;
 
   case ISD::READ_REGISTER:
     if (tryReadRegister(Node))

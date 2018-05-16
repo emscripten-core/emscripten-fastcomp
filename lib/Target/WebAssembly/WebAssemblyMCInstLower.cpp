@@ -43,7 +43,7 @@ WebAssemblyMCInstLower::GetGlobalAddressSymbol(const MachineOperand &MO) const {
   if (const auto *FuncTy = dyn_cast<FunctionType>(Global->getValueType())) {
     const MachineFunction &MF = *MO.getParent()->getParent()->getParent();
     const TargetMachine &TM = MF.getTarget();
-    const Function &CurrentFunc = *MF.getFunction();
+    const Function &CurrentFunc = MF.getFunction();
 
     SmallVector<wasm::ValType, 4> Returns;
     SmallVector<wasm::ValType, 4> Params;
@@ -112,8 +112,6 @@ MCOperand WebAssemblyMCInstLower::LowerSymbolOperand(MCSymbol *Sym,
   MCSymbolRefExpr::VariantKind VK =
       IsFunc ? MCSymbolRefExpr::VK_WebAssembly_FUNCTION
              : MCSymbolRefExpr::VK_None;
-  if (!isa<MCSymbolELF>(Sym))
-    cast<MCSymbolWasm>(Sym)->setIsFunction(IsFunc);
 
   const MCExpr *Expr = MCSymbolRefExpr::create(Sym, VK, Ctx);
 

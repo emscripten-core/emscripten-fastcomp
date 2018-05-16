@@ -12,8 +12,6 @@
 ///
 //===----------------------------------------------------------------------===//
 //
-#include "yaml2obj.h"
-#include "llvm/Object/Wasm.h"
 #include "llvm/ObjectYAML/ObjectYAML.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/LEB128.h"
@@ -110,22 +108,70 @@ static int writeInitExpr(const wasm::WasmInitExpr &InitExpr, raw_ostream &OS) {
   return 0;
 }
 
-int WasmWriter::writeSectionContent(raw_ostream &OS, WasmYAML::LinkingSection &Section) {
-  writeStringRef(Section.Name, OS);
-  if (Section.SymbolInfos.size()) {
-    encodeULEB128(wasm::WASM_SYMBOL_INFO, OS);
-    std::string OutString;
-    raw_string_ostream StringStream(OutString);
+class SubSectionWriter {
+  raw_ostream &OS;
+  std::string OutString;
+  raw_string_ostream StringStream;
 
-    encodeULEB128(Section.SymbolInfos.size(), StringStream);
-    for (const WasmYAML::SymbolInfo &Info : Section.SymbolInfos) {
-      writeStringRef(Info.Name, StringStream);
-      encodeULEB128(Info.Flags, StringStream);
-    }
+public:
+  SubSectionWriter(raw_ostream &OS) : OS(OS), StringStream(OutString) {}
 
+  void Done() {
     StringStream.flush();
     encodeULEB128(OutString.size(), OS);
     OS << OutString;
+    OutString.clear();
+  }
+
+  raw_ostream& GetStream() {
+    return StringStream;
+  }
+};
+
+int WasmWriter::writeSectionContent(raw_ostream &OS, WasmYAML::LinkingSection &Section) {
+  writeStringRef(Section.Name, OS);
+
+  SubSectionWriter SubSection(OS);
+
+  // DATA_SIZE subsection
+  encodeULEB128(wasm::WASM_DATA_SIZE, OS);
+  encodeULEB128(Section.DataSize, SubSection.GetStream());
+  SubSection.Done();
+
+  // SYMBOL_INFO subsection
+  if (Section.SymbolInfos.size()) {
+    encodeULEB128(wasm::WASM_SYMBOL_INFO, OS);
+
+    encodeULEB128(Section.SymbolInfos.size(), SubSection.GetStream());
+    for (const WasmYAML::SymbolInfo &Info : Section.SymbolInfos) {
+      writeStringRef(Info.Name, SubSection.GetStream());
+      encodeULEB128(Info.Flags, SubSection.GetStream());
+    }
+
+    SubSection.Done();
+  }
+
+  // SEGMENT_NAMES subsection
+  if (Section.SegmentInfos.size()) {
+    encodeULEB128(wasm::WASM_SEGMENT_INFO, OS);
+    encodeULEB128(Section.SegmentInfos.size(), SubSection.GetStream());
+    for (const WasmYAML::SegmentInfo &SegmentInfo : Section.SegmentInfos) {
+      writeStringRef(SegmentInfo.Name, SubSection.GetStream());
+      encodeULEB128(SegmentInfo.Alignment, SubSection.GetStream());
+      encodeULEB128(SegmentInfo.Flags, SubSection.GetStream());
+    }
+    SubSection.Done();
+  }
+
+  // INIT_FUNCS subsection
+  if (Section.InitFunctions.size()) {
+    encodeULEB128(wasm::WASM_INIT_FUNCS, OS);
+    encodeULEB128(Section.InitFunctions.size(), SubSection.GetStream());
+    for (const WasmYAML::InitFunction &Func : Section.InitFunctions) {
+      encodeULEB128(Func.Priority, SubSection.GetStream());
+      encodeULEB128(Func.FunctionIndex, SubSection.GetStream());
+    }
+    SubSection.Done();
   }
   return 0;
 }
@@ -134,18 +180,16 @@ int WasmWriter::writeSectionContent(raw_ostream &OS, WasmYAML::NameSection &Sect
   writeStringRef(Section.Name, OS);
   if (Section.FunctionNames.size()) {
     encodeULEB128(wasm::WASM_NAMES_FUNCTION, OS);
-    std::string OutString;
-    raw_string_ostream StringStream(OutString);
 
-    encodeULEB128(Section.FunctionNames.size(), StringStream);
+    SubSectionWriter SubSection(OS);
+
+    encodeULEB128(Section.FunctionNames.size(), SubSection.GetStream());
     for (const WasmYAML::NameEntry &NameEntry : Section.FunctionNames) {
-      encodeULEB128(NameEntry.Index, StringStream);
-      writeStringRef(NameEntry.Name, StringStream);
+      encodeULEB128(NameEntry.Index, SubSection.GetStream());
+      writeStringRef(NameEntry.Name, SubSection.GetStream());
     }
 
-    StringStream.flush();
-    encodeULEB128(OutString.size(), OS);
-    OS << OutString;
+    SubSection.Done();
   }
   return 0;
 }
@@ -310,7 +354,7 @@ int WasmWriter::writeSectionContent(raw_ostream &OS,
                                     WasmYAML::DataSection &Section) {
   encodeULEB128(Section.Segments.size(), OS);
   for (auto &Segment : Section.Segments) {
-    encodeULEB128(Segment.Index, OS);
+    encodeULEB128(Segment.MemoryIndex, OS);
     writeInitExpr(Segment.Offset, OS);
     encodeULEB128(Segment.Content.binary_size(), OS);
     Segment.Content.writeAsBinary(OS);
@@ -342,9 +386,9 @@ int WasmWriter::writeRelocSection(raw_ostream &OS,
     encodeULEB128(Reloc.Offset, OS);
     encodeULEB128(Reloc.Index, OS);
     switch (Reloc.Type) {
-      case wasm::R_WEBASSEMBLY_GLOBAL_ADDR_LEB:
-      case wasm::R_WEBASSEMBLY_GLOBAL_ADDR_SLEB:
-      case wasm::R_WEBASSEMBLY_GLOBAL_ADDR_I32:
+      case wasm::R_WEBASSEMBLY_MEMORY_ADDR_LEB:
+      case wasm::R_WEBASSEMBLY_MEMORY_ADDR_SLEB:
+      case wasm::R_WEBASSEMBLY_MEMORY_ADDR_I32:
         encodeULEB128(Reloc.Addend, OS);
     }
   }

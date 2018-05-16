@@ -162,6 +162,14 @@ public:
     return PA;
   }
 
+  /// \brief Construct a preserved analyses object with a single preserved set.
+  template <typename AnalysisSetT>
+  static PreservedAnalyses allInSet() {
+    PreservedAnalyses PA;
+    PA.preserveSet<AnalysisSetT>();
+    return PA;
+  }
+
   /// Mark an analysis as preserved.
   template <typename AnalysisT> void preserve() { preserve(AnalysisT::ID()); }
 
@@ -462,7 +470,7 @@ public:
       //IR.getContext().yield();
     }
 
-    // Invaliadtion was handled after each pass in the above loop for the
+    // Invalidation was handled after each pass in the above loop for the
     // current unit of IR. Therefore, the remaining analysis results in the
     // AnalysisManager are preserved. We mark this with a set so that we don't
     // need to inspect each one individually.
@@ -646,9 +654,9 @@ public:
   /// This doesn't invalidate, but instead simply deletes, the relevant results.
   /// It is useful when the IR is being removed and we want to clear out all the
   /// memory pinned for it.
-  void clear(IRUnitT &IR) {
+  void clear(IRUnitT &IR, llvm::StringRef Name) {
     if (DebugLogging)
-      dbgs() << "Clearing all analysis results for: " << IR.getName() << "\n";
+      dbgs() << "Clearing all analysis results for: " << Name << "\n";
 
     auto ResultsListI = AnalysisResultLists.find(&IR);
     if (ResultsListI == AnalysisResultLists.end())
@@ -1062,10 +1070,27 @@ public:
 
     const AnalysisManagerT &getManager() const { return *AM; }
 
-    /// \brief Handle invalidation by ignoring it; this pass is immutable.
+    /// When invalidation occurs, remove any registered invalidation events.
     bool invalidate(
-        IRUnitT &, const PreservedAnalyses &,
-        typename AnalysisManager<IRUnitT, ExtraArgTs...>::Invalidator &) {
+        IRUnitT &IRUnit, const PreservedAnalyses &PA,
+        typename AnalysisManager<IRUnitT, ExtraArgTs...>::Invalidator &Inv) {
+      // Loop over the set of registered outer invalidation mappings and if any
+      // of them map to an analysis that is now invalid, clear it out.
+      SmallVector<AnalysisKey *, 4> DeadKeys;
+      for (auto &KeyValuePair : OuterAnalysisInvalidationMap) {
+        AnalysisKey *OuterID = KeyValuePair.first;
+        auto &InnerIDs = KeyValuePair.second;
+        InnerIDs.erase(llvm::remove_if(InnerIDs, [&](AnalysisKey *InnerID) {
+          return Inv.invalidate(InnerID, IRUnit, PA); }),
+                       InnerIDs.end());
+        if (InnerIDs.empty())
+          DeadKeys.push_back(OuterID);
+      }
+
+      for (auto OuterID : DeadKeys)
+        OuterAnalysisInvalidationMap.erase(OuterID);
+
+      // The proxy itself remains valid regardless of anything else.
       return false;
     }
 

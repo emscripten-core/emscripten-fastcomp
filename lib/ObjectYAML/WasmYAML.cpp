@@ -12,9 +12,10 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ObjectYAML/WasmYAML.h"
-#include "llvm/Object/Wasm.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "llvm/Support/MipsABIFlags.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/YAMLTraits.h"
 
 namespace llvm {
 
@@ -22,7 +23,7 @@ namespace WasmYAML {
 
 // Declared here rather than in the header to comply with:
 // http://llvm.org/docs/CodingStandards.html#provide-a-virtual-method-anchor-for-classes-in-headers
-Section::~Section() {}
+Section::~Section() = default;
 
 } // end namespace WasmYAML
 
@@ -56,7 +57,10 @@ static void sectionMapping(IO &IO, WasmYAML::NameSection &Section) {
 static void sectionMapping(IO &IO, WasmYAML::LinkingSection &Section) {
   commonSectionMapping(IO, Section);
   IO.mapRequired("Name", Section.Name);
-  IO.mapRequired("SymbolInfo", Section.SymbolInfos);
+  IO.mapRequired("DataSize", Section.DataSize);
+  IO.mapOptional("SymbolInfo", Section.SymbolInfos);
+  IO.mapOptional("SegmentInfo", Section.SegmentInfos);
+  IO.mapOptional("InitFunctions", Section.InitFunctions);
 }
 
 static void sectionMapping(IO &IO, WasmYAML::CustomSection &Section) {
@@ -262,6 +266,14 @@ void MappingTraits<WasmYAML::NameEntry>::mapping(
   IO.mapRequired("Name", NameEntry.Name);
 }
 
+void MappingTraits<WasmYAML::SegmentInfo>::mapping(
+    IO &IO, WasmYAML::SegmentInfo &SegmentInfo) {
+  IO.mapRequired("Index", SegmentInfo.Index);
+  IO.mapRequired("Name", SegmentInfo.Name);
+  IO.mapRequired("Alignment", SegmentInfo.Alignment);
+  IO.mapRequired("Flags", SegmentInfo.Flags);
+}
+
 void MappingTraits<WasmYAML::LocalDecl>::mapping(
     IO &IO, WasmYAML::LocalDecl &LocalDecl) {
   IO.mapRequired("Type", LocalDecl.Type);
@@ -342,15 +354,44 @@ void MappingTraits<wasm::WasmInitExpr>::mapping(IO &IO,
 
 void MappingTraits<WasmYAML::DataSegment>::mapping(
     IO &IO, WasmYAML::DataSegment &Segment) {
-  IO.mapRequired("Index", Segment.Index);
+  IO.mapOptional("SectionOffset", Segment.SectionOffset);
+  IO.mapRequired("MemoryIndex", Segment.MemoryIndex);
   IO.mapRequired("Offset", Segment.Offset);
   IO.mapRequired("Content", Segment.Content);
+}
+
+void MappingTraits<WasmYAML::InitFunction>::mapping(
+    IO &IO, WasmYAML::InitFunction &Init) {
+  IO.mapRequired("Priority", Init.Priority);
+  IO.mapRequired("FunctionIndex", Init.FunctionIndex);
 }
 
 void MappingTraits<WasmYAML::SymbolInfo>::mapping(IO &IO,
                                                   WasmYAML::SymbolInfo &Info) {
   IO.mapRequired("Name", Info.Name);
   IO.mapRequired("Flags", Info.Flags);
+}
+
+void ScalarBitSetTraits<WasmYAML::LimitFlags>::bitset(
+    IO &IO, WasmYAML::LimitFlags &Value) {
+#define BCase(X) IO.bitSetCase(Value, #X, wasm::WASM_LIMITS_FLAG_##X)
+  BCase(HAS_MAX);
+#undef BCase
+}
+
+void ScalarBitSetTraits<WasmYAML::SegmentFlags>::bitset(
+    IO &IO, WasmYAML::SegmentFlags &Value) {
+}
+
+void ScalarBitSetTraits<WasmYAML::SymbolFlags>::bitset(
+    IO &IO, WasmYAML::SymbolFlags &Value) {
+#define BCaseMask(M, X) IO.maskedBitSetCase(Value, #X, wasm::WASM_SYMBOL_##X, wasm::WASM_SYMBOL_##M)
+  //BCaseMask(BINDING_MASK, BINDING_GLOBAL);
+  BCaseMask(BINDING_MASK, BINDING_WEAK);
+  BCaseMask(BINDING_MASK, BINDING_LOCAL);
+  //BCaseMask(VISIBILITY_MASK, VISIBILITY_DEFAULT);
+  BCaseMask(VISIBILITY_MASK, VISIBILITY_HIDDEN);
+#undef BCaseMask
 }
 
 void ScalarEnumerationTraits<WasmYAML::ValueType>::enumeration(
@@ -398,9 +439,10 @@ void ScalarEnumerationTraits<WasmYAML::TableType>::enumeration(
 void ScalarEnumerationTraits<WasmYAML::RelocType>::enumeration(
     IO &IO, WasmYAML::RelocType &Type) {
 #define WASM_RELOC(name, value) IO.enumCase(Type, #name, wasm::name);
-#include "llvm/BinaryFormat/WasmRelocs/WebAssembly.def"
+#include "llvm/BinaryFormat/WasmRelocs.def"
 #undef WASM_RELOC
 }
 
 } // end namespace yaml
+
 } // end namespace llvm

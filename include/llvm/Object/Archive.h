@@ -229,7 +229,7 @@ public:
 
   enum Kind {
     K_GNU,
-    K_MIPS64,
+    K_GNU64,
     K_BSD,
     K_DARWIN,
     K_DARWIN64,
@@ -253,7 +253,7 @@ public:
   }
 
   // Cast methods.
-  static inline bool classof(Binary const *v) {
+  static bool classof(Binary const *v) {
     return v->isArchive();
   }
 

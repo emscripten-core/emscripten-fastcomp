@@ -10,9 +10,12 @@
 #ifndef LLVM_DEBUGINFO_DWARFDEBUGLINE_H
 #define LLVM_DEBUGINFO_DWARFDEBUGLINE_H
 
+#include "llvm/ADT/StringRef.h"
 #include "llvm/DebugInfo/DIContext.h"
+#include "llvm/DebugInfo/DWARF/DWARFDataExtractor.h"
+#include "llvm/DebugInfo/DWARF/DWARFFormValue.h"
 #include "llvm/DebugInfo/DWARF/DWARFRelocMap.h"
-#include "llvm/Support/DataExtractor.h"
+#include "llvm/Support/MD5.h"
 #include <cstdint>
 #include <map>
 #include <string>
@@ -20,13 +23,11 @@
 
 namespace llvm {
 
+class DWARFUnit;
 class raw_ostream;
 
 class DWARFDebugLine {
 public:
-  DWARFDebugLine(const RelocAddrMap *LineInfoRelocMap)
-      : RelocMap(LineInfoRelocMap) {}
-
   struct FileNameEntry {
     FileNameEntry() = default;
 
@@ -34,6 +35,7 @@ public:
     uint64_t DirIdx = 0;
     uint64_t ModTime = 0;
     uint64_t Length = 0;
+    MD5::MD5Result Checksum;
   };
 
   struct Prologue {
@@ -42,15 +44,15 @@ public:
     /// The size in bytes of the statement information for this compilation unit
     /// (not including the total_length field itself).
     uint64_t TotalLength;
-    /// Version identifier for the statement information format.
-    uint16_t Version;
-    /// In v5, size in bytes of an address (or segment offset).
-    uint8_t AddressSize;
-    /// In v5, size in bytes of a segment selector.
-    uint8_t SegSelectorSize;
+    /// Version, address size (starting in v5), and DWARF32/64 format; these
+    /// parameters affect interpretation of forms (used in the directory and
+    /// file tables starting with v5).
+    DWARFFormParams FormParams;
     /// The number of bytes following the prologue_length field to the beginning
     /// of the first byte of the statement program itself.
     uint64_t PrologueLength;
+    /// In v5, size in bytes of a segment selector.
+    uint8_t SegSelectorSize;
     /// The size in bytes of the smallest target machine instruction. Statement
     /// program opcodes that alter the address register first multiply their
     /// operands by this value.
@@ -66,19 +68,24 @@ public:
     uint8_t LineRange;
     /// The number assigned to the first special opcode.
     uint8_t OpcodeBase;
+    /// For v5, whether filename entries provide an MD5 checksum.
+    bool HasMD5;
     std::vector<uint8_t> StandardOpcodeLengths;
     std::vector<StringRef> IncludeDirectories;
     std::vector<FileNameEntry> FileNames;
 
-    bool IsDWARF64;
+    const DWARFFormParams getFormParams() const { return FormParams; }
+    uint16_t getVersion() const { return FormParams.Version; }
+    uint8_t getAddressSize() const { return FormParams.AddrSize; }
+    bool isDWARF64() const { return FormParams.Format == dwarf::DWARF64; }
 
-    uint32_t sizeofTotalLength() const { return IsDWARF64 ? 12 : 4; }
+    uint32_t sizeofTotalLength() const { return isDWARF64() ? 12 : 4; }
 
-    uint32_t sizeofPrologueLength() const { return IsDWARF64 ? 8 : 4; }
+    uint32_t sizeofPrologueLength() const { return isDWARF64() ? 8 : 4; }
 
     /// Length of the prologue in bytes.
     uint32_t getLength() const {
-      return PrologueLength + sizeofTotalLength() + sizeof(Version) +
+      return PrologueLength + sizeofTotalLength() + sizeof(getVersion()) +
              sizeofPrologueLength();
     }
 
@@ -93,7 +100,8 @@ public:
 
     void clear();
     void dump(raw_ostream &OS) const;
-    bool parse(DataExtractor DebugLineData, uint32_t *OffsetPtr);
+    bool parse(const DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
+               const DWARFUnit *U = nullptr);
   };
 
   /// Standard .debug_line state machine structure.
@@ -104,7 +112,9 @@ public:
     void postAppend();
     void reset(bool DefaultIsStmt);
     void dump(raw_ostream &OS) const;
+
     static void dumpTableHeader(raw_ostream &OS);
+
     static bool orderByAddress(const Row &LHS, const Row &RHS) {
       return LHS.Address < RHS.Address;
     }
@@ -213,14 +223,15 @@ public:
     void clear();
 
     /// Parse prologue and all rows.
-    bool parse(DataExtractor DebugLineData, const RelocAddrMap *RMap,
-               uint32_t *OffsetPtr);
+    bool parse(DWARFDataExtractor &DebugLineData, uint32_t *OffsetPtr,
+               const DWARFUnit *U, raw_ostream *OS = nullptr);
+
+    using RowVector = std::vector<Row>;
+    using RowIter = RowVector::const_iterator;
+    using SequenceVector = std::vector<Sequence>;
+    using SequenceIter = SequenceVector::const_iterator;
 
     struct Prologue Prologue;
-    typedef std::vector<Row> RowVector;
-    typedef RowVector::const_iterator RowIter;
-    typedef std::vector<Sequence> SequenceVector;
-    typedef SequenceVector::const_iterator SequenceIter;
     RowVector Rows;
     SequenceVector Sequences;
 
@@ -230,8 +241,8 @@ public:
   };
 
   const LineTable *getLineTable(uint32_t Offset) const;
-  const LineTable *getOrParseLineTable(DataExtractor DebugLineData,
-                                       uint32_t Offset);
+  const LineTable *getOrParseLineTable(DWARFDataExtractor &DebugLineData,
+                                       uint32_t Offset, const DWARFUnit *U);
 
 private:
   struct ParsingState {
@@ -244,16 +255,15 @@ private:
     struct LineTable *LineTable;
     /// The row number that starts at zero for the prologue, and increases for
     /// each row added to the matrix.
-    unsigned RowNumber;
+    unsigned RowNumber = 0;
     struct Row Row;
     struct Sequence Sequence;
   };
 
-  typedef std::map<uint32_t, LineTable> LineTableMapTy;
-  typedef LineTableMapTy::iterator LineTableIter;
-  typedef LineTableMapTy::const_iterator LineTableConstIter;
+  using LineTableMapTy = std::map<uint32_t, LineTable>;
+  using LineTableIter = LineTableMapTy::iterator;
+  using LineTableConstIter = LineTableMapTy::const_iterator;
 
-  const RelocAddrMap *RelocMap;
   LineTableMapTy LineTableMap;
 };
 

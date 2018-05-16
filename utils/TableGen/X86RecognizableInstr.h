@@ -10,7 +10,7 @@
 // This file is part of the X86 Disassembler Emitter.
 // It contains the interface of a single recognizable instruction.
 // Documentation for the disassembler emitter in general can be found in
-//  X86DisasemblerEmitter.h.
+//  X86DisassemblerEmitter.h.
 //
 //===----------------------------------------------------------------------===//
 
@@ -191,6 +191,8 @@ private:
   bool HasEVEX_KZ;
   /// The hasEVEX_B field from the record
   bool HasEVEX_B;
+  /// Indicates that the instruction uses the L and L' fields for RC.
+  bool EncodeRC;
   /// The isCodeGenOnly field from the record
   bool IsCodeGenOnly;
   /// The ForceDisassemble field from the record

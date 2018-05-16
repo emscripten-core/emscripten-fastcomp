@@ -22,6 +22,7 @@
 #include "llvm/Object/COFFImportFile.h"
 #include "llvm/Object/Error.h"
 #include "llvm/Support/Error.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
 using namespace llvm::COFF;
@@ -55,8 +56,28 @@ struct Token {
   StringRef Value;
 };
 
-static bool isDecorated(StringRef Sym) {
-  return Sym.startswith("_") || Sym.startswith("@") || Sym.startswith("?");
+static bool isDecorated(StringRef Sym, bool MingwDef) {
+  // In def files, the symbols can either be listed decorated or undecorated.
+  //
+  // - For cdecl symbols, only the undecorated form is allowed.
+  // - For fastcall and vectorcall symbols, both fully decorated or
+  //   undecorated forms can be present.
+  // - For stdcall symbols in non-MinGW environments, the decorated form is
+  //   fully decorated with leading underscore and trailing stack argument
+  //   size - like "_Func@0".
+  // - In MinGW def files, a decorated stdcall symbol does not include the
+  //   leading underscore though, like "Func@0".
+
+  // This function controls whether a leading underscore should be added to
+  // the given symbol name or not. For MinGW, treat a stdcall symbol name such
+  // as "Func@0" as undecorated, i.e. a leading underscore must be added.
+  // For non-MinGW, look for '@' in the whole string and consider "_Func@0"
+  // as decorated, i.e. don't add any more leading underscores.
+  // We can't check for a leading underscore here, since function names
+  // themselves can start with an underscore, while a second one still needs
+  // to be added.
+  return Sym.startswith("@") || Sym.contains("@@") || Sym.startswith("?") ||
+         (!MingwDef && Sym.contains('@'));
 }
 
 static Error createError(const Twine &Err) {
@@ -83,6 +104,9 @@ public:
     }
     case '=':
       Buf = Buf.drop_front();
+      // GNU dlltool accepts both = and ==.
+      if (Buf.startswith("="))
+        Buf = Buf.drop_front();
       return Token(Equal, "=");
     case ',':
       Buf = Buf.drop_front();
@@ -93,7 +117,7 @@ public:
       return Token(Identifier, S);
     }
     default: {
-      size_t End = Buf.find_first_of("=,\r\n \t\v");
+      size_t End = Buf.find_first_of("=,;\r\n \t\v");
       StringRef Word = Buf.substr(0, End);
       Kind K = llvm::StringSwitch<Kind>(Word)
                    .Case("BASE", KwBase)
@@ -120,7 +144,8 @@ private:
 
 class Parser {
 public:
-  explicit Parser(StringRef S, MachineTypes M) : Lex(S), Machine(M) {}
+  explicit Parser(StringRef S, MachineTypes M, bool B)
+      : Lex(S), Machine(M), MingwDef(B) {}
 
   Expected<COFFModuleDefinition> parse() {
     do {
@@ -181,14 +206,17 @@ private:
       std::string Name;
       if (Error Err = parseName(&Name, &Info.ImageBase))
         return Err;
-      // Append the appropriate file extension if not already present.
-      StringRef Ext = IsDll ? ".dll" : ".exe";
-      if (!StringRef(Name).endswith_lower(Ext))
-        Name += Ext;
+
+      Info.ImportName = Name;
 
       // Set the output file, but don't override /out if it was already passed.
-      if (Info.OutputFile.empty())
+      if (Info.OutputFile.empty()) {
         Info.OutputFile = Name;
+        // Append the appropriate file extension if not already present.
+        if (!sys::path::has_extension(Name))
+          Info.OutputFile += IsDll ? ".dll" : ".exe";
+      }
+
       return Error::success();
     }
     case KwVersion:
@@ -213,16 +241,27 @@ private:
     }
 
     if (Machine == IMAGE_FILE_MACHINE_I386) {
-      if (!isDecorated(E.Name))
+      if (!isDecorated(E.Name, MingwDef))
         E.Name = (std::string("_").append(E.Name));
-      if (!E.ExtName.empty() && !isDecorated(E.ExtName))
+      if (!E.ExtName.empty() && !isDecorated(E.ExtName, MingwDef))
         E.ExtName = (std::string("_").append(E.ExtName));
     }
 
     for (;;) {
       read();
       if (Tok.K == Identifier && Tok.Value[0] == '@') {
-        Tok.Value.drop_front().getAsInteger(10, E.Ordinal);
+        if (Tok.Value == "@") {
+          // "foo @ 10"
+          read();
+          Tok.Value.getAsInteger(10, E.Ordinal);
+        } else if (Tok.Value.drop_front().getAsInteger(10, E.Ordinal)) {
+          // "foo \n @bar" - Not an ordinal modifier at all, but the next
+          // export (fastcall decorated) - complete the current one.
+          unget();
+          Info.Exports.push_back(E);
+          return Error::success();
+        }
+        // "foo @10"
         read();
         if (Tok.K == KwNoname) {
           E.Noname = true;
@@ -308,11 +347,13 @@ private:
   std::vector<Token> Stack;
   MachineTypes Machine;
   COFFModuleDefinition Info;
+  bool MingwDef;
 };
 
 Expected<COFFModuleDefinition> parseCOFFModuleDefinition(MemoryBufferRef MB,
-                                                         MachineTypes Machine) {
-  return Parser(MB.getBuffer(), Machine).parse();
+                                                         MachineTypes Machine,
+                                                         bool MingwDef) {
+  return Parser(MB.getBuffer(), Machine, MingwDef).parse();
 }
 
 } // namespace object

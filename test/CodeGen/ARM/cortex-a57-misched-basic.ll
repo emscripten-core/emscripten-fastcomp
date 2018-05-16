@@ -6,16 +6,16 @@
 ; SDIV should be scheduled at the block's begin (20 cyc of independent M unit).
 ;
 ; CHECK:       ********** MI Scheduling **********
-; CHECK:      foo:BB#0 entry
+; CHECK:      foo:%bb.0 entry
 
-; GENERIC:    SDIV
+; GENERIC:    LDRi12
 ; GENERIC:    Latency    : 1
 ; GENERIC:    EORrr
 ; GENERIC:    Latency    : 1
-; GENERIC:    LDRi12
-; GENERIC:    Latency    : 4
 ; GENERIC:    ADDrr
 ; GENERIC:    Latency    : 1
+; GENERIC:    SDIV
+; GENERIC:    Latency    : 0
 ; GENERIC:    SUBrr
 ; GENERIC:    Latency    : 1
 
@@ -30,7 +30,7 @@
 ; A57_SCHED:  SUBrr
 ; A57_SCHED:  Latency    : 1
 
-; CHECK:      ** Final schedule for BB#0 ***
+; CHECK:      ** Final schedule for %bb.0 ***
 ; GENERIC:    LDRi12
 ; GENERIC:    SDIV
 ; A57_SCHED:  SDIV

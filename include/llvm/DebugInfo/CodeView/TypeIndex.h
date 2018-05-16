@@ -10,9 +10,11 @@
 #ifndef LLVM_DEBUGINFO_CODEVIEW_TYPEINDEX_H
 #define LLVM_DEBUGINFO_CODEVIEW_TYPEINDEX_H
 
+#include "llvm/ADT/DenseMapInfo.h"
 #include "llvm/Support/Endian.h"
 #include <cassert>
 #include <cinttypes>
+#include <functional>
 
 namespace llvm {
 
@@ -96,6 +98,7 @@ public:
   static const uint32_t FirstNonSimpleIndex = 0x1000;
   static const uint32_t SimpleKindMask = 0x000000ff;
   static const uint32_t SimpleModeMask = 0x00000700;
+  static const uint32_t DecoratedItemIdMask = 0x80000000;
 
 public:
   TypeIndex() : Index(static_cast<uint32_t>(SimpleTypeKind::None)) {}
@@ -108,6 +111,7 @@ public:
   uint32_t getIndex() const { return Index; }
   void setIndex(uint32_t I) { Index = I; }
   bool isSimple() const { return Index < FirstNonSimpleIndex; }
+  bool isDecoratedItemId() const { return !!(Index & DecoratedItemIdMask); }
 
   bool isNoneType() const { return *this == None(); }
 
@@ -265,6 +269,23 @@ struct TypeIndexOffset {
 void printTypeIndex(ScopedPrinter &Printer, StringRef FieldName, TypeIndex TI,
                     TypeCollection &Types);
 }
-}
+
+template <> struct DenseMapInfo<codeview::TypeIndex> {
+  static inline codeview::TypeIndex getEmptyKey() {
+    return codeview::TypeIndex{DenseMapInfo<uint32_t>::getEmptyKey()};
+  }
+  static inline codeview::TypeIndex getTombstoneKey() {
+    return codeview::TypeIndex{DenseMapInfo<uint32_t>::getTombstoneKey()};
+  }
+  static unsigned getHashValue(const codeview::TypeIndex &TI) {
+    return DenseMapInfo<uint32_t>::getHashValue(TI.getIndex());
+  }
+  static bool isEqual(const codeview::TypeIndex &LHS,
+                      const codeview::TypeIndex &RHS) {
+    return LHS == RHS;
+  }
+};
+
+} // namespace llvm
 
 #endif

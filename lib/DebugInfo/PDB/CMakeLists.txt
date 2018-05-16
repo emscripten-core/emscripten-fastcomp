@@ -17,11 +17,13 @@ if(LLVM_ENABLE_DIA_SDK)
     DIA/DIAEnumLineNumbers.cpp
     DIA/DIAEnumSourceFiles.cpp
     DIA/DIAEnumSymbols.cpp
+    DIA/DIAEnumTables.cpp
     DIA/DIAError.cpp
     DIA/DIALineNumber.cpp
     DIA/DIARawSymbol.cpp
     DIA/DIASession.cpp
     DIA/DIASourceFile.cpp
+    DIA/DIATable.cpp
     )
 
     set(LIBPDB_ADDITIONAL_HEADER_DIRS "${LLVM_MAIN_INCLUDE_DIR}/llvm/DebugInfo/PDB/DIA")
@@ -35,14 +37,16 @@ add_pdb_impl_folder(Native
   Native/DbiStreamBuilder.cpp
   Native/EnumTables.cpp
   Native/GlobalsStream.cpp
-  Native/GSI.cpp
   Native/Hash.cpp
   Native/HashTable.cpp
   Native/InfoStream.cpp
   Native/InfoStreamBuilder.cpp
   Native/ModuleDebugStream.cpp
+  Native/NativeBuiltinSymbol.cpp
   Native/NativeCompilandSymbol.cpp
   Native/NativeEnumModules.cpp
+  Native/NativeEnumSymbol.cpp
+  Native/NativeEnumTypes.cpp
   Native/NativeExeSymbol.cpp
   Native/NativeRawSymbol.cpp
   Native/NamedStreamMap.cpp
@@ -51,8 +55,8 @@ add_pdb_impl_folder(Native
   Native/PDBFileBuilder.cpp
   Native/PDBStringTable.cpp
   Native/PDBStringTableBuilder.cpp
-  Native/PDBTypeServerHandler.cpp
   Native/PublicsStream.cpp
+  Native/GSIStreamBuilder.cpp
   Native/RawError.cpp
   Native/SymbolStream.cpp
   Native/TpiHashing.cpp

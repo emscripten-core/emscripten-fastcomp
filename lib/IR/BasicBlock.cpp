@@ -264,7 +264,8 @@ const BasicBlock *BasicBlock::getUniqueSuccessor() const {
 }
 
 iterator_range<BasicBlock::phi_iterator> BasicBlock::phis() {
-  return make_range<phi_iterator>(dyn_cast<PHINode>(&front()), nullptr);
+  PHINode *P = empty() ? nullptr : dyn_cast<PHINode>(&*begin());
+  return make_range<phi_iterator>(P, nullptr);
 }
 
 /// This method is used to notify a BasicBlock that the
@@ -355,6 +356,19 @@ bool BasicBlock::canSplitPredecessors() const {
   return true;
 }
 
+bool BasicBlock::isLegalToHoistInto() const {
+  auto *Term = getTerminator();
+  // No terminator means the block is under construction.
+  if (!Term)
+    return true;
+
+  // If the block has no successors, there can be no instructions to hoist.
+  assert(Term->getNumSuccessors() > 0);
+
+  // Instructions should not be hoisted across exception handling boundaries.
+  return !Term->isExceptional();
+}
+
 /// This splits a basic block into two at the specified
 /// instruction.  Note that all instructions BEFORE the specified iterator stay
 /// as part of the original basic block, an unconditional branch is added to
@@ -433,4 +447,17 @@ bool BasicBlock::isLandingPad() const {
 /// Return the landingpad instruction associated with the landing pad.
 const LandingPadInst *BasicBlock::getLandingPadInst() const {
   return dyn_cast<LandingPadInst>(getFirstNonPHI());
+}
+
+Optional<uint64_t> BasicBlock::getIrrLoopHeaderWeight() const {
+  const TerminatorInst *TI = getTerminator();
+  if (MDNode *MDIrrLoopHeader =
+      TI->getMetadata(LLVMContext::MD_irr_loop)) {
+    MDString *MDName = cast<MDString>(MDIrrLoopHeader->getOperand(0));
+    if (MDName->getString().equals("loop_header_weight")) {
+      auto *CI = mdconst::extract<ConstantInt>(MDIrrLoopHeader->getOperand(1));
+      return Optional<uint64_t>(CI->getValue().getZExtValue());
+    }
+  }
+  return Optional<uint64_t>();
 }

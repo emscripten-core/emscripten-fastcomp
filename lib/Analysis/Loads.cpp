@@ -72,7 +72,7 @@ static bool isDereferenceableAndAlignedPointer(
                         V->getPointerDereferenceableBytes(DL, CheckForNonNull));
   if (KnownDerefBytes.getBoolValue()) {
     if (KnownDerefBytes.uge(Size))
-      if (!CheckForNonNull || isKnownNonNullAt(V, CtxI, DT))
+      if (!CheckForNonNull || isKnownNonZero(V, DL, 0, nullptr, CtxI, DT))
         return isAligned(V, Align, DL);
   }
 
@@ -114,6 +114,16 @@ static bool isDereferenceableAndAlignedPointer(
 
   // If we don't know, assume the worst.
   return false;
+}
+
+bool llvm::isDereferenceableAndAlignedPointer(const Value *V, unsigned Align,
+                                              const APInt &Size,
+                                              const DataLayout &DL,
+                                              const Instruction *CtxI,
+                                              const DominatorTree *DT) {
+  SmallPtrSet<const Value *, 32> Visited;
+  return ::isDereferenceableAndAlignedPointer(V, Align, Size, DL, CtxI, DT,
+                                              Visited);
 }
 
 bool llvm::isDereferenceableAndAlignedPointer(const Value *V, unsigned Align,
@@ -404,7 +414,7 @@ Value *llvm::FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy,
 
       // If we have alias analysis and it says the store won't modify the loaded
       // value, ignore the store.
-      if (AA && (AA->getModRefInfo(SI, StrippedPtr, AccessSize) & MRI_Mod) == 0)
+      if (AA && !isModSet(AA->getModRefInfo(SI, StrippedPtr, AccessSize)))
         continue;
 
       // Otherwise the store that may or may not alias the pointer, bail out.
@@ -416,8 +426,7 @@ Value *llvm::FindAvailablePtrLoadStore(Value *Ptr, Type *AccessTy,
     if (Inst->mayWriteToMemory()) {
       // If alias analysis claims that it really won't modify the load,
       // ignore it.
-      if (AA &&
-          (AA->getModRefInfo(Inst, StrippedPtr, AccessSize) & MRI_Mod) == 0)
+      if (AA && !isModSet(AA->getModRefInfo(Inst, StrippedPtr, AccessSize)))
         continue;
 
       // May modify the pointer, bail out.

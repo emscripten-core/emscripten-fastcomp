@@ -31,16 +31,16 @@
 #include "llvm/DebugInfo/CodeView/DebugStringTableSubsection.h"
 #include "llvm/DebugInfo/CodeView/LazyRandomTypeCollection.h"
 #include "llvm/DebugInfo/CodeView/Line.h"
+#include "llvm/DebugInfo/CodeView/MergingTypeTableBuilder.h"
 #include "llvm/DebugInfo/CodeView/RecordSerialization.h"
-#include "llvm/DebugInfo/CodeView/SymbolDeserializer.h"
 #include "llvm/DebugInfo/CodeView/SymbolDumpDelegate.h"
 #include "llvm/DebugInfo/CodeView/SymbolDumper.h"
 #include "llvm/DebugInfo/CodeView/SymbolRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeDumpVisitor.h"
+#include "llvm/DebugInfo/CodeView/TypeHashing.h"
 #include "llvm/DebugInfo/CodeView/TypeIndex.h"
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
 #include "llvm/DebugInfo/CodeView/TypeStreamMerger.h"
-#include "llvm/DebugInfo/CodeView/TypeTableBuilder.h"
 #include "llvm/DebugInfo/CodeView/TypeTableCollection.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/ObjectFile.h"
@@ -48,17 +48,10 @@
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/ConvertUTF.h"
-#include "llvm/Support/DataExtractor.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/Path.h"
 #include "llvm/Support/ScopedPrinter.h"
-#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/Win64EH.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cstring>
-#include <system_error>
-#include <time.h>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -67,6 +60,14 @@ using namespace llvm::support;
 using namespace llvm::Win64EH;
 
 namespace {
+
+struct LoadConfigTables {
+  uint64_t SEHTableVA = 0;
+  uint64_t SEHTableCount = 0;
+  uint32_t GuardFlags = 0;
+  uint64_t GuardFidTableVA = 0;
+  uint64_t GuardFidTableCount = 0;
+};
 
 class COFFDumper : public ObjDumper {
 public:
@@ -80,15 +81,20 @@ public:
   void printSymbols() override;
   void printDynamicSymbols() override;
   void printUnwindInfo() override;
+
+  void printNeededLibraries() override;
+
   void printCOFFImports() override;
   void printCOFFExports() override;
   void printCOFFDirectives() override;
   void printCOFFBaseReloc() override;
   void printCOFFDebugDirectory() override;
   void printCOFFResources() override;
+  void printCOFFLoadConfig() override;
   void printCodeViewDebugInfo() override;
-  void mergeCodeViewTypes(llvm::codeview::TypeTableBuilder &CVIDs,
-                          llvm::codeview::TypeTableBuilder &CVTypes) override;
+  void
+  mergeCodeViewTypes(llvm::codeview::MergingTypeTableBuilder &CVIDs,
+                     llvm::codeview::MergingTypeTableBuilder &CVTypes) override;
   void printStackMap() const override;
 private:
   void printSymbol(const SymbolRef &Sym);
@@ -100,6 +106,11 @@ private:
   template <class PEHeader> void printPEHeader(const PEHeader *Hdr);
   void printBaseOfDataField(const pe32_header *Hdr);
   void printBaseOfDataField(const pe32plus_header *Hdr);
+  template <typename T>
+  void printCOFFLoadConfig(const T *Conf, LoadConfigTables &Tables);
+  typedef void (*PrintExtraCB)(raw_ostream &, const uint8_t *);
+  void printRVATable(uint64_t TableVA, uint64_t Count, uint64_t EntrySize,
+                     PrintExtraCB PrintExtra = 0);
 
   void printCodeViewSymbolSection(StringRef SectionName, const SectionRef &Section);
   void printCodeViewTypeSection(StringRef SectionName, const SectionRef &Section);
@@ -321,6 +332,7 @@ static const EnumEntry<COFF::MachineTypes> ImageFileMachineType[] = {
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_AM33     ),
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_AMD64    ),
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_ARM      ),
+  LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_ARM64    ),
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_ARMNT    ),
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_EBC      ),
   LLVM_READOBJ_ENUM_ENT(COFF, IMAGE_FILE_MACHINE_I386     ),
@@ -664,6 +676,7 @@ void COFFDumper::printDOSHeader(const dos_header *DH) {
 template <class PEHeader>
 void COFFDumper::printPEHeader(const PEHeader *Hdr) {
   DictScope D(W, "ImageOptionalHeader");
+  W.printHex   ("Magic", Hdr->Magic);
   W.printNumber("MajorLinkerVersion", Hdr->MajorLinkerVersion);
   W.printNumber("MinorLinkerVersion", Hdr->MinorLinkerVersion);
   W.printNumber("SizeOfCode", Hdr->SizeOfCode);
@@ -743,6 +756,129 @@ void COFFDumper::printCOFFDebugDirectory() {
       W.printBinaryBlock("RawData", RawData);
     }
   }
+}
+
+void COFFDumper::printRVATable(uint64_t TableVA, uint64_t Count,
+                               uint64_t EntrySize, PrintExtraCB PrintExtra) {
+  uintptr_t TableStart, TableEnd;
+  error(Obj->getVaPtr(TableVA, TableStart));
+  error(Obj->getVaPtr(TableVA + Count * EntrySize - 1, TableEnd));
+  TableEnd++;
+  for (uintptr_t I = TableStart; I < TableEnd; I += EntrySize) {
+    uint32_t RVA = *reinterpret_cast<const ulittle32_t *>(I);
+    raw_ostream &OS = W.startLine();
+    OS << "0x" << W.hex(Obj->getImageBase() + RVA);
+    if (PrintExtra)
+      PrintExtra(OS, reinterpret_cast<const uint8_t *>(I));
+    OS << '\n';
+  }
+}
+
+void COFFDumper::printCOFFLoadConfig() {
+  LoadConfigTables Tables;
+  if (Obj->is64())
+    printCOFFLoadConfig(Obj->getLoadConfig64(), Tables);
+  else
+    printCOFFLoadConfig(Obj->getLoadConfig32(), Tables);
+
+  if (Tables.SEHTableVA) {
+    ListScope LS(W, "SEHTable");
+    printRVATable(Tables.SEHTableVA, Tables.SEHTableCount, 4);
+  }
+
+  if (Tables.GuardFidTableVA) {
+    ListScope LS(W, "GuardFidTable");
+    if (Tables.GuardFlags & uint32_t(coff_guard_flags::FidTableHasFlags)) {
+      auto PrintGuardFlags = [](raw_ostream &OS, const uint8_t *Entry) {
+        uint8_t Flags = *reinterpret_cast<const uint8_t *>(Entry + 4);
+        if (Flags)
+          OS << " flags " << utohexstr(Flags);
+      };
+      printRVATable(Tables.GuardFidTableVA, Tables.GuardFidTableCount, 5,
+                    PrintGuardFlags);
+    } else {
+      printRVATable(Tables.GuardFidTableVA, Tables.GuardFidTableCount, 4);
+    }
+  }
+}
+
+template <typename T>
+void COFFDumper::printCOFFLoadConfig(const T *Conf, LoadConfigTables &Tables) {
+  if (!Conf)
+    return;
+
+  ListScope LS(W, "LoadConfig");
+  char FormattedTime[20] = {};
+  time_t TDS = Conf->TimeDateStamp;
+  strftime(FormattedTime, 20, "%Y-%m-%d %H:%M:%S", gmtime(&TDS));
+  W.printHex("Size", Conf->Size);
+
+  // Print everything before SecurityCookie. The vast majority of images today
+  // have all these fields.
+  if (Conf->Size < offsetof(T, SEHandlerTable))
+    return;
+  W.printHex("TimeDateStamp", FormattedTime, TDS);
+  W.printHex("MajorVersion", Conf->MajorVersion);
+  W.printHex("MinorVersion", Conf->MinorVersion);
+  W.printHex("GlobalFlagsClear", Conf->GlobalFlagsClear);
+  W.printHex("GlobalFlagsSet", Conf->GlobalFlagsSet);
+  W.printHex("CriticalSectionDefaultTimeout",
+             Conf->CriticalSectionDefaultTimeout);
+  W.printHex("DeCommitFreeBlockThreshold", Conf->DeCommitFreeBlockThreshold);
+  W.printHex("DeCommitTotalFreeThreshold", Conf->DeCommitTotalFreeThreshold);
+  W.printHex("LockPrefixTable", Conf->LockPrefixTable);
+  W.printHex("MaximumAllocationSize", Conf->MaximumAllocationSize);
+  W.printHex("VirtualMemoryThreshold", Conf->VirtualMemoryThreshold);
+  W.printHex("ProcessHeapFlags", Conf->ProcessHeapFlags);
+  W.printHex("ProcessAffinityMask", Conf->ProcessAffinityMask);
+  W.printHex("CSDVersion", Conf->CSDVersion);
+  W.printHex("DependentLoadFlags", Conf->DependentLoadFlags);
+  W.printHex("EditList", Conf->EditList);
+  W.printHex("SecurityCookie", Conf->SecurityCookie);
+
+  // Print the safe SEH table if present.
+  if (Conf->Size < offsetof(coff_load_configuration32, GuardCFCheckFunction))
+    return;
+  W.printHex("SEHandlerTable", Conf->SEHandlerTable);
+  W.printNumber("SEHandlerCount", Conf->SEHandlerCount);
+
+  Tables.SEHTableVA = Conf->SEHandlerTable;
+  Tables.SEHTableCount = Conf->SEHandlerCount;
+
+  // Print everything before CodeIntegrity. (2015)
+  if (Conf->Size < offsetof(T, CodeIntegrity))
+    return;
+  W.printHex("GuardCFCheckFunction", Conf->GuardCFCheckFunction);
+  W.printHex("GuardCFCheckDispatch", Conf->GuardCFCheckDispatch);
+  W.printHex("GuardCFFunctionTable", Conf->GuardCFFunctionTable);
+  W.printNumber("GuardCFFunctionCount", Conf->GuardCFFunctionCount);
+  W.printHex("GuardFlags", Conf->GuardFlags);
+
+  Tables.GuardFidTableVA = Conf->GuardCFFunctionTable;
+  Tables.GuardFidTableCount = Conf->GuardCFFunctionCount;
+  Tables.GuardFlags = Conf->GuardFlags;
+
+  // Print the rest. (2017)
+  if (Conf->Size < sizeof(T))
+    return;
+  W.printHex("GuardAddressTakenIatEntryTable",
+             Conf->GuardAddressTakenIatEntryTable);
+  W.printNumber("GuardAddressTakenIatEntryCount",
+                Conf->GuardAddressTakenIatEntryCount);
+  W.printHex("GuardLongJumpTargetTable", Conf->GuardLongJumpTargetTable);
+  W.printNumber("GuardLongJumpTargetCount", Conf->GuardLongJumpTargetCount);
+  W.printHex("DynamicValueRelocTable", Conf->DynamicValueRelocTable);
+  W.printHex("CHPEMetadataPointer", Conf->CHPEMetadataPointer);
+  W.printHex("GuardRFFailureRoutine", Conf->GuardRFFailureRoutine);
+  W.printHex("GuardRFFailureRoutineFunctionPointer",
+             Conf->GuardRFFailureRoutineFunctionPointer);
+  W.printHex("DynamicValueRelocTableOffset",
+             Conf->DynamicValueRelocTableOffset);
+  W.printNumber("DynamicValueRelocTableSection",
+                Conf->DynamicValueRelocTableSection);
+  W.printHex("GuardRFVerifyStackPointerFunctionPointer",
+             Conf->GuardRFVerifyStackPointerFunctionPointer);
+  W.printHex("HotPatchTableOffset", Conf->HotPatchTableOffset);
 }
 
 void COFFDumper::printBaseOfDataField(const pe32_header *Hdr) {
@@ -1055,8 +1191,8 @@ void COFFDumper::printFileNameForOffset(StringRef Label, uint32_t FileOffset) {
   W.printHex(Label, getFileNameForFileOffset(FileOffset), FileOffset);
 }
 
-void COFFDumper::mergeCodeViewTypes(TypeTableBuilder &CVIDs,
-                                    TypeTableBuilder &CVTypes) {
+void COFFDumper::mergeCodeViewTypes(MergingTypeTableBuilder &CVIDs,
+                                    MergingTypeTableBuilder &CVTypes) {
   for (const SectionRef &S : Obj->sections()) {
     StringRef SectionName;
     error(S.getName(SectionName));
@@ -1076,8 +1212,7 @@ void COFFDumper::mergeCodeViewTypes(TypeTableBuilder &CVIDs,
         error(object_error::parse_failed);
       }
       SmallVector<TypeIndex, 128> SourceToDest;
-      if (auto EC = mergeTypeAndIdRecords(CVIDs, CVTypes, SourceToDest, nullptr,
-                                          Types))
+      if (auto EC = mergeTypeAndIdRecords(CVIDs, CVTypes, SourceToDest, Types))
         return error(std::move(EC));
     }
   }
@@ -1285,9 +1420,9 @@ void COFFDumper::printSymbol(const SymbolRef &Sym) {
       const coff_aux_weak_external *Aux;
       error(getSymbolAuxData(Obj, Symbol, I, Aux));
 
-      ErrorOr<COFFSymbolRef> Linked = Obj->getSymbol(Aux->TagIndex);
+      Expected<COFFSymbolRef> Linked = Obj->getSymbol(Aux->TagIndex);
       StringRef LinkedName;
-      std::error_code EC = Linked.getError();
+      std::error_code EC = errorToErrorCode(Linked.takeError());
       if (EC || (EC = Obj->getSymbolName(*Linked, LinkedName))) {
         LinkedName = "";
         error(EC);
@@ -1343,10 +1478,10 @@ void COFFDumper::printSymbol(const SymbolRef &Sym) {
       const coff_aux_clr_token *Aux;
       error(getSymbolAuxData(Obj, Symbol, I, Aux));
 
-      ErrorOr<COFFSymbolRef> ReferredSym =
+      Expected<COFFSymbolRef> ReferredSym =
           Obj->getSymbol(Aux->SymbolTableIndex);
       StringRef ReferredName;
-      std::error_code EC = ReferredSym.getError();
+      std::error_code EC = errorToErrorCode(ReferredSym.takeError());
       if (EC || (EC = Obj->getSymbolName(*ReferredSym, ReferredName))) {
         ReferredName = "";
         error(EC);
@@ -1387,6 +1522,25 @@ void COFFDumper::printUnwindInfo() {
     W.printEnum("unsupported Image Machine", Obj->getMachine(),
                 makeArrayRef(ImageFileMachineType));
     break;
+  }
+}
+
+void COFFDumper::printNeededLibraries() {
+  ListScope D(W, "NeededLibraries");
+
+  using LibsTy = std::vector<StringRef>;
+  LibsTy Libs;
+
+  for (const ImportDirectoryEntryRef &DirRef : Obj->import_directories()) {
+    StringRef Name;
+    if (!DirRef.getName(Name))
+      Libs.push_back(Name);
+  }
+
+  std::stable_sort(Libs.begin(), Libs.end());
+
+  for (const auto &L : Libs) {
+    outs() << "  " << L << "\n";
   }
 }
 
@@ -1489,7 +1643,7 @@ void COFFDumper::printCOFFDirectives() {
   }
 }
 
-static StringRef getBaseRelocTypeName(uint8_t Type) {
+static std::string getBaseRelocTypeName(uint8_t Type) {
   switch (Type) {
   case COFF::IMAGE_REL_BASED_ABSOLUTE: return "ABSOLUTE";
   case COFF::IMAGE_REL_BASED_HIGH: return "HIGH";
@@ -1665,13 +1819,13 @@ void COFFDumper::printStackMap() const {
                         StackMapV2Parser<support::big>(StackMapContentsArray));
 }
 
-void llvm::dumpCodeViewMergedTypes(ScopedPrinter &Writer,
-                                   llvm::codeview::TypeTableBuilder &IDTable,
-                                   llvm::codeview::TypeTableBuilder &CVTypes) {
+void llvm::dumpCodeViewMergedTypes(
+    ScopedPrinter &Writer, llvm::codeview::MergingTypeTableBuilder &IDTable,
+    llvm::codeview::MergingTypeTableBuilder &CVTypes) {
   // Flatten it first, then run our dumper on it.
   SmallString<0> TypeBuf;
-  CVTypes.ForEachRecord([&](TypeIndex TI, ArrayRef<uint8_t> Record) {
-    TypeBuf.append(Record.begin(), Record.end());
+  CVTypes.ForEachRecord([&](TypeIndex TI, const CVType &Record) {
+    TypeBuf.append(Record.RecordData.begin(), Record.RecordData.end());
   });
 
   TypeTableCollection TpiTypes(CVTypes.records());

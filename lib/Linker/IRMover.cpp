@@ -640,6 +640,10 @@ GlobalValue *IRLinker::copyGlobalValueProto(const GlobalValue *SGV,
   } else {
     if (ForDefinition)
       NewGV = copyGlobalAliasProto(cast<GlobalAlias>(SGV));
+    else if (SGV->getValueType()->isFunctionTy())
+      NewGV =
+          Function::Create(cast<FunctionType>(TypeMap.get(SGV->getValueType())),
+                           GlobalValue::ExternalLinkage, SGV->getName(), &DstM);
     else
       NewGV = new GlobalVariable(
           DstM, TypeMap.get(SGV->getValueType()),
@@ -950,7 +954,12 @@ Expected<Constant *> IRLinker::linkGlobalValueProto(GlobalValue *SGV,
     NewGV->setLinkage(GlobalValue::InternalLinkage);
 
   Constant *C = NewGV;
-  if (DGV)
+  // Only create a bitcast if necessary. In particular, with
+  // DebugTypeODRUniquing we may reach metadata in the destination module
+  // containing a GV from the source module, in which case SGV will be
+  // the same as DGV and NewGV, and TypeMap.get() will assert since it
+  // assumes it is being invoked on a type in the source module.
+  if (DGV && NewGV != SGV)
     C = ConstantExpr::getBitCast(NewGV, TypeMap.get(SGV->getType()));
 
   if (DGV && NewGV != DGV) {
@@ -1256,6 +1265,18 @@ Error IRLinker::linkModuleFlagsMetadata() {
   return Error::success();
 }
 
+/// Return InlineAsm adjusted with target-specific directives if required.
+/// For ARM and Thumb, we have to add directives to select the appropriate ISA
+/// to support mixing module-level inline assembly from ARM and Thumb modules.
+static std::string adjustInlineAsm(const std::string &InlineAsm,
+                                   const Triple &Triple) {
+  if (Triple.getArch() == Triple::thumb || Triple.getArch() == Triple::thumbeb)
+    return ".text\n.balign 2\n.thumb\n" + InlineAsm;
+  if (Triple.getArch() == Triple::arm || Triple.getArch() == Triple::armeb)
+    return ".text\n.balign 4\n.arm\n" + InlineAsm;
+  return InlineAsm;
+}
+
 Error IRLinker::run() {
   // Ensure metadata materialized before value mapping.
   if (SrcM->getMaterializer())
@@ -1293,11 +1314,13 @@ Error IRLinker::run() {
 
   // Append the module inline asm string.
   if (!IsPerformingImport && !SrcM->getModuleInlineAsm().empty()) {
+    std::string SrcModuleInlineAsm = adjustInlineAsm(SrcM->getModuleInlineAsm(),
+                                                     SrcTriple);
     if (DstM.getModuleInlineAsm().empty())
-      DstM.setModuleInlineAsm(SrcM->getModuleInlineAsm());
+      DstM.setModuleInlineAsm(SrcModuleInlineAsm);
     else
       DstM.setModuleInlineAsm(DstM.getModuleInlineAsm() + "\n" +
-                              SrcM->getModuleInlineAsm());
+                              SrcModuleInlineAsm);
   }
 
   // Loop over all of the linked values to compute type mappings.

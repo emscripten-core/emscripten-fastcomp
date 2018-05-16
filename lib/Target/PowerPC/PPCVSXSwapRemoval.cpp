@@ -191,12 +191,14 @@ private:
 public:
   // Main entry point for this pass.
   bool runOnMachineFunction(MachineFunction &MF) override {
-    if (skipFunction(*MF.getFunction()))
+    if (skipFunction(MF.getFunction()))
       return false;
 
     // If we don't have VSX on the subtarget, don't do anything.
+    // Also, on Power 9 the load and store ops preserve element order and so
+    // the swaps are not required.
     const PPCSubtarget &STI = MF.getSubtarget<PPCSubtarget>();
-    if (!STI.hasVSX())
+    if (!STI.hasVSX() || !STI.needsSwapsForVSXMemOps())
       return false;
 
     bool Changed = false;
@@ -351,6 +353,8 @@ bool PPCVSXSwapRemoval::gatherVectorInstructions() {
         break;
       case PPC::LXSDX:
       case PPC::LXSSPX:
+      case PPC::XFLOADf64:
+      case PPC::XFLOADf32:
         // A load of a floating-point value into the high-order half of
         // a vector register is safe, provided that we introduce a swap
         // following the load, which will be done by the SUBREG_TO_REG
@@ -962,7 +966,7 @@ LLVM_DUMP_METHOD void PPCVSXSwapRemoval::dumpSwapVector() {
 
     dbgs() << format("%6d", ID);
     dbgs() << format("%6d", EC->getLeaderValue(ID));
-    dbgs() << format(" BB#%3d", MI->getParent()->getNumber());
+    dbgs() << format(" %bb.%3d", MI->getParent()->getNumber());
     dbgs() << format("  %14s  ", TII->getName(MI->getOpcode()).str().c_str());
 
     if (SwapVector[EntryIdx].IsLoad)

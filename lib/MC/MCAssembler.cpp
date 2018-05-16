@@ -68,6 +68,10 @@ STATISTIC(FragmentLayouts, "Number of fragment layouts");
 STATISTIC(ObjectBytes, "Number of emitted object file bytes");
 STATISTIC(RelaxationSteps, "Number of assembler layout and relaxation steps");
 STATISTIC(RelaxedInstructions, "Number of relaxed instructions");
+STATISTIC(PaddingFragmentsRelaxations,
+          "Number of Padding Fragments relaxations");
+STATISTIC(PaddingFragmentsBytes,
+          "Total size of all padding from adding Fragments");
 
 } // end namespace stats
 } // end anonymous namespace
@@ -84,7 +88,7 @@ MCAssembler::MCAssembler(MCContext &Context, MCAsmBackend &Backend,
     : Context(Context), Backend(Backend), Emitter(Emitter), Writer(Writer),
       BundleAlignSize(0), RelaxAll(false), SubsectionsViaSymbols(false),
       IncrementalLinkerCompatible(false), ELFHeaderEFlags(0) {
-  VersionMinInfo.Major = 0; // Major version == 0 for "none specified"
+  VersionInfo.Major = 0; // Major version == 0 for "none specified"
 }
 
 MCAssembler::~MCAssembler() = default;
@@ -103,7 +107,7 @@ void MCAssembler::reset() {
   IncrementalLinkerCompatible = false;
   ELFHeaderEFlags = 0;
   LOHContainer.reset();
-  VersionMinInfo.Major = 0;
+  VersionInfo.Major = 0;
 
   // reset objects owned by us
   getBackend().reset();
@@ -193,13 +197,22 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
   // FIXME: This code has some duplication with recordRelocation. We should
   // probably merge the two into a single callback that tries to evaluate a
   // fixup and records a relocation if one is needed.
+
+  // On error claim to have completely evaluated the fixup, to prevent any
+  // further processing from being done.
   const MCExpr *Expr = Fixup.getValue();
+  MCContext &Ctx = getContext();
+  Value = 0;
   if (!Expr->evaluateAsRelocatable(Target, &Layout, &Fixup)) {
-    getContext().reportError(Fixup.getLoc(), "expected relocatable expression");
-    // Claim to have completely evaluated the fixup, to prevent any further
-    // processing from being done.
-    Value = 0;
+    Ctx.reportError(Fixup.getLoc(), "expected relocatable expression");
     return true;
+  }
+  if (const MCSymbolRefExpr *RefB = Target.getSymB()) {
+    if (RefB->getKind() != MCSymbolRefExpr::VK_None) {
+      Ctx.reportError(Fixup.getLoc(),
+                      "unsupported subtraction of qualified symbol");
+      return true;
+    }
   }
 
   bool IsPCRel = Backend.getFixupKindInfo(
@@ -252,10 +265,9 @@ bool MCAssembler::evaluateFixup(const MCAsmLayout &Layout,
     Value -= Offset;
   }
 
-  // Let the backend adjust the fixup value if necessary, including whether
-  // we need a relocation.
-  Backend.processFixupValue(*this, Layout, Fixup, DF, Target, Value,
-                            IsResolved);
+  // Let the backend force a relocation if needed.
+  if (IsResolved && Backend.shouldForceRelocation(*this, Fixup, Target))
+    IsResolved = false;
 
   return IsResolved;
 }
@@ -269,13 +281,26 @@ uint64_t MCAssembler::computeFragmentSize(const MCAsmLayout &Layout,
     return cast<MCRelaxableFragment>(F).getContents().size();
   case MCFragment::FT_CompactEncodedInst:
     return cast<MCCompactEncodedInstFragment>(F).getContents().size();
-  case MCFragment::FT_Fill:
-    return cast<MCFillFragment>(F).getSize();
+  case MCFragment::FT_Fill: {
+    auto &FF = cast<MCFillFragment>(F);
+    int64_t Size = 0;
+    if (!FF.getSize().evaluateAsAbsolute(Size, Layout))
+      getContext().reportError(FF.getLoc(),
+                               "expected assembly-time absolute expression");
+    if (Size < 0) {
+      getContext().reportError(FF.getLoc(), "invalid number of bytes");
+      return 0;
+    }
+    return Size;
+  }
 
   case MCFragment::FT_LEB:
     return cast<MCLEBFragment>(F).getContents().size();
 
-  case MCFragment::FT_SafeSEH:
+  case MCFragment::FT_Padding:
+    return cast<MCPaddingFragment>(F).getSize();
+
+  case MCFragment::FT_SymbolId:
     return 4;
 
   case MCFragment::FT_Align: {
@@ -525,7 +550,7 @@ static void writeFragment(const MCAssembler &Asm, const MCAsmLayout &Layout,
     for (unsigned I = 1; I < MaxChunkSize; ++I)
       Data[I] = Data[0];
 
-    uint64_t Size = FF.getSize();
+    uint64_t Size = FragmentSize;
     for (unsigned ChunkSize = MaxChunkSize; ChunkSize; ChunkSize /= 2) {
       StringRef Ref(Data, ChunkSize);
       for (uint64_t I = 0, E = Size / ChunkSize; I != E; ++I)
@@ -541,8 +566,15 @@ static void writeFragment(const MCAssembler &Asm, const MCAsmLayout &Layout,
     break;
   }
 
-  case MCFragment::FT_SafeSEH: {
-    const MCSafeSEHFragment &SF = cast<MCSafeSEHFragment>(F);
+  case MCFragment::FT_Padding: {
+    if (!Asm.getBackend().writeNopData(FragmentSize, OW))
+      report_fatal_error("unable to write nop sequence of " +
+                         Twine(FragmentSize) + " bytes");
+    break;
+  }
+
+  case MCFragment::FT_SymbolId: {
+    const MCSymbolIdFragment &SF = cast<MCSymbolIdFragment>(F);
     OW->write32(SF.getSymbol()->getIndex());
     break;
   }
@@ -639,22 +671,20 @@ void MCAssembler::writeSectionData(const MCSection *Sec,
          Layout.getSectionAddressSize(Sec));
 }
 
-std::pair<uint64_t, bool> MCAssembler::handleFixup(const MCAsmLayout &Layout,
-                                                   MCFragment &F,
-                                                   const MCFixup &Fixup) {
+std::tuple<MCValue, uint64_t, bool>
+MCAssembler::handleFixup(const MCAsmLayout &Layout, MCFragment &F,
+                         const MCFixup &Fixup) {
   // Evaluate the fixup.
   MCValue Target;
   uint64_t FixedValue;
-  bool IsPCRel = Backend.getFixupKindInfo(Fixup.getKind()).Flags &
-                 MCFixupKindInfo::FKF_IsPCRel;
-  if (!evaluateFixup(Layout, Fixup, &F, Target, FixedValue)) {
+  bool IsResolved = evaluateFixup(Layout, Fixup, &F, Target, FixedValue);
+  if (!IsResolved) {
     // The fixup was unresolved, we need a relocation. Inform the object
     // writer of the relocation, and give it an opportunity to adjust the
     // fixup value if need be.
-    getWriter().recordRelocation(*this, Layout, &F, Fixup, Target, IsPCRel,
-                                 FixedValue);
+    getWriter().recordRelocation(*this, Layout, &F, Fixup, Target, FixedValue);
   }
-  return std::make_pair(FixedValue, IsPCRel);
+  return std::make_tuple(Target, FixedValue, IsResolved);
 }
 
 void MCAssembler::layout(MCAsmLayout &Layout) {
@@ -730,10 +760,12 @@ void MCAssembler::layout(MCAsmLayout &Layout) {
         llvm_unreachable("Unknown fragment with fixups!");
       for (const MCFixup &Fixup : Fixups) {
         uint64_t FixedValue;
-        bool IsPCRel;
-        std::tie(FixedValue, IsPCRel) = handleFixup(Layout, Frag, Fixup);
-        getBackend().applyFixup(Fixup, Contents.data(), Contents.size(),
-                                FixedValue, IsPCRel, getContext());
+        bool IsResolved;
+        MCValue Target;
+        std::tie(Target, FixedValue, IsResolved) =
+            handleFixup(Layout, Frag, Fixup);
+        getBackend().applyFixup(*this, Fixup, Target, Contents, FixedValue,
+                                IsResolved);
       }
     }
   }
@@ -811,6 +843,19 @@ bool MCAssembler::relaxInstruction(MCAsmLayout &Layout,
   F.getContents() = Code;
   F.getFixups() = Fixups;
 
+  return true;
+}
+
+bool MCAssembler::relaxPaddingFragment(MCAsmLayout &Layout,
+                                       MCPaddingFragment &PF) {
+  uint64_t OldSize = PF.getSize();
+  if (!getBackend().relaxFragment(&PF, Layout))
+    return false;
+  uint64_t NewSize = PF.getSize();
+
+  ++stats::PaddingFragmentsRelaxations;
+  stats::PaddingFragmentsBytes += NewSize;
+  stats::PaddingFragmentsBytes -= OldSize;
   return true;
 }
 
@@ -907,6 +952,9 @@ bool MCAssembler::layoutSectionOnce(MCAsmLayout &Layout, MCSection &Sec) {
       break;
     case MCFragment::FT_LEB:
       RelaxedFrag = relaxLEB(Layout, *cast<MCLEBFragment>(I));
+      break;
+    case MCFragment::FT_Padding:
+      RelaxedFrag = relaxPaddingFragment(Layout, *cast<MCPaddingFragment>(I));
       break;
     case MCFragment::FT_CVInlineLines:
       RelaxedFrag =

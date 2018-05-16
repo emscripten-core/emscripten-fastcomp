@@ -1,5 +1,5 @@
-; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=SI %s
-; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=VI %s
+; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -enable-var-scope -check-prefix=GCN -check-prefix=SI %s
+; RUN: llc -march=amdgcn -mcpu=tonga -mattr=-flat-for-global -verify-machineinstrs < %s | FileCheck -enable-var-scope -check-prefix=GCN -check-prefix=VI %s
 
 declare i32 @llvm.amdgcn.workitem.id.x() #1
 
@@ -60,8 +60,8 @@ define amdgpu_kernel void @fcmp_sgprX_k0_select_k1_sgprZ_f32(float addrspace(1)*
 ; GCN-LABEL: {{^}}fcmp_sgprX_k0_select_k1_sgprX_f32:
 ; GCN: s_load_dword [[X:s[0-9]+]]
 ; GCN-DAG: v_cmp_nlg_f32_e64 vcc, [[X]], 0
-; GCN-DAG: v_mov_b32_e32 [[VZ:v[0-9]+]], [[Z]]
-; GCN: v_cndmask_b32_e32 v{{[0-9]+}}, 1.0, [[VZ]], vcc
+; GCN-DAG: v_mov_b32_e32 [[VX:v[0-9]+]], [[X]]
+; GCN: v_cndmask_b32_e32 v{{[0-9]+}}, 1.0, [[VX]], vcc
 define amdgpu_kernel void @fcmp_sgprX_k0_select_k1_sgprX_f32(float addrspace(1)* %out, float %x) #0 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
   %tid.ext = sext i32 %tid to i64
@@ -73,7 +73,8 @@ define amdgpu_kernel void @fcmp_sgprX_k0_select_k1_sgprX_f32(float addrspace(1)*
 }
 
 ; GCN-LABEL: {{^}}fcmp_sgprX_k0_select_k0_sgprZ_f32:
-; GCN: s_load_dword [[X:s[0-9]+]]
+; GCN-DAG: s_load_dword [[X:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, {{0xb|0x2c}}
+; GCN-DAG: s_load_dword [[Z:s[0-9]+]], s{{\[[0-9]+:[0-9]+\]}}, {{0xc|0x30}}
 ; GCN-DAG: v_cmp_nlg_f32_e64 vcc, [[X]], 0
 ; GCN-DAG: v_mov_b32_e32 [[VZ:v[0-9]+]], [[Z]]
 ; GCN: v_cndmask_b32_e32 v{{[0-9]+}}, 0, [[VZ]], vcc
@@ -90,8 +91,8 @@ define amdgpu_kernel void @fcmp_sgprX_k0_select_k0_sgprZ_f32(float addrspace(1)*
 ; GCN-LABEL: {{^}}fcmp_sgprX_k0_select_k0_sgprX_f32:
 ; GCN: s_load_dword [[X:s[0-9]+]]
 ; GCN-DAG: v_cmp_nlg_f32_e64 vcc, [[X]], 0
-; GCN-DAG: v_mov_b32_e32 [[VZ:v[0-9]+]], [[Z]]
-; GCN: v_cndmask_b32_e32 v{{[0-9]+}}, 0, [[VZ]], vcc
+; GCN-DAG: v_mov_b32_e32 [[VX:v[0-9]+]], [[X]]
+; GCN: v_cndmask_b32_e32 v{{[0-9]+}}, 0, [[VX]], vcc
 define amdgpu_kernel void @fcmp_sgprX_k0_select_k0_sgprX_f32(float addrspace(1)* %out, float %x) #0 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
   %tid.ext = sext i32 %tid to i64
@@ -122,7 +123,7 @@ define amdgpu_kernel void @fcmp_sgprX_k0_select_k0_vgprZ_f32(float addrspace(1)*
 ; GCN-LABEL: {{^}}fcmp_sgprX_k0_select_k1_vgprZ_f32:
 ; GCN-DAG: {{buffer|flat}}_load_dword [[Z:v[0-9]+]]
 ; GCN-DAG: s_load_dword [[X:s[0-9]+]]
-; GCN: v_cmp_nlg_f32_e64 [[COND:vcc|s\[[0-9]+:[0-9]+\]]], [[X]], 0
+; GCN-DAG: v_cmp_nlg_f32_e64 [[COND:vcc|s\[[0-9]+:[0-9]+\]]], [[X]], 0
 ; GCN: v_cndmask_b32_e{{32|64}} v{{[0-9]+}}, 1.0, [[Z]], [[COND]]
 define amdgpu_kernel void @fcmp_sgprX_k0_select_k1_vgprZ_f32(float addrspace(1)* %out, float %x, float addrspace(1)* %z.ptr) #0 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
@@ -200,9 +201,9 @@ define amdgpu_kernel void @icmp_vgprX_k0_select_k1_vgprZ_i32(i32 addrspace(1)* %
 ; SI-DAG: v_cndmask_b32_e32 v{{[0-9]+}}, 0, v[[Z_HI]], vcc
 ; SI-DAG: v_cndmask_b32_e32 v{{[0-9]+}}, 2, v[[Z_LO]], vcc
 
-; VI-DAG: v_cmp_lt_i64_e64 s{{\[[0-9]+:[0-9]+\]}}, -1, v{{\[}}[[X_LO]]:[[X_HI]]{{\]}}
-; VI-DAG: v_cndmask_b32_e64 v{{[0-9]+}}, 0, v[[Z_HI]], s
-; VI-DAG: v_cndmask_b32_e64 v{{[0-9]+}}, 2, v[[Z_LO]], s
+; VI-DAG: v_cmp_lt_i64_e32 vcc, -1, v{{\[}}[[X_LO]]:[[X_HI]]{{\]}}
+; VI-DAG: v_cndmask_b32_e32 v{{[0-9]+}}, 0, v[[Z_HI]], vcc
+; VI-DAG: v_cndmask_b32_e32 v{{[0-9]+}}, 2, v[[Z_LO]], vcc
 define amdgpu_kernel void @icmp_vgprX_k0_select_k1_vgprZ_i64(i64 addrspace(1)* %out, i64 addrspace(1)* %x.ptr, i64 addrspace(1)* %z.ptr) #0 {
   %tid = call i32 @llvm.amdgcn.workitem.id.x() #1
   %tid.ext = sext i32 %tid to i64
@@ -292,10 +293,10 @@ define amdgpu_kernel void @fcmp_k0_vgprX_select_k1_vgprZ_v4f32(<4 x float> addrs
 ; GCN-LABEL: {{^}}icmp_vgprX_k0_select_k1_vgprZ_i1:
 ; GCN: load_dword
 ; GCN: load_ubyte
-; GCN-DAG: v_cmp_gt_i32_e64 s{{\[[0-9]+:[0-9]+\]}}, 0, v
+; GCN-DAG: v_cmp_gt_i32_e32 vcc, 0, v
 ; DCN-DAG: v_and_b32_e32 v{{[0-9]+}}, 1,
-; GCN-DAG: v_cmp_eq_u32_e32 vcc, 1, v
-; GCN-DAG: s_or_b64 s{{\[[0-9]+:[0-9]+\]}}, s{{\[[0-9]+:[0-9]+\]}}, vcc
+; GCN-DAG: v_cmp_eq_u32_e64 s{{\[[0-9]+:[0-9]+\]}}, 1, v
+; GCN-DAG: s_or_b64 s{{\[[0-9]+:[0-9]+\]}}, vcc, s{{\[[0-9]+:[0-9]+\]}}
 ; GCN: v_cndmask_b32_e64 v{{[0-9]+}}, 0, 1, s
 ; GCN: store_byte
 define amdgpu_kernel void @icmp_vgprX_k0_select_k1_vgprZ_i1(i1 addrspace(1)* %out, i32 addrspace(1)* %x.ptr, i1 addrspace(1)* %z.ptr) #0 {

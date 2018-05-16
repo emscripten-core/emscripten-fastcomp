@@ -219,11 +219,11 @@ bool PPCMachObjectWriter::recordScatteredRelocation(
     const MCSymbol *SB = &B->getSymbol();
 
     if (!SB->getFragment())
-      report_fatal_error("symbol '" + B->getSymbol().getName() +
+      report_fatal_error("symbol '" + SB->getName() +
                          "' can not be undefined in a subtraction expression");
 
     // FIXME: is Type correct? see include/llvm/BinaryFormat/MachO.h
-    Value2 = Writer->getSymbolAddress(B->getSymbol(), Layout);
+    Value2 = Writer->getSymbolAddress(*SB, Layout);
     FixedValue -= Writer->getSectionAddress(SB->getFragment()->getParent());
   }
   // FIXME: does FixedValue get used??
@@ -374,10 +374,10 @@ void PPCMachObjectWriter::RecordPPCRelocation(
   Writer->addRelocation(RelSymbol, Fragment->getParent(), MRE);
 }
 
-MCObjectWriter *llvm::createPPCMachObjectWriter(raw_pwrite_stream &OS,
-                                                bool Is64Bit, uint32_t CPUType,
-                                                uint32_t CPUSubtype) {
+std::unique_ptr<MCObjectWriter>
+llvm::createPPCMachObjectWriter(raw_pwrite_stream &OS, bool Is64Bit,
+                                uint32_t CPUType, uint32_t CPUSubtype) {
   return createMachObjectWriter(
-      new PPCMachObjectWriter(Is64Bit, CPUType, CPUSubtype), OS,
+      llvm::make_unique<PPCMachObjectWriter>(Is64Bit, CPUType, CPUSubtype), OS,
       /*IsLittleEndian=*/false);
 }

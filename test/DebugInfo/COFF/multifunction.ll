@@ -23,7 +23,7 @@
 
 
 ; X86-LABEL: _x:
-; X86:      # BB
+; X86:      # %bb.
 ; X86:      .cv_file 1 "D:\\source.c"
 ; X86:      .cv_loc 0 1 4 42 is_stmt 0 # source.c:4:42
 ; X86:      calll   _z
@@ -32,7 +32,7 @@
 ; X86:      [[END_OF_X:.?Lfunc_end.*]]:
 ;
 ; X86-LABEL: _y:
-; X86:      # BB
+; X86:      # %bb.
 ; X86:      .cv_loc 1 1 8 52 # source.c:8:52
 ; X86:      calll   _z
 ; X86:      .cv_loc 1 1 9 53 # source.c:9:53
@@ -40,7 +40,7 @@
 ; X86:      [[END_OF_Y:.?Lfunc_end.*]]:
 ;
 ; X86-LABEL: _f:
-; X86:      # BB
+; X86:      # %bb.
 ; X86:      .cv_loc 2 1 12 62 # source.c:12:62
 ; X86:      calll   _x
 ; X86:      .cv_loc 2 1 13 63 # source.c:13:63
@@ -61,6 +61,7 @@
 ; X86-NEXT: .short [[C1_END:.*]]-[[C1_START:.*]] #
 ; X86:      [[COMPILE_END]]:
 ; X86-NEXT: .p2align 2
+; X86-NEXT: .cv_fpo_data _x
 ; Symbol subsection for x
 ; X86-NEXT: .long   241
 ; X86-NEXT: .long [[F1_END:.*]]-[[F1_START:.*]] #
@@ -87,6 +88,7 @@
 ; Line table subsection for x
 ; X86: .cv_linetable 0, _x, [[END_OF_X]]
 ; Symbol subsection for y
+; X86-NEXT: .cv_fpo_data _y
 ; X86-NEXT: .long   241
 ; X86-NEXT: .long [[COMPILE_END:.*]]-[[COMPILE_START:.*]] #
 ; X86-NEXT: [[COMPILE_START]]:
@@ -112,6 +114,7 @@
 ; Line table subsection for y
 ; X86: .cv_linetable 1, _y, [[END_OF_Y]]
 ; Symbol subsection for f
+; X86-NEXT: .cv_fpo_data _f
 ; X86-NEXT: .long   241
 ; X86-NEXT: .long [[COMPILE_END:.*]]-[[COMPILE_START:.*]] #
 ; X86-NEXT: [[COMPILE_START]]:
@@ -145,7 +148,14 @@
 ; OBJ32:      ]
 ; OBJ32:      Subsection [
 ; OBJ32-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ32:        ProcStart {
+; OBJ32: 	Compile3Sym
+; OBJ32:      ]
+; OBJ32:      Subsection [
+; OBJ32-NEXT:   SubSectionType: FrameData (0xF5)
+; OBJ32:      ]
+; OBJ32:      Subsection [
+; OBJ32-NEXT:   SubSectionType: Symbols (0xF1)
+; OBJ32:        {{.*}}Proc{{.*}}Sym {
 ; OBJ32:          Kind: S_LPROC32_ID (0x1146)
 ; OBJ32:          CodeSize: 0x6
 ; OBJ32:          DisplayName: x
@@ -158,8 +168,11 @@
 ; OBJ32-NEXT:   SubSectionType: Lines (0xF2)
 ; OBJ32:      ]
 ; OBJ32:      Subsection [
+; OBJ32-NEXT:   SubSectionType: FrameData (0xF5)
+; OBJ32:      ]
+; OBJ32:      Subsection [
 ; OBJ32-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ32:        ProcStart {
+; OBJ32:        {{.*}}Proc{{.*}}Sym {
 ; OBJ32:          Kind: S_GPROC32_ID (0x1147)
 ; OBJ32:          CodeSize: 0x6
 ; OBJ32:          DisplayName: y
@@ -172,8 +185,11 @@
 ; OBJ32-NEXT:   SubSectionType: Lines (0xF2)
 ; OBJ32:      ]
 ; OBJ32:      Subsection [
+; OBJ32-NEXT:   SubSectionType: FrameData (0xF5)
+; OBJ32:      ]
+; OBJ32:      Subsection [
 ; OBJ32-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ32:        ProcStart {
+; OBJ32:        {{.*}}Proc{{.*}}Sym {
 ; OBJ32:          Kind: S_GPROC32_ID (0x1147)
 ; OBJ32:          CodeSize: 0x10
 ; OBJ32:          DisplayName: f
@@ -271,7 +287,7 @@
 ; X64-NEXT: .L{{.*}}:
 ; X64:      .cv_file 1 "D:\\source.c"
 ; X64:      .cv_loc 0 1 3 0 is_stmt 0 # source.c:3:0
-; X64:      # BB
+; X64:      # %bb.
 ; X64:      subq    $40, %rsp
 ; X64:      .cv_loc 0 1 4 42 # source.c:4:42
 ; X64-NEXT: callq   z
@@ -283,7 +299,7 @@
 ; X64-LABEL: y:
 ; X64-NEXT: .L{{.*}}:
 ; X64:      .cv_loc 1 1 7 0 # source.c:7:0
-; X64:      # BB
+; X64:      # %bb.
 ; X64:      subq    $40, %rsp
 ; X64:      .cv_loc 1 1 8 52 # source.c:8:52
 ; X64-NEXT: callq   z
@@ -295,7 +311,7 @@
 ; X64-LABEL: f:
 ; X64-NEXT: .L{{.*}}:
 ; X64:      .cv_loc 2 1 11 0 # source.c:11:0
-; X64:      # BB
+; X64:      # %bb.
 ; X64:      subq    $40, %rsp
 ; X64:      .cv_loc 2 1 12 62 # source.c:12:62
 ; X64-NEXT: callq   x
@@ -419,7 +435,7 @@
 ; OBJ64-NEXT: ]
 ; OBJ64:      Subsection [
 ; OBJ64-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ64:        ProcStart {
+; OBJ64:        {{.*}}Proc{{.*}}Sym {
 ; OBJ64:          Kind: S_LPROC32_ID (0x1146)
 ; OBJ64:          CodeSize: 0xE
 ; OBJ64:          DisplayName: x
@@ -433,7 +449,7 @@
 ; OBJ64:      ]
 ; OBJ64:      Subsection [
 ; OBJ64-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ64:        ProcStart {
+; OBJ64:        {{.*}}Proc{{.*}}Sym {
 ; OBJ64:          Kind: S_GPROC32_ID (0x1147)
 ; OBJ64:          CodeSize: 0xE
 ; OBJ64:          DisplayName: y
@@ -447,7 +463,7 @@
 ; OBJ64:      ]
 ; OBJ64:      Subsection [
 ; OBJ64-NEXT:   SubSectionType: Symbols (0xF1)
-; OBJ64:        ProcStart {
+; OBJ64:        {{.*}}Proc{{.*}}Sym {
 ; OBJ64:          Kind: S_GPROC32_ID (0x1147)
 ; OBJ64:          CodeSize: 0x18
 ; OBJ64:          DisplayName: f
