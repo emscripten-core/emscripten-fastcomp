@@ -33,10 +33,11 @@ JSSubtarget::JSSubtarget(const TargetMachine& TM, const Triple &TT) :
 
 JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
                                  StringRef CPU, StringRef FS, const TargetOptions &Options,
-                                 Optional<Reloc::Model>& RM, CodeModel::Model CM,
-                                 CodeGenOpt::Level OL)
+                                 Optional<Reloc::Model>& RM, Optional<CodeModel::Model> CM,
+                                 CodeGenOpt::Level OL, bool JIT)
     : LLVMTargetMachine(T, "e-p:32:32-i64:64-v128:32:128-n32-S128", TT,
-                        CPU, FS, Options, Reloc::Static, CM, OL),
+                        CPU, FS, Options, Reloc::Static,
+                        CodeModel::Small, OL),
       ST(*this, TT) {
 }
 

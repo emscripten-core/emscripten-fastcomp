@@ -46,8 +46,8 @@ class JSTargetMachine : public LLVMTargetMachine {
 public:
   JSTargetMachine(const Target &T, const Triple &TT,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
-                  Optional<Reloc::Model>& RM, CodeModel::Model CM,
-                  CodeGenOpt::Level OL);
+                  Optional<Reloc::Model>& RM, Optional<CodeModel::Model> CM,
+                  CodeGenOpt::Level OL, bool JIT);
 
   bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
                            CodeGenFileType FileType, bool DisableVerify = true,
