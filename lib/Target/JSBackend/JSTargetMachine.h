@@ -49,13 +49,11 @@ public:
                   Optional<Reloc::Model>& RM, CodeModel::Model CM,
                   CodeGenOpt::Level OL);
 
-  bool addPassesToEmitFile(
-      PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
-      bool DisableVerify = true, AnalysisID StartBefore = nullptr,
-      AnalysisID StartAfter = nullptr, AnalysisID StopBefore = nullptr,
-      AnalysisID StopAfter = nullptr) override;
+  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
+                           CodeGenFileType FileType, bool DisableVerify = true,
+                           MachineModuleInfo *MMI = nullptr) override;
 
-  TargetIRAnalysis getTargetIRAnalysis() override;
+//  TargetIRAnalysis getTargetIRAnalysis() override;
 
   const TargetSubtargetInfo *getJSSubtargetImpl() const {
     return &ST;
