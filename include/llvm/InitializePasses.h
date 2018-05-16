@@ -445,8 +445,6 @@ void initializeNoExitRuntimePass(PassRegistry&);
 // Emscripten passes end.
 // @LOCALMOD-END
 
-}
-
 } // end namespace llvm
 
 #endif // LLVM_INITIALIZEPASSES_H
