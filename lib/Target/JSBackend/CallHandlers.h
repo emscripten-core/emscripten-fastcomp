@@ -1059,10 +1059,7 @@ DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f32, Math_cos);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f64, Math_cos);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f32, Math_sin);
 DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f64, Math_sin);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_minnum_f32, Math_min);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_minnum_f64, Math_min);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f32, Math_max);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_maxnum_f64, Math_max);
+// The NaN semantics of llvm_[min|max]num_* do not quite match what asm.js and wasm's float min/max do, sadly
 
 DEF_CALL_HANDLER(llvm_powi_f32, {
   return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ',' + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ')', CI->getType());
@@ -2346,10 +2343,6 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_cos_f64);
   SETUP_CALL_HANDLER(llvm_sin_f32);
   SETUP_CALL_HANDLER(llvm_sin_f64);
-  SETUP_CALL_HANDLER(llvm_minnum_f32);
-  SETUP_CALL_HANDLER(llvm_minnum_f64);
-  SETUP_CALL_HANDLER(llvm_maxnum_f32);
-  SETUP_CALL_HANDLER(llvm_maxnum_f64);
 }
 
 std::string handleCall(const Instruction *CI) {
