@@ -63,7 +63,8 @@ public:
 
   bool hasBranchDivergence() { return true; }
 
-  void getUnrollingPreferences(Loop *L, TTI::UnrollingPreferences &UP);
+  void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                               TTI::UnrollingPreferences &UP);
 
   TTI::PopcntSupportKind getPopcntSupport(
       unsigned TyWidth) {
@@ -82,7 +83,7 @@ public:
       TTI::OperandValueKind Opd2Info = TTI::OK_AnyValue,
       TTI::OperandValueProperties Opd1PropInfo = TTI::OP_None,
       TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None,
-      ArrayRef<const Value*> Args = {});
+      ArrayRef<const Value *> Args = ArrayRef<const Value *>());
 
   unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
 

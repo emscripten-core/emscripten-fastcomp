@@ -28,8 +28,8 @@ using namespace llvm;
 
 #define DEBUG_TYPE "JStti"
 
-void JSTTIImpl::getUnrollingPreferences(Loop *L,
-                                            TTI::UnrollingPreferences &UP) {
+void JSTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
+                                        TTI::UnrollingPreferences &UP) {
   // We generally don't want a lot of unrolling.
   UP.Partial = false;
   UP.Runtime = false;
