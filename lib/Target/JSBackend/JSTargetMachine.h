@@ -1,69 +1,49 @@
-//===-- JSTargetMachine.h - TargetMachine for the JS Backend ----*- C++ -*-===//
+// JSTargetMachine.h - Define TargetMachine for JS -*- C++ -*-
 //
 //                     The LLVM Compiler Infrastructure
 //
 // This file is distributed under the University of Illinois Open Source
 // License. See LICENSE.TXT for details.
 //
-//===---------------------------------------------------------------------===//
-//
-// This file declares the TargetMachine that is used by the JS/asm.js/
-// emscripten backend.
-//
-//===---------------------------------------------------------------------===//
+//===----------------------------------------------------------------------===//
+///
+/// \file
+/// \brief This file declares the JS-specific subclass of
+/// TargetMachine.
+///
+//===----------------------------------------------------------------------===//
 
-#ifndef JSTARGETMACHINE_H
-#define JSTARGETMACHINE_H
+#ifndef LLVM_LIB_TARGET_JS_JSTARGETMACHINE_H
+#define LLVM_LIB_TARGET_JS_JSTARGETMACHINE_H
 
-#include "JS.h"
+#include "JSSubtarget.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/CodeGen/TargetSubtargetInfo.h"
-#include "llvm/CodeGen/TargetLowering.h"
 
 namespace llvm {
 
-class formatted_raw_ostream;
-
-class JSTargetLowering : public TargetLowering {
-public:
-  explicit JSTargetLowering(const TargetMachine& TM) : TargetLowering(TM) {}
-};
-
-class JSSubtarget : public TargetSubtargetInfo {
-  JSTargetLowering TL;
+class JSTargetMachine final : public LLVMTargetMachine {
+  mutable StringMap<std::unique_ptr<JSSubtarget>> SubtargetMap;
 
 public:
-  JSSubtarget(const TargetMachine& TM, const Triple &TT);
+  JSTargetMachine(const Target &T, const Triple &TT, StringRef CPU,
+                           StringRef FS, const TargetOptions &Options,
+                           Optional<Reloc::Model> RM,
+                           Optional<CodeModel::Model> CM, CodeGenOpt::Level OL,
+                           bool JIT);
 
-  const TargetLowering *getTargetLowering() const override {
-    return &TL;
-  }
-};
+  ~JSTargetMachine() override;
+  const JSSubtarget *
+  getSubtargetImpl(const Function &F) const override;
 
-class JSTargetMachine : public LLVMTargetMachine {
-  const JSSubtarget ST;
+  TargetTransformInfo getTargetTransformInfo(const Function &F) override;
 
-public:
-  JSTargetMachine(const Target &T, const Triple &TT,
-                  StringRef CPU, StringRef FS, const TargetOptions &Options,
-                  Optional<Reloc::Model>& RM, Optional<CodeModel::Model> CM,
-                  CodeGenOpt::Level OL, bool JIT);
+  bool usesPhysRegsForPEI() const override { return false; }
 
   bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
                            CodeGenFileType FileType, bool DisableVerify = true,
                            MachineModuleInfo *MMI = nullptr) override;
-
-//  TargetIRAnalysis getTargetIRAnalysis() override;
-
-  const TargetSubtargetInfo *getJSSubtargetImpl() const {
-    return &ST;
-  }
-
-  const JSSubtarget *getSubtargetImpl(const Function &F) const override {
-    return &ST;
-  }
 };
 
-} // End llvm namespace
+} // end namespace llvm
 
 #endif

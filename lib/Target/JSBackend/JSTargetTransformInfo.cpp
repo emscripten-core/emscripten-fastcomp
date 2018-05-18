@@ -1,3 +1,4 @@
+//===-- JSTargetTransformInfo.cpp - JS-specific TTI -----===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -5,117 +6,78 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-//
-// \file
-// This file implements a TargetTransformInfo analysis pass specific to the
-// JS target machine. It uses the target's detailed information to provide
-// more precise answers to certain TTI queries, while letting the target
-// independent and default TTI implementations handle the rest.
-//
+///
+/// \file
+/// \brief This file defines the JS-specific TargetTransformInfo
+/// implementation.
+///
 //===----------------------------------------------------------------------===//
 
 #include "JSTargetTransformInfo.h"
-#include "llvm/Analysis/LoopInfo.h"
-#include "llvm/Analysis/TargetTransformInfo.h"
-#include "llvm/Analysis/ValueTracking.h"
-#include "llvm/CodeGen/BasicTTIImpl.h"
-#include "llvm/IR/Module.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/CodeGen/CostTable.h"
-#include "llvm/CodeGen/TargetLowering.h"
+#include "llvm/Support/Debug.h"
 using namespace llvm;
 
-#define DEBUG_TYPE "JStti"
+#define DEBUG_TYPE "wasmtti"
 
-void JSTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
-                                        TTI::UnrollingPreferences &UP) {
-  // We generally don't want a lot of unrolling.
-  UP.Partial = false;
-  UP.Runtime = false;
+TargetTransformInfo::PopcntSupportKind
+JSTTIImpl::getPopcntSupport(unsigned TyWidth) const {
+  assert(isPowerOf2_32(TyWidth) && "Ty width must be power of 2");
+  return TargetTransformInfo::PSK_FastHardware;
 }
 
 unsigned JSTTIImpl::getNumberOfRegisters(bool Vector) {
-  if (Vector) return 16; // like NEON, x86_64, etc.
+  unsigned Result = BaseT::getNumberOfRegisters(Vector);
 
-  return 8; // like x86, thumb, etc.
+  // For SIMD, use at least 16 registers, as a rough guess.
+  if (Vector)
+    Result = std::max(Result, 16u);
+
+  return Result;
 }
 
 unsigned JSTTIImpl::getRegisterBitWidth(bool Vector) const {
-  if (Vector) {
+  if (Vector && getST()->hasSIMD128())
     return 128;
-  }
 
-  return 32;
-}
-
-static const unsigned Nope = 65536;
-
-// Certain types are fine, but some vector types must be avoided at all Costs.
-static bool isOkType(Type *Ty) {
-  if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
-    if (VTy->getNumElements() != 4 || !(VTy->getElementType()->isIntegerTy(1) ||
-                                        VTy->getElementType()->isIntegerTy(32) ||
-                                        VTy->getElementType()->isFloatTy())) {
-      return false;
-    }
-  }
-  return true;
+  return 64;
 }
 
 unsigned JSTTIImpl::getArithmeticInstrCost(
     unsigned Opcode, Type *Ty, TTI::OperandValueKind Opd1Info,
     TTI::OperandValueKind Opd2Info, TTI::OperandValueProperties Opd1PropInfo,
-    TTI::OperandValueProperties Opd2PropInfo,
-    ArrayRef<const Value*> Args) {
+    TTI::OperandValueProperties Opd2PropInfo, ArrayRef<const Value *> Args) {
 
-  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(Opcode, Ty, Opd1Info,
-                                                                      Opd2Info, Opd1PropInfo,
-                                                                      Opd2PropInfo, Args);
-
-  if (!isOkType(Ty))
-    return Nope;
+  unsigned Cost = BasicTTIImplBase<JSTTIImpl>::getArithmeticInstrCost(
+      Opcode, Ty, Opd1Info, Opd2Info, Opd1PropInfo, Opd2PropInfo);
 
   if (VectorType *VTy = dyn_cast<VectorType>(Ty)) {
     switch (Opcode) {
-      case Instruction::LShr:
-      case Instruction::AShr:
-      case Instruction::Shl:
-        // SIMD.js' shifts are currently only ByScalar.
-        if (Opd2Info != TTI::OK_UniformValue && Opd2Info != TTI::OK_UniformConstantValue)
-          Cost = Cost * VTy->getNumElements() + 100;
-        break;
+    case Instruction::LShr:
+    case Instruction::AShr:
+    case Instruction::Shl:
+      // SIMD128's shifts currently only accept a scalar shift count. For each
+      // element, we'll need to extract, op, insert. The following is a rough
+      // approxmation.
+      if (Opd2Info != TTI::OK_UniformValue &&
+          Opd2Info != TTI::OK_UniformConstantValue)
+        Cost = VTy->getNumElements() *
+               (TargetTransformInfo::TCC_Basic +
+                getArithmeticInstrCost(Opcode, VTy->getElementType()) +
+                TargetTransformInfo::TCC_Basic);
+      break;
     }
   }
   return Cost;
 }
 
-unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
-  if (!isOkType(Val))
-    return Nope;
-
+unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val,
+                                                unsigned Index) {
   unsigned Cost = BasicTTIImplBase::getVectorInstrCost(Opcode, Val, Index);
 
-  // SIMD.js' insert/extract currently only take constant indices.
+  // SIMD128's insert/extract currently only take constant indices.
   if (Index == -1u)
-    return Cost + 100;
+    return Cost + 25 * TargetTransformInfo::TCC_Expensive;
 
   return Cost;
 }
-
-
-unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
-                                    unsigned AddressSpace, const Instruction *I) {
-  if (!isOkType(Src))
-    return Nope;
-
-  return BasicTTIImplBase::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, I);
-}
-
-unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src, const Instruction *I) {
-  if (!isOkType(Src) || !isOkType(Dst))
-    return Nope;
-
-  return BasicTTIImplBase::getCastInstrCost(Opcode, Dst, Src, I);
-}
-
