@@ -441,6 +441,7 @@ void initializeExpandInsertExtractElementPass(PassRegistry&);
 void initializeLowerEmAsyncifyPass(PassRegistry&);
 void initializeLowerEmExceptionsPass(PassRegistry&);
 void initializeLowerEmSetjmpPass(PassRegistry&);
+void initializeLowerNonEmIntrinsicsPass(PassRegistry&);
 void initializeNoExitRuntimePass(PassRegistry&);
 // Emscripten passes end.
 // @LOCALMOD-END
