@@ -74,6 +74,7 @@ ModulePass *createExpandI64Pass();
 ModulePass *createLowerEmAsyncifyPass();
 ModulePass *createLowerEmExceptionsPass();
 ModulePass *createLowerEmSetjmpPass();
+ModulePass *createLowerNonEmIntrinsicsPass();
 ModulePass *createNoExitRuntimePass();
 // Emscripten passes end.
 
