@@ -149,6 +149,10 @@
 #include "llvm/Transforms/Vectorize/LoopVectorize.h"
 #include "llvm/Transforms/Vectorize/SLPVectorizer.h"
 
+//@LOCALMOD START
+// XXX EMSCRIPTEN
+#include "../Target/JSBackend/NaCl/LowerNonEmIntrinsics.h"
+//@LOCALMOD END
 
 using namespace llvm;
 

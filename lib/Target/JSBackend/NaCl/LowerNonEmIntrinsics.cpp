@@ -35,29 +35,32 @@
 
 #include "llvm/Support/raw_ostream.h"
 
+#include "LowerNonEmIntrinsics.h"
+
 using namespace llvm;
 
 namespace {
+
   class LowerNonEmIntrinsics : public ModulePass {
-    Module *TheModule;
+    LowerNonEmIntrinsicsPass Impl;
 
   public:
-    static char ID; // Pass identification, replacement for typeid
-    explicit LowerNonEmIntrinsics() : ModulePass(ID), TheModule(NULL) {
+    static char ID; // Pass identification
+
+    LowerNonEmIntrinsics() : ModulePass(ID) {
       initializeLowerNonEmIntrinsicsPass(*PassRegistry::getPassRegistry());
     }
-    bool runOnModule(Module &M);
+
+    bool runOnModule(Module &M) override {
+      return Impl.run(M);
+    }
   };
-}
+
+} // end anonymous namespace
 
 char LowerNonEmIntrinsics::ID = 0;
-INITIALIZE_PASS(LowerNonEmIntrinsics, "LowerNonEmIntrinsics",
-                "Lower intrinsics for libc calls for js/emscripten",
-                false, false)
 
-bool LowerNonEmIntrinsics::runOnModule(Module &M) {
-  TheModule = &M;
-
+bool LowerNonEmIntrinsicsPass::run(Module &M) {
   Type *f32 = Type::getFloatTy(M.getContext());
   Type *f64 = Type::getDoubleTy(M.getContext());
 
@@ -66,9 +69,9 @@ bool LowerNonEmIntrinsics::runOnModule(Module &M) {
   for (auto T : { f32, f64 }) {
     for (std::string Name : { "cos", "exp", "log", "pow", "sin", "sqrt" }) {
       auto IntrinsicName = std::string("llvm.") + Name + '.' + (T == f32 ? "f32" : "f64");
-      if (auto* IntrinsicFunc = TheModule->getFunction(IntrinsicName)) {
+      if (auto* IntrinsicFunc = M.getFunction(IntrinsicName)) {
         auto LibcName = std::string(Name) + (T == f32 ? "f" : "");
-        auto* LibcFunc = TheModule->getFunction(LibcName);
+        auto* LibcFunc = M.getFunction(LibcName);
         if (!LibcFunc) {
           SmallVector<Type*, 2> Types;
           Types.push_back(T);
@@ -77,7 +80,7 @@ bool LowerNonEmIntrinsics::runOnModule(Module &M) {
             Types.push_back(T);
           }
           auto* FuncType = FunctionType::get(T, Types, false);
-          LibcFunc = Function::Create(FuncType, GlobalValue::ExternalLinkage, LibcName, TheModule);
+          LibcFunc = Function::Create(FuncType, GlobalValue::ExternalLinkage, LibcName, &M);
         }
         IntrinsicFunc->replaceAllUsesWith(LibcFunc);
         Changed = true;
@@ -88,6 +91,11 @@ bool LowerNonEmIntrinsics::runOnModule(Module &M) {
   return Changed;
 }
 
-ModulePass *llvm::createLowerNonEmIntrinsicsPass() {
+INITIALIZE_PASS_BEGIN(LowerNonEmIntrinsics, "lower-non-em-intrinsics",
+                "Lower intrinsics for libc calls for js/emscripten", false, false)
+INITIALIZE_PASS_END(LowerNonEmIntrinsics, "jump-threading",
+                "Jump Threading", false, false)
+
+llvm::ModulePass *llvm::createLowerNonEmIntrinsicsPass() {
   return new LowerNonEmIntrinsics();
 }
