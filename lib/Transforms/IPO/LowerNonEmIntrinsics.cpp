@@ -87,6 +87,7 @@ PreservedAnalyses LowerNonEmIntrinsicsPass::run(Module &M, ModuleAnalysisManager
           LibcFunc = Function::Create(FuncType, GlobalValue::ExternalLinkage, LibcName, &M);
         }
         IntrinsicFunc->replaceAllUsesWith(LibcFunc);
+        IntrinsicFunc->eraseFromParent();
         // XXX Changed = true;
       }
     }
