@@ -151,7 +151,7 @@
 
 //@LOCALMOD START
 // XXX EMSCRIPTEN
-#include "../Target/JSBackend/NaCl/LowerNonEmIntrinsics.h"
+#include "llvm/Transforms/IPO/LowerNonEmIntrinsics.h"
 //@LOCALMOD END
 
 using namespace llvm;

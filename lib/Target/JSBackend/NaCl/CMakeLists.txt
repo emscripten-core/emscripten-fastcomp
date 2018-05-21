@@ -48,7 +48,6 @@ add_llvm_library(LLVMPNaClTransforms
   LowerEmAsyncify.cpp
   LowerEmExceptionsPass.cpp
   LowerEmSetjmp.cpp
-  LowerNonEmIntrinsics.cpp
   NoExitRuntime.cpp
   # Emscripten files end.
   )

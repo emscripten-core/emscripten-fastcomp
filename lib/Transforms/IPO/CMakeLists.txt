@@ -32,6 +32,11 @@ add_llvm_library(LLVMipo
   ThinLTOBitcodeWriter.cpp
   WholeProgramDevirt.cpp
 
+  #@LOCALMOD BEGIN
+  # XXX EMSCRIPTEN
+  LowerNonEmIntrinsics.cpp
+  #@LOCALMOD END
+
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms/IPO

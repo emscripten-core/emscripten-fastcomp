@@ -35,7 +35,7 @@
 
 #include "llvm/Support/raw_ostream.h"
 
-#include "LowerNonEmIntrinsics.h"
+#include "llvm/Transforms/IPO/LowerNonEmIntrinsics.h"
 
 using namespace llvm;
 
@@ -61,8 +61,6 @@ namespace {
   };
 
 } // end anonymous namespace
-
-char LowerNonEmIntrinsics::ID = 0;
 
 LowerNonEmIntrinsicsPass::LowerNonEmIntrinsicsPass() {}
 
@@ -98,6 +96,7 @@ PreservedAnalyses LowerNonEmIntrinsicsPass::run(Module &M, ModuleAnalysisManager
   return PA;
 }
 
+char LowerNonEmIntrinsics::ID = 0;
 INITIALIZE_PASS(LowerNonEmIntrinsics, "lower-non-em-intrinsics",
                 "Lower intrinsics for libc calls for js/emscripten", false, false)
 
