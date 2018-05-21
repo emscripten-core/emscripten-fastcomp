@@ -58,6 +58,11 @@ void llvm::initializeIPO(PassRegistry &Registry) {
   initializeSampleProfileLoaderLegacyPassPass(Registry);
   initializeFunctionImportLegacyPassPass(Registry);
   initializeWholeProgramDevirtPass(Registry);
+
+  // @LOCALMOD-BEGIN
+  // XXX EMSCRIPTEN
+  initializeLowerNonEmIntrinsicsPass(Registry);
+  // @LOCALMOD-END
 }
 
 void LLVMInitializeIPO(LLVMPassRegistryRef R) {
