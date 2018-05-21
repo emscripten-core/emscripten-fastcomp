@@ -27,7 +27,7 @@ class LowerNonEmIntrinsicsPass : public PassInfoMixin<LowerNonEmIntrinsicsPass> 
 public:
   LowerNonEmIntrinsicsPass();
 
-  bool run(Module &M);
+  PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 };
 
 } // end namespace llvm

@@ -52,7 +52,9 @@ namespace {
     }
 
     bool runOnModule(Module &M) override {
-      return Impl.run(M);
+      ModuleAnalysisManager MAM;
+      Impl.run(M, MAM);
+      return true; // XXX
     }
   };
 
@@ -60,11 +62,11 @@ namespace {
 
 char LowerNonEmIntrinsics::ID = 0;
 
-bool LowerNonEmIntrinsicsPass::run(Module &M) {
+PreservedAnalyses LowerNonEmIntrinsicsPass::run(Module &M, ModuleAnalysisManager &AM) {
   Type *f32 = Type::getFloatTy(M.getContext());
   Type *f64 = Type::getDoubleTy(M.getContext());
 
-  bool Changed = false;
+  // XXX bool Changed = false;
 
   for (auto T : { f32, f64 }) {
     for (std::string Name : { "cos", "exp", "log", "pow", "sin", "sqrt" }) {
@@ -83,12 +85,13 @@ bool LowerNonEmIntrinsicsPass::run(Module &M) {
           LibcFunc = Function::Create(FuncType, GlobalValue::ExternalLinkage, LibcName, &M);
         }
         IntrinsicFunc->replaceAllUsesWith(LibcFunc);
-        Changed = true;
+        // XXX Changed = true;
       }
     }
   }
 
-  return Changed;
+  PreservedAnalyses PA;
+  return PA;
 }
 
 INITIALIZE_PASS_BEGIN(LowerNonEmIntrinsics, "lower-non-em-intrinsics",
