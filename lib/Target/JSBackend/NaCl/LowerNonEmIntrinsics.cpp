@@ -39,6 +39,8 @@
 
 using namespace llvm;
 
+#define DEBUG_TYPE "lower-non-em-intrinsics"
+
 namespace {
 
   class LowerNonEmIntrinsics : public ModulePass {
@@ -61,6 +63,8 @@ namespace {
 } // end anonymous namespace
 
 char LowerNonEmIntrinsics::ID = 0;
+
+LowerNonEmIntrinsicsPass::LowerNonEmIntrinsicsPass() {}
 
 PreservedAnalyses LowerNonEmIntrinsicsPass::run(Module &M, ModuleAnalysisManager &AM) {
   Type *f32 = Type::getFloatTy(M.getContext());
@@ -94,10 +98,8 @@ PreservedAnalyses LowerNonEmIntrinsicsPass::run(Module &M, ModuleAnalysisManager
   return PA;
 }
 
-INITIALIZE_PASS_BEGIN(LowerNonEmIntrinsics, "lower-non-em-intrinsics",
+INITIALIZE_PASS(LowerNonEmIntrinsics, "lower-non-em-intrinsics",
                 "Lower intrinsics for libc calls for js/emscripten", false, false)
-INITIALIZE_PASS_END(LowerNonEmIntrinsics, "jump-threading",
-                "Jump Threading", false, false)
 
 llvm::ModulePass *llvm::createLowerNonEmIntrinsicsPass() {
   return new LowerNonEmIntrinsics();
