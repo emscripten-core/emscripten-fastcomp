@@ -23,7 +23,6 @@
 
 #include "llvm/Transforms/Scalar.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/ADT/Statistic.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/Instructions.h"
@@ -32,15 +31,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Pass.h"
 #include "llvm/Support/CommandLine.h"
-#include "llvm/Target/TargetLowering.h"
-#include "llvm/Transforms/Utils/BasicBlockUtils.h"
-#include "llvm/Transforms/Utils/Local.h"
 #include "llvm/Transforms/NaCl.h"
-#include "llvm/IR/Dominators.h"
-#include "llvm/Transforms/Utils/PromoteMemToReg.h"
-#include <vector>
-#include <set>
-#include <list>
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -72,20 +63,20 @@ bool LowerNonEmIntrinsics::runOnModule(Module &M) {
 
   bool Changed = false;
 
-  for (auto Type : { f32, f64 }) {
-    for (auto Name : { "cos", "exp", "log", "pow", "sin", "sqrt" }) {
-      auto IntrinsicName = std::string("llvm.") + Name + '.' + (Type == f32 ? "f32" : "f64");
+  for (auto T : { f32, f64 }) {
+    for (std::string Name : { "cos", "exp", "log", "pow", "sin", "sqrt" }) {
+      auto IntrinsicName = std::string("llvm.") + Name + '.' + (T == f32 ? "f32" : "f64");
       if (auto* IntrinsicFunc = TheModule->getFunction(IntrinsicName)) {
-        auto LibcName = std::string(name) + (Type == f32 ? "f" : "");
+        auto LibcName = std::string(Name) + (T == f32 ? "f" : "");
         auto* LibcFunc = TheModule->getFunction(LibcName);
         if (!LibcFunc) {
           SmallVector<Type*, 2> Types;
-          Types.push_back(type);
+          Types.push_back(T);
           // Almost all of them take a single parameter.
           if (Name == "pow") {
-            Types.push_back(type);
+            Types.push_back(T);
           }
-          auto* FuncType = FunctionType::get(Type, Types, false);
+          auto* FuncType = FunctionType::get(T, Types, false);
           LibcFunc = Function::Create(FuncType, GlobalValue::ExternalLinkage, LibcName, TheModule);
         }
         IntrinsicFunc->replaceAllUsesWith(LibcFunc);
