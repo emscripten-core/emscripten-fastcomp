@@ -53,7 +53,9 @@ public:
                            CodeGenFileType FileType, bool DisableVerify = true,
                            MachineModuleInfo *MMI = nullptr) override;
 
-//  TargetIRAnalysis getTargetIRAnalysis() override;
+  TargetTransformInfo getTargetTransformInfo(const Function &F) override;
+
+  TargetIRAnalysis getTargetIRAnalysis(); // TODO: remove?
 
   const TargetSubtargetInfo *getJSSubtargetImpl() const {
     return &ST;

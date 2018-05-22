@@ -28,8 +28,8 @@ using namespace llvm;
 
 #define DEBUG_TYPE "JStti"
 
-void JSTTIImpl::getUnrollingPreferences(Loop *L,
-                                            TTI::UnrollingPreferences &UP) {
+void JSTTIImpl::getUnrollingPreferences(Loop *L, ScalarEvolution &,
+                                        TTI::UnrollingPreferences &UP) {
   // We generally don't want a lot of unrolling.
   UP.Partial = false;
   UP.Runtime = false;
@@ -90,7 +90,7 @@ unsigned JSTTIImpl::getArithmeticInstrCost(
   return Cost;
 }
 
-unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
+int JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index) {
   if (!isOkType(Val))
     return Nope;
 
@@ -104,18 +104,22 @@ unsigned JSTTIImpl::getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Inde
 }
 
 
-unsigned JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
-                                    unsigned AddressSpace, const Instruction *I) {
+int JSTTIImpl::getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+                               unsigned AddressSpace, const Instruction *I) {
   if (!isOkType(Src))
     return Nope;
 
   return BasicTTIImplBase::getMemoryOpCost(Opcode, Src, Alignment, AddressSpace, I);
 }
 
-unsigned JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src, const Instruction *I) {
+int JSTTIImpl::getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src, const Instruction *I) {
   if (!isOkType(Src) || !isOkType(Dst))
     return Nope;
 
   return BasicTTIImplBase::getCastInstrCost(Opcode, Dst, Src, I);
+}
+
+int JSTTIImpl::getFPOpCost(Type *Ty) {
+  return TargetTransformInfo::TCC_Basic;
 }
 

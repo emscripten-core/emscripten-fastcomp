@@ -41,11 +41,13 @@ JSTargetMachine::JSTargetMachine(const Target &T, const Triple &TT,
       ST(*this, TT) {
 }
 
-/*
+TargetTransformInfo JSTargetMachine::getTargetTransformInfo(const Function &F) {
+  return TargetTransformInfo(JSTTIImpl(this, F));
+}
+
 TargetIRAnalysis JSTargetMachine::getTargetIRAnalysis() {
   return TargetIRAnalysis([this](const Function &F) {
     return TargetTransformInfo(JSTTIImpl(this, F));
   });
 }
-*/
 
