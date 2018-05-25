@@ -18,11 +18,9 @@
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/BinaryFormat/COFF.h"
+#include "llvm/Demangle/Demangle.h"
 #include "llvm/IR/Function.h"
-#include "llvm/IR/GlobalAlias.h"
-#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFF.h"
 #include "llvm/Object/COFFImportFile.h"
@@ -42,13 +40,7 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/raw_ostream.h"
-#include <algorithm>
-#include <cctype>
-#include <cerrno>
-#include <cstring>
-#include <system_error>
 #include <vector>
-#include <string.h>
 
 using namespace llvm;
 using namespace object;
@@ -84,9 +76,11 @@ cl::alias DefinedOnly2("U", cl::desc("Alias for --defined-only"),
                        cl::aliasopt(DefinedOnly), cl::Grouping);
 
 cl::opt<bool> ExternalOnly("extern-only",
-                           cl::desc("Show only external symbols"));
+                           cl::desc("Show only external symbols"),
+                           cl::ZeroOrMore);
 cl::alias ExternalOnly2("g", cl::desc("Alias for --extern-only"),
-                        cl::aliasopt(ExternalOnly), cl::Grouping);
+                        cl::aliasopt(ExternalOnly), cl::Grouping,
+                        cl::ZeroOrMore);
 
 cl::opt<bool> BSDFormat("B", cl::desc("Alias for --format=bsd"),
                         cl::Grouping);
@@ -123,6 +117,10 @@ cl::alias NumericSortv("v", cl::desc("Alias for --numeric-sort"),
 cl::opt<bool> NoSort("no-sort", cl::desc("Show symbols in order encountered"));
 cl::alias NoSortp("p", cl::desc("Alias for --no-sort"), cl::aliasopt(NoSort),
                   cl::Grouping);
+
+cl::opt<bool> Demangle("demangle", cl::desc("Demangle C++ symbol names"));
+cl::alias DemangleC("C", cl::desc("Alias for --demangle"), cl::aliasopt(Demangle),
+                    cl::Grouping);
 
 cl::opt<bool> ReverseSort("reverse-sort", cl::desc("Sort in reverse order"));
 cl::alias ReverseSortr("r", cl::desc("Alias for --reverse-sort"),
@@ -481,6 +479,10 @@ static void darwinPrintSymbol(SymbolicFile &Obj, SymbolListT::iterator I,
         break;
       }
       Sec = *SecOrErr;
+      if (Sec == MachO->section_end()) {
+        outs() << "(?,?) ";
+        break;
+      }
     } else {
       Sec = I->Section;
     }
@@ -659,6 +661,24 @@ static void darwinPrintStab(MachOObjectFile *MachO, SymbolListT::iterator I) {
   outs() << Str;
 }
 
+static Optional<std::string> demangle(StringRef Name, bool StripUnderscore) {
+  if (StripUnderscore && Name.size() > 0 && Name[0] == '_')
+    Name = Name.substr(1);
+
+  if (!Name.startswith("_Z"))
+    return None;
+
+  int Status;
+  char *Undecorated =
+      itaniumDemangle(Name.str().c_str(), nullptr, nullptr, &Status);
+  if (Status != 0)
+    return None;
+
+  std::string S(Undecorated);
+  free(Undecorated);
+  return S;
+}
+
 static bool symbolIsDefined(const NMSymbol &Sym) {
   return Sym.TypeChar != 'U' && Sym.TypeChar != 'w' && Sym.TypeChar != 'v';
 }
@@ -686,9 +706,13 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
     } else if (OutputFormat == bsd && MultipleFiles && printName) {
       outs() << "\n" << CurrentFilename << ":\n";
     } else if (OutputFormat == sysv) {
-      outs() << "\n\nSymbols from " << CurrentFilename << ":\n\n"
-             << "Name                  Value   Class        Type"
-             << "         Size   Line  Section\n";
+      outs() << "\n\nSymbols from " << CurrentFilename << ":\n\n";
+      if (isSymbolList64Bit(Obj))
+        outs() << "Name                  Value           Class        Type"
+               << "         Size             Line  Section\n";
+      else
+        outs() << "Name                  Value   Class        Type"
+               << "         Size     Line  Section\n";
     }
   }
 
@@ -724,6 +748,12 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
   for (SymbolListT::iterator I = SymbolList.begin(), E = SymbolList.end();
        I != E; ++I) {
     uint32_t SymFlags;
+    std::string Name = I->Name.str();
+    MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(&Obj);
+    if (Demangle) {
+      if (Optional<std::string> Opt = demangle(I->Name, MachO))
+        Name = *Opt;
+    }
     if (I->Sym.getRawDataRefImpl().p)
       SymFlags = I->Sym.getFlags();
     else
@@ -745,9 +775,10 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
         outs() << CurrentFilename << ": ";
       }
     }
-    if ((JustSymbolName || (UndefinedOnly && isa<MachOObjectFile>(Obj) &&
-                            OutputFormat != darwin)) && OutputFormat != posix) {
-      outs() << I->Name << "\n";
+    if ((JustSymbolName ||
+         (UndefinedOnly && MachO && OutputFormat != darwin)) &&
+        OutputFormat != posix) {
+      outs() << Name << "\n";
       continue;
     }
 
@@ -767,7 +798,6 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
       }
     }
 
-    MachOObjectFile *MachO = dyn_cast<MachOObjectFile>(&Obj);
     // Otherwise, print the symbol address and size.
     if (symbolIsDefined(*I)) {
       if (Obj.isIR())
@@ -789,7 +819,7 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
       darwinPrintSymbol(Obj, I, SymbolAddrStr, printBlanks, printDashes,
                         printFormat);
     } else if (OutputFormat == posix) {
-      outs() << I->Name << " " << I->TypeChar << " ";
+      outs() << Name << " " << I->TypeChar << " ";
       if (MachO)
         outs() << SymbolAddrStr << " " << "0" /* SymbolSizeStr */ << "\n";
       else
@@ -804,7 +834,7 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
       outs() << I->TypeChar;
       if (I->TypeChar == '-' && MachO)
         darwinPrintStab(MachO, I);
-      outs() << " " << I->Name;
+      outs() << " " << Name;
       if (I->TypeChar == 'I' && MachO) {
         outs() << " (indirect for ";
         if (I->Sym.getRawDataRefImpl().p) {
@@ -818,7 +848,7 @@ static void sortAndPrintSymbolList(SymbolicFile &Obj, bool printName,
       }
       outs() << "\n";
     } else if (OutputFormat == sysv) {
-      std::string PaddedName(I->Name);
+      std::string PaddedName(Name);
       while (PaddedName.length() < 20)
         PaddedName += " ";
       outs() << PaddedName << "|" << SymbolAddrStr << "|   " << I->TypeChar
@@ -909,6 +939,10 @@ static char getSymbolNMTypeChar(COFFObjectFile &Obj, symbol_iterator I) {
     section_iterator SecI = *SecIOrErr;
     const coff_section *Section = Obj.getCOFFSection(*SecI);
     Characteristics = Section->Characteristics;
+    StringRef SectionName;
+    Obj.getSectionName(Section, SectionName);
+    if (SectionName.startswith(".idata"))
+      return 'i';
   }
 
   switch (Symb.getSectionNumber()) {
@@ -964,6 +998,8 @@ static char getSymbolNMTypeChar(MachOObjectFile &Obj, basic_symbol_iterator I) {
       return 's';
     }
     section_iterator Sec = *SecOrErr;
+    if (Sec == Obj.section_end())
+      return 's';
     DataRefImpl Ref = Sec->getRawDataRefImpl();
     StringRef SectionName;
     Obj.getSectionName(Ref, SectionName);
@@ -1197,7 +1233,8 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
     if (DyldInfoOnly || AddDyldInfo ||
         HFlags & MachO::MH_NLIST_OUTOFSYNC_WITH_DYLDINFO) {
       unsigned ExportsAdded = 0;
-      for (const llvm::object::ExportEntry &Entry : MachO->exports()) {
+      Error Err = Error::success();
+      for (const llvm::object::ExportEntry &Entry : MachO->exports(Err)) {
         bool found = false;
         bool ReExport = false;
         if (!DyldInfoOnly) {
@@ -1333,6 +1370,8 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
           }
         }
       }
+      if (Err)
+        error(std::move(Err), MachO->getFileName());
       // Set the symbol names and indirect names for the added symbols.
       if (ExportsAdded) {
         EOS.flush();
@@ -1929,8 +1968,7 @@ int main(int argc, char **argv) {
   if (NoDyldInfo && (AddDyldInfo || DyldInfoOnly))
     error("-no-dyldinfo can't be used with -add-dyldinfo or -dyldinfo-only");
 
-  std::for_each(InputFilenames.begin(), InputFilenames.end(),
-                dumpSymbolNamesFromFile);
+  llvm::for_each(InputFilenames, dumpSymbolNamesFromFile);
 
   if (HadError)
     return 1;

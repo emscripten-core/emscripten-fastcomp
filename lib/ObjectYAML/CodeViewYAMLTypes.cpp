@@ -13,14 +13,30 @@
 //===----------------------------------------------------------------------===//
 
 #include "llvm/ObjectYAML/CodeViewYAMLTypes.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringSwitch.h"
+#include "llvm/ADT/APSInt.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/BinaryFormat/COFF.h"
+#include "llvm/DebugInfo/CodeView/AppendingTypeTableBuilder.h"
 #include "llvm/DebugInfo/CodeView/CVTypeVisitor.h"
+#include "llvm/DebugInfo/CodeView/CodeView.h"
 #include "llvm/DebugInfo/CodeView/CodeViewError.h"
-#include "llvm/DebugInfo/CodeView/EnumTables.h"
+#include "llvm/DebugInfo/CodeView/ContinuationRecordBuilder.h"
 #include "llvm/DebugInfo/CodeView/TypeDeserializer.h"
-#include "llvm/DebugInfo/CodeView/TypeTableBuilder.h"
+#include "llvm/DebugInfo/CodeView/TypeIndex.h"
+#include "llvm/DebugInfo/CodeView/TypeVisitorCallbacks.h"
+#include "llvm/Support/Allocator.h"
+#include "llvm/Support/BinaryStreamReader.h"
 #include "llvm/Support/BinaryStreamWriter.h"
+#include "llvm/Support/Endian.h"
+#include "llvm/Support/Error.h"
+#include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/YAMLTraits.h"
+#include "llvm/Support/raw_ostream.h"
+#include <algorithm>
+#include <cassert>
+#include <cstdint>
+#include <vector>
 
 using namespace llvm;
 using namespace llvm::codeview;
@@ -29,12 +45,11 @@ using namespace llvm::CodeViewYAML::detail;
 using namespace llvm::yaml;
 
 LLVM_YAML_IS_SEQUENCE_VECTOR(OneMethodRecord)
-LLVM_YAML_IS_SEQUENCE_VECTOR(StringRef)
 LLVM_YAML_IS_SEQUENCE_VECTOR(VFTableSlotKind)
 LLVM_YAML_IS_FLOW_SEQUENCE_VECTOR(TypeIndex)
 
-LLVM_YAML_DECLARE_SCALAR_TRAITS(TypeIndex, false)
-LLVM_YAML_DECLARE_SCALAR_TRAITS(APSInt, false)
+LLVM_YAML_DECLARE_SCALAR_TRAITS(TypeIndex, QuotingType::None)
+LLVM_YAML_DECLARE_SCALAR_TRAITS(APSInt, QuotingType::None)
 
 LLVM_YAML_DECLARE_ENUM_TRAITS(TypeLeafKind)
 LLVM_YAML_DECLARE_ENUM_TRAITS(PointerToMemberRepresentation)
@@ -63,11 +78,12 @@ namespace detail {
 
 struct LeafRecordBase {
   TypeLeafKind Kind;
-  explicit LeafRecordBase(TypeLeafKind K) : Kind(K) {}
 
-  virtual ~LeafRecordBase() {}
+  explicit LeafRecordBase(TypeLeafKind K) : Kind(K) {}
+  virtual ~LeafRecordBase() = default;
+
   virtual void map(yaml::IO &io) = 0;
-  virtual CVType toCodeViewRecord(TypeTableBuilder &TTB) const = 0;
+  virtual CVType toCodeViewRecord(AppendingTypeTableBuilder &TS) const = 0;
   virtual Error fromCodeViewRecord(CVType Type) = 0;
 };
 
@@ -81,9 +97,9 @@ template <typename T> struct LeafRecordImpl : public LeafRecordBase {
     return TypeDeserializer::deserializeAs<T>(Type, Record);
   }
 
-  CVType toCodeViewRecord(TypeTableBuilder &TTB) const override {
-    TTB.writeKnownType(Record);
-    return CVType(Kind, TTB.records().back());
+  CVType toCodeViewRecord(AppendingTypeTableBuilder &TS) const override {
+    TS.writeLeafType(Record);
+    return CVType(Kind, TS.records().back());
   }
 
   mutable T Record;
@@ -93,7 +109,7 @@ template <> struct LeafRecordImpl<FieldListRecord> : public LeafRecordBase {
   explicit LeafRecordImpl(TypeLeafKind K) : LeafRecordBase(K) {}
 
   void map(yaml::IO &io) override;
-  CVType toCodeViewRecord(TypeTableBuilder &TTB) const override;
+  CVType toCodeViewRecord(AppendingTypeTableBuilder &TS) const override;
   Error fromCodeViewRecord(CVType Type) override;
 
   std::vector<MemberRecord> Members;
@@ -101,30 +117,60 @@ template <> struct LeafRecordImpl<FieldListRecord> : public LeafRecordBase {
 
 struct MemberRecordBase {
   TypeLeafKind Kind;
-  explicit MemberRecordBase(TypeLeafKind K) : Kind(K) {}
 
-  virtual ~MemberRecordBase() {}
+  explicit MemberRecordBase(TypeLeafKind K) : Kind(K) {}
+  virtual ~MemberRecordBase() = default;
+
   virtual void map(yaml::IO &io) = 0;
-  virtual void writeTo(FieldListRecordBuilder &FLRB) = 0;
+  virtual void writeTo(ContinuationRecordBuilder &CRB) = 0;
 };
 
 template <typename T> struct MemberRecordImpl : public MemberRecordBase {
   explicit MemberRecordImpl(TypeLeafKind K)
       : MemberRecordBase(K), Record(static_cast<TypeRecordKind>(K)) {}
+
   void map(yaml::IO &io) override;
 
-  void writeTo(FieldListRecordBuilder &FLRB) override {
-    FLRB.writeMemberType(Record);
+  void writeTo(ContinuationRecordBuilder &CRB) override {
+    CRB.writeMemberType(Record);
   }
 
   mutable T Record;
 };
+
+} // end namespace detail
+} // end namespace CodeViewYAML
+} // end namespace llvm
+
+void ScalarTraits<GUID>::output(const GUID &G, void *, llvm::raw_ostream &OS) {
+  OS << G;
 }
-}
+
+StringRef ScalarTraits<GUID>::input(StringRef Scalar, void *Ctx, GUID &S) {
+  if (Scalar.size() != 38)
+    return "GUID strings are 38 characters long";
+  if (Scalar[0] != '{' || Scalar[37] != '}')
+    return "GUID is not enclosed in {}";
+  if (Scalar[9] != '-' || Scalar[14] != '-' || Scalar[19] != '-' ||
+      Scalar[24] != '-')
+    return "GUID sections are not properly delineated with dashes";
+
+  uint8_t *OutBuffer = S.Guid;
+  for (auto Iter = Scalar.begin(); Iter != Scalar.end();) {
+    if (*Iter == '-' || *Iter == '{' || *Iter == '}') {
+      ++Iter;
+      continue;
+    }
+    uint8_t Value = (llvm::hexDigitValue(*Iter++) << 4);
+    Value |= llvm::hexDigitValue(*Iter++);
+    *OutBuffer++ = Value;
+  }
+
+  return "";
 }
 
 void ScalarTraits<TypeIndex>::output(const TypeIndex &S, void *,
-                                     llvm::raw_ostream &OS) {
+                                     raw_ostream &OS) {
   OS << S.getIndex();
 }
 
@@ -136,9 +182,8 @@ StringRef ScalarTraits<TypeIndex>::input(StringRef Scalar, void *Ctx,
   return Result;
 }
 
-void ScalarTraits<APSInt>::output(const APSInt &S, void *,
-                                  llvm::raw_ostream &OS) {
-  S.print(OS, true);
+void ScalarTraits<APSInt>::output(const APSInt &S, void *, raw_ostream &OS) {
+  S.print(OS, S.isSigned());
 }
 
 StringRef ScalarTraits<APSInt>::input(StringRef Scalar, void *Ctx, APSInt &S) {
@@ -346,6 +391,7 @@ void MappingTraits<MemberPointerInfo>::mapping(IO &IO, MemberPointerInfo &MPI) {
 namespace llvm {
 namespace CodeViewYAML {
 namespace detail {
+
 template <> void LeafRecordImpl<ModifierRecord>::map(IO &IO) {
   IO.mapRequired("ModifiedType", Record.ModifiedType);
   IO.mapRequired("Modifiers", Record.Modifiers);
@@ -404,11 +450,13 @@ template <> void LeafRecordImpl<ArrayRecord>::map(IO &IO) {
 void LeafRecordImpl<FieldListRecord>::map(IO &IO) {
   IO.mapRequired("FieldList", Members);
 }
-}
-}
-}
+
+} // end namespace detail
+} // end namespace CodeViewYAML
+} // end namespace llvm
 
 namespace {
+
 class MemberRecordConversionVisitor : public TypeVisitorCallbacks {
 public:
   explicit MemberRecordConversionVisitor(std::vector<MemberRecord> &Records)
@@ -433,22 +481,23 @@ private:
 
   std::vector<MemberRecord> &Records;
 };
-}
+
+} // end anonymous namespace
 
 Error LeafRecordImpl<FieldListRecord>::fromCodeViewRecord(CVType Type) {
   MemberRecordConversionVisitor V(Members);
   return visitMemberRecordStream(Type.content(), V);
 }
 
-CVType
-LeafRecordImpl<FieldListRecord>::toCodeViewRecord(TypeTableBuilder &TTB) const {
-  FieldListRecordBuilder FLRB(TTB);
-  FLRB.begin();
+CVType LeafRecordImpl<FieldListRecord>::toCodeViewRecord(
+    AppendingTypeTableBuilder &TS) const {
+  ContinuationRecordBuilder CRB;
+  CRB.begin(ContinuationRecordKind::FieldList);
   for (const auto &Member : Members) {
-    Member.Member->writeTo(FLRB);
+    Member.Member->writeTo(CRB);
   }
-  FLRB.end(true);
-  return CVType(Kind, TTB.records().back());
+  TS.insertRecord(CRB);
+  return CVType(Kind, TS.records().back());
 }
 
 void MappingTraits<OneMethodRecord>::mapping(IO &io, OneMethodRecord &Record) {
@@ -461,13 +510,13 @@ void MappingTraits<OneMethodRecord>::mapping(IO &io, OneMethodRecord &Record) {
 namespace llvm {
 namespace CodeViewYAML {
 namespace detail {
+
 template <> void LeafRecordImpl<ClassRecord>::map(IO &IO) {
   IO.mapRequired("MemberCount", Record.MemberCount);
   IO.mapRequired("Options", Record.Options);
   IO.mapRequired("FieldList", Record.FieldList);
   IO.mapRequired("Name", Record.Name);
   IO.mapRequired("UniqueName", Record.UniqueName);
-
   IO.mapRequired("DerivationList", Record.DerivationList);
   IO.mapRequired("VTableShape", Record.VTableShape);
   IO.mapRequired("Size", Record.Size);
@@ -479,7 +528,6 @@ template <> void LeafRecordImpl<UnionRecord>::map(IO &IO) {
   IO.mapRequired("FieldList", Record.FieldList);
   IO.mapRequired("Name", Record.Name);
   IO.mapRequired("UniqueName", Record.UniqueName);
-
   IO.mapRequired("Size", Record.Size);
 }
 
@@ -489,7 +537,6 @@ template <> void LeafRecordImpl<EnumRecord>::map(IO &IO) {
   IO.mapRequired("FieldList", Record.FieldList);
   IO.mapRequired("Name", Record.Name);
   IO.mapRequired("UniqueName", Record.UniqueName);
-
   IO.mapRequired("UnderlyingType", Record.UnderlyingType);
 }
 
@@ -603,9 +650,10 @@ template <> void MemberRecordImpl<VirtualBaseClassRecord>::map(IO &IO) {
 template <> void MemberRecordImpl<ListContinuationRecord>::map(IO &IO) {
   IO.mapRequired("ContinuationIndex", Record.ContinuationIndex);
 }
-}
-}
-}
+
+} // end namespace detail
+} // end namespace CodeViewYAML
+} // end namespace llvm
 
 template <typename T>
 static inline Expected<LeafRecord> fromCodeViewRecordImpl(CVType Type) {
@@ -628,22 +676,20 @@ Expected<LeafRecord> LeafRecord::fromCodeViewRecord(CVType Type) {
 #define MEMBER_RECORD_ALIAS(EnumName, EnumVal, AliasName, ClassName)
   switch (Type.kind()) {
 #include "llvm/DebugInfo/CodeView/CodeViewTypes.def"
-  default: { llvm_unreachable("Unknown leaf kind!"); }
+  default:
+      llvm_unreachable("Unknown leaf kind!");
   }
   return make_error<CodeViewError>(cv_error_code::corrupt_record);
 }
 
-CVType LeafRecord::toCodeViewRecord(BumpPtrAllocator &Alloc) const {
-  TypeTableBuilder TTB(Alloc);
-  return Leaf->toCodeViewRecord(TTB);
-}
-
-CVType LeafRecord::toCodeViewRecord(TypeTableBuilder &TTB) const {
-  return Leaf->toCodeViewRecord(TTB);
+CVType
+LeafRecord::toCodeViewRecord(AppendingTypeTableBuilder &Serializer) const {
+  return Leaf->toCodeViewRecord(Serializer);
 }
 
 namespace llvm {
 namespace yaml {
+
 template <> struct MappingTraits<LeafRecordBase> {
   static void mapping(IO &io, LeafRecordBase &Record) { Record.map(io); }
 };
@@ -651,8 +697,9 @@ template <> struct MappingTraits<LeafRecordBase> {
 template <> struct MappingTraits<MemberRecordBase> {
   static void mapping(IO &io, MemberRecordBase &Record) { Record.map(io); }
 };
-}
-}
+
+} // end namespace yaml
+} // end namespace llvm
 
 template <typename ConcreteType>
 static void mapLeafRecordImpl(IO &IO, const char *Class, TypeLeafKind Kind,
@@ -736,10 +783,10 @@ llvm::CodeViewYAML::fromDebugT(ArrayRef<uint8_t> DebugT) {
 
 ArrayRef<uint8_t> llvm::CodeViewYAML::toDebugT(ArrayRef<LeafRecord> Leafs,
                                                BumpPtrAllocator &Alloc) {
-  TypeTableBuilder TTB(Alloc, false);
+  AppendingTypeTableBuilder TS(Alloc);
   uint32_t Size = sizeof(uint32_t);
   for (const auto &Leaf : Leafs) {
-    CVType T = Leaf.toCodeViewRecord(TTB);
+    CVType T = Leaf.Leaf->toCodeViewRecord(TS);
     Size += T.length();
     assert(T.length() % 4 == 0 && "Improper type record alignment!");
   }
@@ -748,7 +795,7 @@ ArrayRef<uint8_t> llvm::CodeViewYAML::toDebugT(ArrayRef<LeafRecord> Leafs,
   BinaryStreamWriter Writer(Output, support::little);
   ExitOnError Err("Error writing type record to .debug$T section");
   Err(Writer.writeInteger<uint32_t>(COFF::DEBUG_SECTION_MAGIC));
-  for (const auto &R : TTB.records()) {
+  for (const auto &R : TS.records()) {
     Err(Writer.writeBytes(R));
   }
   assert(Writer.bytesRemaining() == 0 && "Didn't write all type record bytes!");

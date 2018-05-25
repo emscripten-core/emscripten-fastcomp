@@ -47,6 +47,50 @@ namespace object {
 
 class WindowsResource;
 
+const size_t WIN_RES_MAGIC_SIZE = 16;
+const size_t WIN_RES_NULL_ENTRY_SIZE = 16;
+const uint32_t WIN_RES_HEADER_ALIGNMENT = 4;
+const uint32_t WIN_RES_DATA_ALIGNMENT = 4;
+const uint16_t WIN_RES_PURE_MOVEABLE = 0x0030;
+
+struct WinResHeaderPrefix {
+  support::ulittle32_t DataSize;
+  support::ulittle32_t HeaderSize;
+};
+
+// Type and Name may each either be an integer ID or a string.  This struct is
+// only used in the case where they are both IDs.
+struct WinResIDs {
+  uint16_t TypeFlag;
+  support::ulittle16_t TypeID;
+  uint16_t NameFlag;
+  support::ulittle16_t NameID;
+
+  void setType(uint16_t ID) {
+    TypeFlag = 0xffff;
+    TypeID = ID;
+  }
+
+  void setName(uint16_t ID) {
+    NameFlag = 0xffff;
+    NameID = ID;
+  }
+};
+
+struct WinResHeaderSuffix {
+  support::ulittle32_t DataVersion;
+  support::ulittle16_t MemoryFlags;
+  support::ulittle16_t Language;
+  support::ulittle32_t Version;
+  support::ulittle32_t Characteristics;
+};
+
+class EmptyResError : public GenericBinaryError {
+public:
+  EmptyResError(Twine Msg, object_error ECOverride)
+      : GenericBinaryError(Msg, ECOverride) {}
+};
+
 class ResourceEntryRef {
 public:
   Error moveNext(bool &End);
@@ -56,7 +100,9 @@ public:
   bool checkNameString() const { return IsStringName; }
   ArrayRef<UTF16> getNameString() const { return Name; }
   uint16_t getNameID() const { return NameID; }
+  uint16_t getDataVersion() const { return Suffix->DataVersion; }
   uint16_t getLanguage() const { return Suffix->Language; }
+  uint16_t getMemoryFlags() const { return Suffix->MemoryFlags; }
   uint16_t getMajorVersion() const { return Suffix->Version >> 16; }
   uint16_t getMinorVersion() const { return Suffix->Version; }
   uint32_t getCharacteristics() const { return Suffix->Characteristics; }
@@ -65,18 +111,11 @@ public:
 private:
   friend class WindowsResource;
 
-  ResourceEntryRef(BinaryStreamRef Ref, const WindowsResource *Owner,
-                   Error &Err);
-
+  ResourceEntryRef(BinaryStreamRef Ref, const WindowsResource *Owner);
   Error loadNext();
 
-  struct HeaderSuffix {
-    support::ulittle32_t DataVersion;
-    support::ulittle16_t MemoryFlags;
-    support::ulittle16_t Language;
-    support::ulittle32_t Version;
-    support::ulittle32_t Characteristics;
-  };
+  static Expected<ResourceEntryRef> create(BinaryStreamRef Ref,
+                                           const WindowsResource *Owner);
 
   BinaryStreamReader Reader;
   bool IsStringType;
@@ -85,9 +124,8 @@ private:
   bool IsStringName;
   ArrayRef<UTF16> Name;
   uint16_t NameID;
-  const HeaderSuffix *Suffix = nullptr;
+  const WinResHeaderSuffix *Suffix = nullptr;
   ArrayRef<uint8_t> Data;
-  const WindowsResource *OwningRes = nullptr;
 };
 
 class WindowsResource : public Binary {

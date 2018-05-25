@@ -18,9 +18,9 @@
 
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/CodeGen/SelectionDAG.h"
+#include "llvm/CodeGen/TargetLowering.h"
 #include "llvm/Support/Compiler.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Target/TargetLowering.h"
 
 namespace llvm {
 
@@ -89,7 +89,8 @@ private:
 
   /// Pretend all of this node's results are legal.
   bool IgnoreNodeResults(SDNode *N) const {
-    return N->getOpcode() == ISD::TargetConstant;
+    return N->getOpcode() == ISD::TargetConstant ||
+           N->getOpcode() == ISD::Register;
   }
 
   /// For integer nodes that are below legal width, this map indicates what
@@ -181,10 +182,6 @@ private:
   std::pair<SDValue, SDValue> ExpandAtomic(SDNode *Node);
 
   SDValue PromoteTargetBoolean(SDValue Bool, EVT ValVT);
-
-  /// Modify Bit Vector to match SetCC result type of ValVT.
-  /// The bit vector is widened with zeroes when WithZeroes is true.
-  SDValue WidenTargetBoolean(SDValue Bool, EVT ValVT, bool WithZeroes = false);
 
   void ReplaceValueWith(SDValue From, SDValue To);
   void SplitInteger(SDValue Op, SDValue &Lo, SDValue &Hi);
@@ -400,31 +397,25 @@ private:
   /// Given an operand Op of Float type, returns the integer if the Op is not
   /// supported in target HW and converted to the integer.
   /// The integer contains exactly the same bits as Op - only the type changed.
-  /// For example, if Op is an f32 which was softened to an i32, then this method
-  /// returns an i32, the bits of which coincide with those of Op.
+  /// For example, if Op is an f32 which was softened to an i32, then this
+  /// method returns an i32, the bits of which coincide with those of Op.
   /// If the Op can be efficiently supported in target HW or the operand must
   /// stay in a register, the Op is not converted to an integer.
   /// In that case, the given op is returned.
   SDValue GetSoftenedFloat(SDValue Op) {
-    SDValue &SoftenedOp = SoftenedFloats[Op];
-    if (!SoftenedOp.getNode() &&
-        isSimpleLegalType(Op.getValueType()))
+    auto Iter = SoftenedFloats.find(Op);
+    if (Iter == SoftenedFloats.end()) {
+      assert(isSimpleLegalType(Op.getValueType()) &&
+             "Operand wasn't converted to integer?");
       return Op;
+    }
+
+    SDValue &SoftenedOp = Iter->second;
+    assert(SoftenedOp.getNode() && "Unconverted op in SoftenedFloats?");
     RemapValue(SoftenedOp);
-    assert(SoftenedOp.getNode() && "Operand wasn't converted to integer?");
     return SoftenedOp;
   }
   void SetSoftenedFloat(SDValue Op, SDValue Result);
-
-  // Call ReplaceValueWith(SDValue(N, ResNo), Res) if necessary.
-  void ReplaceSoftenFloatResult(SDNode *N, unsigned ResNo, SDValue &NewRes) {
-    // When the result type can be kept in HW registers, the converted
-    // NewRes node could have the same type. We can save the effort in
-    // cloning every user of N in SoftenFloatOperand or other legalization functions,
-    // by calling ReplaceValueWith here to update all users.
-    if (NewRes.getNode() != N && isLegalInHWReg(N->getValueType(ResNo)))
-      ReplaceValueWith(SDValue(N, ResNo), NewRes);
-  }
 
   // Convert Float Results to Integer for Non-HW-supported Operations.
   bool SoftenFloatResult(SDNode *N, unsigned ResNo);
@@ -471,17 +462,23 @@ private:
   SDValue SoftenFloatRes_XINT_TO_FP(SDNode *N);
 
   // Return true if we can skip softening the given operand or SDNode because
-  // it was soften before by SoftenFloatResult and references to the operand
-  // were replaced by ReplaceValueWith.
+  // either it was soften before by SoftenFloatResult and references to the 
+  // operand were replaced by ReplaceValueWith or it's value type is legal in HW
+  // registers and the operand can be left unchanged.
   bool CanSkipSoftenFloatOperand(SDNode *N, unsigned OpNo);
 
   // Convert Float Operand to Integer for Non-HW-supported Operations.
   bool SoftenFloatOperand(SDNode *N, unsigned OpNo);
   SDValue SoftenFloatOp_BITCAST(SDNode *N);
+  SDValue SoftenFloatOp_COPY_TO_REG(SDNode *N);
   SDValue SoftenFloatOp_BR_CC(SDNode *N);
+  SDValue SoftenFloatOp_FABS(SDNode *N);
+  SDValue SoftenFloatOp_FCOPYSIGN(SDNode *N);
+  SDValue SoftenFloatOp_FNEG(SDNode *N);
   SDValue SoftenFloatOp_FP_EXTEND(SDNode *N);
   SDValue SoftenFloatOp_FP_ROUND(SDNode *N);
   SDValue SoftenFloatOp_FP_TO_XINT(SDNode *N);
+  SDValue SoftenFloatOp_SELECT(SDNode *N);
   SDValue SoftenFloatOp_SELECT_CC(SDNode *N);
   SDValue SoftenFloatOp_SETCC(SDNode *N);
   SDValue SoftenFloatOp_STORE(SDNode *N, unsigned OpNo);
@@ -622,7 +619,6 @@ private:
   SDValue ScalarizeVecRes_SETCC(SDNode *N);
   SDValue ScalarizeVecRes_UNDEF(SDNode *N);
   SDValue ScalarizeVecRes_VECTOR_SHUFFLE(SDNode *N);
-  SDValue ScalarizeVecRes_VSETCC(SDNode *N);
 
   // Vector Operand Scalarization: <1 x ty> -> ty.
   bool ScalarizeVectorOperand(SDNode *N, unsigned OpNo);
@@ -631,6 +627,7 @@ private:
   SDValue ScalarizeVecOp_CONCAT_VECTORS(SDNode *N);
   SDValue ScalarizeVecOp_EXTRACT_VECTOR_ELT(SDNode *N);
   SDValue ScalarizeVecOp_VSELECT(SDNode *N);
+  SDValue ScalarizeVecOp_VSETCC(SDNode *N);
   SDValue ScalarizeVecOp_STORE(StoreSDNode *N, unsigned OpNo);
   SDValue ScalarizeVecOp_FP_ROUND(SDNode *N, unsigned OpNo);
 
@@ -730,7 +727,6 @@ private:
   SDValue WidenVecRes_SETCC(SDNode* N);
   SDValue WidenVecRes_UNDEF(SDNode *N);
   SDValue WidenVecRes_VECTOR_SHUFFLE(ShuffleVectorSDNode *N);
-  SDValue WidenVecRes_VSETCC(SDNode* N);
 
   SDValue WidenVecRes_Ternary(SDNode *N);
   SDValue WidenVecRes_Binary(SDNode *N);

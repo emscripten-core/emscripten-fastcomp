@@ -10,12 +10,10 @@
 #include "llvm/DebugInfo/PDB/Native/InfoStream.h"
 #include "llvm/ADT/BitVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "llvm/DebugInfo/PDB/Native/PDBFile.h"
 #include "llvm/DebugInfo/PDB/Native/RawConstants.h"
 #include "llvm/DebugInfo/PDB/Native/RawError.h"
 #include "llvm/DebugInfo/PDB/Native/RawTypes.h"
 #include "llvm/Support/BinaryStreamReader.h"
-#include "llvm/Support/BinaryStreamWriter.h"
 
 using namespace llvm;
 using namespace llvm::codeview;
@@ -56,6 +54,10 @@ Error InfoStream::reload() {
     return EC;
   uint32_t NewOffset = Reader.getOffset();
   NamedStreamMapByteSize = NewOffset - Offset;
+
+  Reader.setOffset(Offset);
+  if (auto EC = Reader.readSubstream(SubNamedStreams, NamedStreamMapByteSize))
+    return EC;
 
   bool Stop = false;
   while (!Stop && !Reader.empty()) {
@@ -114,7 +116,7 @@ uint32_t InfoStream::getSignature() const { return Signature; }
 
 uint32_t InfoStream::getAge() const { return Age; }
 
-PDB_UniqueId InfoStream::getGuid() const { return Guid; }
+GUID InfoStream::getGuid() const { return Guid; }
 
 uint32_t InfoStream::getNamedStreamMapByteSize() const {
   return NamedStreamMapByteSize;
@@ -128,4 +130,8 @@ ArrayRef<PdbRaw_FeatureSig> InfoStream::getFeatureSignatures() const {
 
 const NamedStreamMap &InfoStream::getNamedStreams() const {
   return NamedStreams;
+}
+
+BinarySubstreamRef InfoStream::getNamedStreamsBuffer() const {
+  return SubNamedStreams;
 }

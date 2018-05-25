@@ -4449,10 +4449,9 @@ Pass *createCheckTriplePass() {
 //                       External Interface declaration
 //===----------------------------------------------------------------------===//
 
-bool JSTargetMachine::addPassesToEmitFile(
-      PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
-      bool DisableVerify, AnalysisID StartBefore,
-      AnalysisID StartAfter, AnalysisID StopBefore, AnalysisID StopAfter) {
+bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
+                                          CodeGenFileType FileType, bool DisableVerify,
+                                          MachineModuleInfo *MMI) {
   assert(FileType == TargetMachine::CGFT_AssemblyFile);
 
   PM.add(createCheckTriplePass());

@@ -202,6 +202,12 @@ public:
   /// Return true if this is an integer type or a vector of integer types.
   bool isIntOrIntVectorTy() const { return getScalarType()->isIntegerTy(); }
 
+  /// Return true if this is an integer type or a vector of integer types of
+  /// the given width.
+  bool isIntOrIntVectorTy(unsigned BitWidth) const {
+    return getScalarType()->isIntegerTy(BitWidth);
+  }
+
   /// True if this is an instance of FunctionType.
   bool isFunctionTy() const { return getTypeID() == FunctionTyID; }
 
@@ -432,7 +438,7 @@ private:
 };
 
 // Printing of types.
-static inline raw_ostream &operator<<(raw_ostream &OS, const Type &T) {
+inline raw_ostream &operator<<(raw_ostream &OS, const Type &T) {
   T.print(OS);
   return OS;
 }

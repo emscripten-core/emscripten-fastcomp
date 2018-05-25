@@ -16,9 +16,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "llvm/LTO/Caching.h"
-#include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/Bitcode/BitcodeReader.h"
+#include "llvm/CodeGen/CommandFlags.def"
 #include "llvm/IR/DiagnosticPrinter.h"
+#include "llvm/LTO/Caching.h"
 #include "llvm/LTO/LTO.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
@@ -99,10 +100,18 @@ static cl::opt<bool> OptRemarksWithHotness(
     cl::desc("Whether to include hotness informations in the remarks.\n"
              "Has effect only if -pass-remarks-output is specified."));
 
+static cl::opt<std::string>
+    SamplePGOFile("lto-sample-profile-file",
+                  cl::desc("Specify a SamplePGO profile file"));
+
 static cl::opt<bool>
     UseNewPM("use-new-pm",
              cl::desc("Run LTO passes using the new pass manager"),
              cl::init(false), cl::Hidden);
+
+static cl::opt<bool>
+    DebugPassManager("debug-pass-manager", cl::init(false), cl::Hidden,
+                     cl::desc("Print pass management debugging information"));
 
 static void check(Error E, std::string Msg) {
   if (!E)
@@ -188,7 +197,9 @@ static int run(int argc, char **argv) {
   Conf.MAttrs = MAttrs;
   if (auto RM = getRelocModel())
     Conf.RelocModel = *RM;
-  Conf.CodeModel = CMModel;
+  Conf.CodeModel = getCodeModel();
+
+  Conf.DebugPassManager = DebugPassManager;
 
   if (SaveTemps)
     check(Conf.addSaveTemps(OutputFilename + "."),
@@ -197,6 +208,8 @@ static int run(int argc, char **argv) {
   // Optimization remarks.
   Conf.RemarksFilename = OptRemarksOutput;
   Conf.RemarksWithHotness = OptRemarksWithHotness;
+
+  Conf.SampleProfile = SamplePGOFile;
 
   // Run a custom pipeline, if asked for.
   Conf.OptPipeline = OptPipeline;
@@ -283,7 +296,8 @@ static int run(int argc, char **argv) {
     return llvm::make_unique<lto::NativeObjectStream>(std::move(S));
   };
 
-  auto AddBuffer = [&](size_t Task, std::unique_ptr<MemoryBuffer> MB) {
+  auto AddBuffer = [&](size_t Task, std::unique_ptr<MemoryBuffer> MB,
+                       StringRef Path) {
     *AddStream(Task)->OS << MB->getBuffer();
   };
 
@@ -298,6 +312,17 @@ static int run(int argc, char **argv) {
 static int dumpSymtab(int argc, char **argv) {
   for (StringRef F : make_range(argv + 1, argv + argc)) {
     std::unique_ptr<MemoryBuffer> MB = check(MemoryBuffer::getFile(F), F);
+    BitcodeFileContents BFC = check(getBitcodeFileContents(*MB), F);
+
+    if (BFC.Symtab.size() >= sizeof(irsymtab::storage::Header)) {
+      auto *Hdr = reinterpret_cast<const irsymtab::storage::Header *>(
+          BFC.Symtab.data());
+      outs() << "version: " << Hdr->Version << '\n';
+      if (Hdr->Version == irsymtab::storage::Header::kCurrentVersion)
+        outs() << "producer: " << Hdr->Producer.get(BFC.StrtabForSymtab)
+               << '\n';
+    }
+
     std::unique_ptr<InputFile> Input =
         check(InputFile::create(MB->getMemBufferRef()), F);
 
@@ -343,6 +368,9 @@ static int dumpSymtab(int argc, char **argv) {
 
       if (TT.isOSBinFormatCOFF() && Sym.isWeak() && Sym.isIndirect())
         outs() << "         fallback " << Sym.getCOFFWeakExternalFallback() << '\n';
+
+      if (!Sym.getSectionName().empty())
+        outs() << "         section " << Sym.getSectionName() << "\n";
     }
 
     outs() << '\n';

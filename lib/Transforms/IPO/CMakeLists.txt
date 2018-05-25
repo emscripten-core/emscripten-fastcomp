@@ -2,6 +2,7 @@ add_llvm_library(LLVMipo
   AlwaysInliner.cpp
   ArgumentPromotion.cpp
   BarrierNoopPass.cpp
+  CalledValuePropagation.cpp
   ConstantMerge.cpp
   CrossDSOCFI.cpp
   DeadArgumentElimination.cpp
@@ -30,6 +31,11 @@ add_llvm_library(LLVMipo
   StripSymbols.cpp
   ThinLTOBitcodeWriter.cpp
   WholeProgramDevirt.cpp
+
+  #@LOCALMOD BEGIN
+  # XXX EMSCRIPTEN
+  LowerNonEmIntrinsics.cpp
+  #@LOCALMOD END
 
   ADDITIONAL_HEADER_DIRS
   ${LLVM_MAIN_INCLUDE_DIR}/llvm/Transforms

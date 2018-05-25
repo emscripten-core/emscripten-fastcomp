@@ -49,9 +49,10 @@ entry:
 ; CHECK-THUMBV6:       mov [[EXPECTED:r[0-9]+]], r1
 ; CHECK-THUMBV6-NEXT:  bl __sync_val_compare_and_swap_1
 ; CHECK-THUMBV6-NEXT:  mov [[RES:r[0-9]+]], r0
+; CHECK-THUMBV6-NEXT:  uxtb [[EXPECTED_ZEXT:r[0-9]+]], [[EXPECTED]]
 ; CHECK-THUMBV6-NEXT:  movs r0, #1
 ; CHECK-THUMBV6-NEXT:  movs [[ZERO:r[0-9]+]], #0
-; CHECK-THUMBV6-NEXT:  cmp [[RES]], [[EXPECTED]]
+; CHECK-THUMBV6-NEXT:  cmp [[RES]], [[EXPECTED_ZEXT]]
 ; CHECK-THUMBV6-NEXT:  beq [[END:.LBB[0-9_]+]]
 ; CHECK-THUMBV6-NEXT:  mov r0, [[ZERO]]
 ; CHECK-THUMBV6-NEXT: [[END]]:
@@ -70,8 +71,8 @@ entry:
 ; CHECK-ARMV7-NEXT: ldrexb [[SUCCESS]], [r0]
 ; CHECK-ARMV7-NEXT: cmp [[SUCCESS]], r1
 ; CHECK-ARMV7-NEXT: beq [[HEAD]]
-; CHECK-ARMV7-NEXT: clrex
 ; CHECK-ARMV7-NEXT: mov r0, #0
+; CHECK-ARMV7-NEXT: clrex
 ; CHECK-ARMV7-NEXT: bx lr
 
 ; CHECK-THUMBV7-LABEL: test_cmpxchg_res_i8:
@@ -88,6 +89,6 @@ entry:
 ; CHECK-THUMBV7-NEXT: ldrexb [[LD:r[0-9]+]], [r0]
 ; CHECK-THUMBV7-NEXT: cmp [[LD]], [[DESIRED]]
 ; CHECK-THUMBV7-NEXT: beq [[TRYST:.LBB[0-9_]+]]
-; CHECK-THUMBV7-NEXT: clrex
 ; CHECK-THUMBV7-NEXT: movs r0, #0
+; CHECK-THUMBV7-NEXT: clrex
 ; CHECK-THUMBV7-NEXT: bx lr

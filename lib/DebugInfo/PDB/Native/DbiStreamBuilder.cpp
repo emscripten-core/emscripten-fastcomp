@@ -49,9 +49,21 @@ void DbiStreamBuilder::setSectionMap(ArrayRef<SecMapEntry> SecMap) {
   SectionMap = SecMap;
 }
 
+void DbiStreamBuilder::setGlobalsStreamIndex(uint32_t Index) {
+  GlobalsStreamIndex = Index;
+}
+
+void DbiStreamBuilder::setSymbolRecordStreamIndex(uint32_t Index) {
+  SymRecordStreamIndex = Index;
+}
+
+void DbiStreamBuilder::setPublicsStreamIndex(uint32_t Index) {
+  PublicsStreamIndex = Index;
+}
+
 Error DbiStreamBuilder::addDbgStream(pdb::DbgHeaderType Type,
                                      ArrayRef<uint8_t> Data) {
-  if (DbgStreams[(int)Type].StreamNumber)
+  if (DbgStreams[(int)Type].StreamNumber != kInvalidStreamIndex)
     return make_error<RawError>(raw_error_code::duplicate_entry,
                                 "The specified stream type already exists");
   auto ExpectedIndex = Msf.addStream(Data.size());
@@ -63,34 +75,24 @@ Error DbiStreamBuilder::addDbgStream(pdb::DbgHeaderType Type,
   return Error::success();
 }
 
+uint32_t DbiStreamBuilder::addECName(StringRef Name) {
+  return ECNamesBuilder.insert(Name);
+}
+
 uint32_t DbiStreamBuilder::calculateSerializedLength() const {
   // For now we only support serializing the header.
   return sizeof(DbiStreamHeader) + calculateFileInfoSubstreamSize() +
          calculateModiSubstreamSize() + calculateSectionContribsStreamSize() +
-         calculateSectionMapStreamSize() + calculateDbgStreamsSize();
+         calculateSectionMapStreamSize() + calculateDbgStreamsSize() +
+         ECNamesBuilder.calculateSerializedSize();
 }
 
 Expected<DbiModuleDescriptorBuilder &>
 DbiStreamBuilder::addModuleInfo(StringRef ModuleName) {
   uint32_t Index = ModiList.size();
-  auto MIB =
-      llvm::make_unique<DbiModuleDescriptorBuilder>(ModuleName, Index, Msf);
-  auto M = MIB.get();
-  auto Result = ModiMap.insert(std::make_pair(ModuleName, std::move(MIB)));
-
-  if (!Result.second)
-    return make_error<RawError>(raw_error_code::duplicate_entry,
-                                "The specified module already exists");
-  ModiList.push_back(M);
-  return *M;
-}
-
-Error DbiStreamBuilder::addModuleSourceFile(StringRef Module, StringRef File) {
-  auto ModIter = ModiMap.find(Module);
-  if (ModIter == ModiMap.end())
-    return make_error<RawError>(raw_error_code::no_entry,
-                                "The specified module was not found");
-  return addModuleSourceFile(*ModIter->second, File);
+  ModiList.push_back(
+      llvm::make_unique<DbiModuleDescriptorBuilder>(ModuleName, Index, Msf));
+  return *ModiList.back();
 }
 
 Error DbiStreamBuilder::addModuleSourceFile(DbiModuleDescriptorBuilder &Module,
@@ -247,17 +249,17 @@ Error DbiStreamBuilder::finalize() {
   H->PdbDllVersion = PdbDllVersion;
   H->MachineType = static_cast<uint16_t>(MachineType);
 
-  H->ECSubstreamSize = 0;
+  H->ECSubstreamSize = ECNamesBuilder.calculateSerializedSize();
   H->FileInfoSize = FileInfoBuffer.getLength();
   H->ModiSubstreamSize = calculateModiSubstreamSize();
   H->OptionalDbgHdrSize = DbgStreams.size() * sizeof(uint16_t);
   H->SecContrSubstreamSize = calculateSectionContribsStreamSize();
   H->SectionMapSize = calculateSectionMapStreamSize();
   H->TypeServerSize = 0;
-  H->SymRecordStreamIndex = kInvalidStreamIndex;
-  H->PublicSymbolStreamIndex = kInvalidStreamIndex;
+  H->SymRecordStreamIndex = SymRecordStreamIndex;
+  H->PublicSymbolStreamIndex = PublicsStreamIndex;
   H->MFCTypeServerIndex = kInvalidStreamIndex;
-  H->GlobalSymbolStreamIndex = kInvalidStreamIndex;
+  H->GlobalSymbolStreamIndex = GlobalsStreamIndex;
 
   Header = H;
   return Error::success();
@@ -292,19 +294,6 @@ static uint16_t toSecMapFlags(uint32_t Flags) {
   Ret |= static_cast<uint16_t>(OMFSegDescFlags::IsSelector);
 
   return Ret;
-}
-
-void DbiStreamBuilder::addSectionContrib(DbiModuleDescriptorBuilder *ModuleDbi,
-                                         const object::coff_section *SecHdr) {
-  SectionContrib SC;
-  memset(&SC, 0, sizeof(SC));
-  SC.ISect = (uint16_t)~0U; // This represents nil.
-  SC.Off = SecHdr->PointerToRawData;
-  SC.Size = SecHdr->SizeOfRawData;
-  SC.Characteristics = SecHdr->Characteristics;
-  // Use the module index in the module dbi stream or nil (-1).
-  SC.Imod = ModuleDbi ? ModuleDbi->getModuleIndex() : (uint16_t)~0U;
-  SectionContribs.emplace_back(SC);
 }
 
 // A utility function to create a Section Map for a given list of COFF sections.
@@ -381,6 +370,9 @@ Error DbiStreamBuilder::commit(const msf::MSFLayout &Layout,
   }
 
   if (auto EC = Writer.writeStreamRef(FileInfoBuffer))
+    return EC;
+
+  if (auto EC = ECNamesBuilder.commit(Writer))
     return EC;
 
   for (auto &Stream : DbgStreams)

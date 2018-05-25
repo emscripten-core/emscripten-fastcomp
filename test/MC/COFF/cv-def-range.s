@@ -17,13 +17,13 @@ Lfunc_begin0:
 	.cv_file	1 "\\usr\\local\\google\\home\\majnemer\\llvm\\src\\<stdin>"
 	.cv_func_id 0
 	.cv_loc	0 1 3 0 is_stmt 0       # <stdin>:3:0
-# BB#0:                                 # %entry
+# %bb.0:                                # %entry
 	pushl	%ebp
 	movl	%esp, %ebp
 	subl	$8, %esp
 	leal	-4(%ebp), %eax
 Lvar_begin0:
-	#DEBUG_VALUE: g:x <- %EAX
+	#DEBUG_VALUE: g:x <- %eax
 	.cv_loc	0 1 4 7                 # <stdin>:4:7
 	movl	$0, -4(%ebp)
 	.cv_loc	0 1 5 3                 # <stdin>:5:3
@@ -77,18 +77,18 @@ Ltmp3:
 	.short	4431                    # Record kind: S_PROC_ID_END
 	.cv_def_range	Lvar_begin0 Lvar_end0, "\102\021\374\377\377\377"
 
-# CHECK:    DefRangeFramePointerRel {
+# CHECK:    DefRangeFramePointerRelSym {
 # CHECK:      Offset: -4
 # CHECK:      LocalVariableAddrRange {
 # CHECK:        OffsetStart: .text+0x9
 # CHECK:        ISectStart: 0x0
 # CHECK:        Range: 0xF
 # CHECK:      }
+# CHECK:      BlockRelocations [
+# CHECK:        0x4 IMAGE_REL_I386_SECREL .text
+# CHECK:        0x8 IMAGE_REL_I386_SECTION .text
+# CHECK:      ]
 # CHECK:    }
-# CHECK:    BlockRelocations [
-# CHECK:      0x4 IMAGE_REL_I386_SECREL .text
-# CHECK:      0x8 IMAGE_REL_I386_SECTION .text
-# CHECK:    ]
 
 Ltmp1:
 	.p2align	2

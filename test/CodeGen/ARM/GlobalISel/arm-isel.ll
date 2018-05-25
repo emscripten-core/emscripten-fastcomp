@@ -25,8 +25,9 @@ entry:
 
 define signext i1 @test_sext_i1(i1 %x) {
 ; CHECK-LABEL: test_sext_i1
-; CHECK: and r0, r0, #1
-; CHECK: rsb r0, r0, #0
+; CHECK: mov	r1, #31
+; CHECK: lsl	r0, r0, r1
+; CHECK: asr	r0, r0, r1
 ; CHECK: bx lr
 entry:
   ret i1 %x
@@ -36,13 +37,16 @@ define zeroext i8 @test_ext_i8(i8 %x) {
 ; CHECK-LABEL: test_ext_i8:
 ; CHECK: uxtb r0, r0
 ; CHECK: bx lr
+
 entry:
   ret i8 %x
 }
 
 define signext i16 @test_ext_i16(i16 %x) {
 ; CHECK-LABEL: test_ext_i16:
-; CHECK: sxth r0, r0
+; CHECK: mov	r1, #16
+; CHECK: lsl	r0, r0, r1
+; CHECK: asr	r0, r0, r1
 ; CHECK: bx lr
 entry:
   ret i16 %x
@@ -388,8 +392,6 @@ entry:
 
 define arm_aapcscc i32 @test_cmp_i16_slt(i16 %a, i16 %b) {
 ; CHECK-LABEL: test_cmp_i16_slt:
-; CHECK-DAG: sxth r0, r0
-; CHECK-DAG: sxth r1, r1
 ; CHECK-DAG: mov [[V:r[0-9]+]], #0
 ; CHECK: cmp r0, r1
 ; CHECK: movlt [[V]], #1
@@ -399,4 +401,63 @@ entry:
   %v = icmp slt i16 %a, %b
   %r = zext i1 %v to i32
   ret i32 %r
+}
+
+define arm_aapcscc i32 @test_select_i32(i32 %a, i32 %b, i1 %cond) {
+; CHECK-LABEL: test_select_i32
+; CHECK: cmp r2, #0
+; CHECK: moveq r0, r1
+; CHECK: bx lr
+entry:
+  %r = select i1 %cond, i32 %a, i32 %b
+  ret i32 %r
+}
+
+define arm_aapcscc i32* @test_select_ptr(i32* %a, i32* %b, i1 %cond) {
+; CHECK-LABEL: test_select_ptr
+; CHECK: cmp r2, #0
+; CHECK: moveq r0, r1
+; CHECK: bx lr
+entry:
+  %r = select i1 %cond, i32* %a, i32* %b
+  ret i32* %r
+}
+
+define arm_aapcscc void @test_br() {
+; CHECK-LABEL: test_br
+; CHECK: [[LABEL:.L[[:alnum:]_]+]]:
+; CHECK: b [[LABEL]]
+entry:
+  br label %infinite
+
+infinite:
+  br label %infinite
+}
+
+declare arm_aapcscc void @brcond1()
+declare arm_aapcscc void @brcond2()
+
+define arm_aapcscc void @test_brcond(i32 %n) {
+; CHECK-LABEL: test_brcond
+; CHECK: cmp r0
+; CHECK-NEXT: movgt [[RCMP:r[0-9]+]], #1
+; CHECK: tst [[RCMP]], #1
+; CHECK-NEXT: beq [[FALSE:.L[[:alnum:]_]+]]
+; CHECK: bl brcond1
+; CHECK: [[FALSE]]:
+; CHECK: bl brcond2
+entry:
+  %cmp = icmp sgt i32 %n, 0
+  br i1 %cmp, label %if.true, label %if.false
+
+if.true:
+  call arm_aapcscc void @brcond1()
+  br label %if.end
+
+if.false:
+  call arm_aapcscc void @brcond2()
+  br label %if.end
+
+if.end:
+  ret void
 }

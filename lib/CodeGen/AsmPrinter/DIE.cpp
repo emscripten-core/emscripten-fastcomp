@@ -105,7 +105,7 @@ void DIEAbbrev::Emit(const AsmPrinter *AP) const {
 }
 
 LLVM_DUMP_METHOD
-void DIEAbbrev::print(raw_ostream &O) {
+void DIEAbbrev::print(raw_ostream &O) const {
   O << "Abbreviation @"
     << format("0x%lx", (long)(intptr_t)this)
     << "  "
@@ -128,7 +128,7 @@ void DIEAbbrev::print(raw_ostream &O) {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void DIEAbbrev::dump() {
+LLVM_DUMP_METHOD void DIEAbbrev::dump() const {
   print(dbgs());
 }
 #endif
@@ -268,7 +268,7 @@ void DIE::print(raw_ostream &O, unsigned IndentCount) const {
 }
 
 #if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void DIE::dump() {
+LLVM_DUMP_METHOD void DIE::dump() const {
   print(dbgs());
 }
 #endif
@@ -777,6 +777,7 @@ void DIEBlock::EmitValue(const AsmPrinter *Asm, dwarf::Form Form) const {
   case dwarf::DW_FORM_block2: Asm->EmitInt16(Size);   break;
   case dwarf::DW_FORM_block4: Asm->EmitInt32(Size);   break;
   case dwarf::DW_FORM_block:  Asm->EmitULEB128(Size); break;
+  case dwarf::DW_FORM_data16: break;
   }
 
   for (const auto &V : values())
@@ -791,6 +792,7 @@ unsigned DIEBlock::SizeOf(const AsmPrinter *AP, dwarf::Form Form) const {
   case dwarf::DW_FORM_block2: return Size + sizeof(int16_t);
   case dwarf::DW_FORM_block4: return Size + sizeof(int32_t);
   case dwarf::DW_FORM_block:  return Size + getULEB128Size(Size);
+  case dwarf::DW_FORM_data16: return 16;
   default: llvm_unreachable("Improper form for block");
   }
 }

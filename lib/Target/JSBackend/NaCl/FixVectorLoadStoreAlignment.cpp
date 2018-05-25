@@ -203,7 +203,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
       Value *GEP = IRB.CreateConstInBoundsGEP1_32(ElemTy, Base, Elem);
       LoadInst *LoadedElem =
           IRB.CreateAlignedLoad(GEP, Align, VecLoad->isVolatile());
-      LoadedElem->setSynchScope(VecLoad->getSynchScope());
+      LoadedElem->setSyncScopeID(VecLoad->getSyncScopeID());
       Loaded = IRB.CreateInsertElement(
           Loaded, LoadedElem,
           ConstantInt::get(Type::getInt32Ty(M->getContext()), Elem));
@@ -238,7 +238,7 @@ void FixVectorLoadStoreAlignment::scalarizeVectorLoadStore(
           StoredVec, ConstantInt::get(Type::getInt32Ty(M->getContext()), Elem));
       StoreInst *StoredElem = IRB.CreateAlignedStore(ElemToStore, GEP, Align,
                                                      VecStore->isVolatile());
-      StoredElem->setSynchScope(VecStore->getSynchScope());
+      StoredElem->setSyncScopeID(VecStore->getSyncScopeID());
     }
 
     VecStore->eraseFromParent();

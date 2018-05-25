@@ -37,14 +37,19 @@ using namespace llvm;
 
 enum ProfileFormat { PF_None = 0, PF_Text, PF_Binary, PF_GCC };
 
-static void exitWithError(const Twine &Message, StringRef Whence = "",
-                          StringRef Hint = "") {
-  errs() << "error: ";
+static void warn(StringRef Prefix, Twine Message, std::string Whence = "",
+                 std::string Hint = "") {
+  errs() << Prefix;
   if (!Whence.empty())
     errs() << Whence << ": ";
   errs() << Message << "\n";
   if (!Hint.empty())
     errs() << Hint << "\n";
+}
+
+static void exitWithError(Twine Message, std::string Whence = "",
+                          std::string Hint = "") {
+  warn("error: ", Message, Whence, Hint);
   ::exit(1);
 }
 
@@ -119,7 +124,7 @@ struct WriterContext {
   std::mutex Lock;
   InstrProfWriter Writer;
   Error Err;
-  StringRef ErrWhence;
+  std::string ErrWhence;
   std::mutex &ErrLock;
   SmallSet<instrprof_error, 4> &WriterErrorCodes;
 
@@ -129,6 +134,22 @@ struct WriterContext {
         ErrLock(ErrLock), WriterErrorCodes(WriterErrorCodes) {}
 };
 
+/// Determine whether an error is fatal for profile merging.
+static bool isFatalError(instrprof_error IPE) {
+  switch (IPE) {
+  default:
+    return true;
+  case instrprof_error::success:
+  case instrprof_error::eof:
+  case instrprof_error::unknown_function:
+  case instrprof_error::hash_mismatch:
+  case instrprof_error::count_mismatch:
+  case instrprof_error::counter_overflow:
+  case instrprof_error::value_site_count_mismatch:
+    return false;
+  }
+}
+
 /// Load an input into a writer context.
 static void loadInput(const WeightedFile &Input, WriterContext *WC) {
   std::unique_lock<std::mutex> CtxGuard{WC->Lock};
@@ -137,6 +158,9 @@ static void loadInput(const WeightedFile &Input, WriterContext *WC) {
   if (WC->Err)
     return;
 
+  // Copy the filename, because llvm::ThreadPool copied the input "const
+  // WeightedFile &" by value, making a reference to the filename within it
+  // invalid outside of this packaged task.
   WC->ErrWhence = Input.Filename;
 
   auto ReaderOrErr = InstrProfReader::create(Input.Filename);
@@ -159,23 +183,46 @@ static void loadInput(const WeightedFile &Input, WriterContext *WC) {
 
   for (auto &I : *Reader) {
     const StringRef FuncName = I.Name;
-    if (Error E = WC->Writer.addRecord(std::move(I), Input.Weight)) {
+    bool Reported = false;
+    WC->Writer.addRecord(std::move(I), Input.Weight, [&](Error E) {
+      if (Reported) {
+        consumeError(std::move(E));
+        return;
+      }
+      Reported = true;
       // Only show hint the first time an error occurs.
       instrprof_error IPE = InstrProfError::take(std::move(E));
       std::unique_lock<std::mutex> ErrGuard{WC->ErrLock};
       bool firstTime = WC->WriterErrorCodes.insert(IPE).second;
       handleMergeWriterError(make_error<InstrProfError>(IPE), Input.Filename,
                              FuncName, firstTime);
+    });
+  }
+  if (Reader->hasError()) {
+    if (Error E = Reader->getError()) {
+      instrprof_error IPE = InstrProfError::take(std::move(E));
+      if (isFatalError(IPE))
+        WC->Err = make_error<InstrProfError>(IPE);
     }
   }
-  if (Reader->hasError())
-    WC->Err = Reader->getError();
 }
 
 /// Merge the \p Src writer context into \p Dst.
 static void mergeWriterContexts(WriterContext *Dst, WriterContext *Src) {
-  if (Error E = Dst->Writer.mergeRecordsFromWriter(std::move(Src->Writer)))
+  // If we've already seen a hard error, continuing with the merge would
+  // clobber it.
+  if (Dst->Err || Src->Err)
+    return;
+
+  bool Reported = false;
+  Dst->Writer.mergeRecordsFromWriter(std::move(Src->Writer), [&](Error E) {
+    if (Reported) {
+      consumeError(std::move(E));
+      return;
+    }
+    Reported = true;
     Dst->Err = std::move(E);
+  });
 }
 
 static void mergeInstrProfile(const WeightedFileVector &Inputs,
@@ -198,8 +245,8 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
 
   // If NumThreads is not specified, auto-detect a good default.
   if (NumThreads == 0)
-    NumThreads = std::max(1U, std::min(std::thread::hardware_concurrency(),
-                                       unsigned(Inputs.size() / 2)));
+    NumThreads =
+        std::min(hardware_concurrency(), unsigned((Inputs.size() + 1) / 2));
 
   // Initialize the writer contexts.
   SmallVector<std::unique_ptr<WriterContext>, 4> Contexts;
@@ -241,9 +288,19 @@ static void mergeInstrProfile(const WeightedFileVector &Inputs,
   }
 
   // Handle deferred hard errors encountered during merging.
-  for (std::unique_ptr<WriterContext> &WC : Contexts)
-    if (WC->Err)
+  for (std::unique_ptr<WriterContext> &WC : Contexts) {
+    if (!WC->Err)
+      continue;
+    if (!WC->Err.isA<InstrProfError>())
       exitWithError(std::move(WC->Err), WC->ErrWhence);
+
+    instrprof_error IPE = InstrProfError::take(std::move(WC->Err));
+    if (isFatalError(IPE))
+      exitWithError(make_error<InstrProfError>(IPE), WC->ErrWhence);
+    else
+      warn("warning: ", toString(make_error<InstrProfError>(IPE)),
+           WC->ErrWhence);
+  }
 
   InstrProfWriter &Writer = Contexts[0]->Writer;
   if (OutputFormat == PF_Text) {
@@ -499,8 +556,8 @@ static void showValueSitesStats(raw_fd_ostream &OS, uint32_t VK,
 }
 
 static int showInstrProfile(const std::string &Filename, bool ShowCounts,
-                            bool ShowIndirectCallTargets, bool ShowMemOPSizes,
-                            bool ShowDetailedSummary,
+                            uint32_t TopN, bool ShowIndirectCallTargets,
+                            bool ShowMemOPSizes, bool ShowDetailedSummary,
                             std::vector<uint32_t> DetailedSummaryCutoffs,
                             bool ShowAllFunctions,
                             const std::string &ShowFunction, bool TextFormat,
@@ -519,6 +576,17 @@ static int showInstrProfile(const std::string &Filename, bool ShowCounts,
   size_t ShownFunctions = 0;
   int NumVPKind = IPVK_Last - IPVK_First + 1;
   std::vector<ValueSitesStats> VPStats(NumVPKind);
+
+  auto MinCmp = [](const std::pair<std::string, uint64_t> &v1,
+                   const std::pair<std::string, uint64_t> &v2) {
+    return v1.second > v2.second;
+  };
+
+  std::priority_queue<std::pair<std::string, uint64_t>,
+                      std::vector<std::pair<std::string, uint64_t>>,
+                      decltype(MinCmp)>
+      HottestFuncs(MinCmp);
+
   for (const auto &Func : *Reader) {
     bool Show =
         ShowAllFunctions || (!ShowFunction.empty() &&
@@ -528,12 +596,27 @@ static int showInstrProfile(const std::string &Filename, bool ShowCounts,
 
     if (doTextFormatDump) {
       InstrProfSymtab &Symtab = Reader->getSymtab();
-      InstrProfWriter::writeRecordInText(Func, Symtab, OS);
+      InstrProfWriter::writeRecordInText(Func.Name, Func.Hash, Func, Symtab,
+                                         OS);
       continue;
     }
 
     assert(Func.Counts.size() > 0 && "function missing entry counter");
     Builder.addRecord(Func);
+
+    if (TopN) {
+      uint64_t FuncMax = 0;
+      for (size_t I = 0, E = Func.Counts.size(); I < E; ++I)
+        FuncMax = std::max(FuncMax, Func.Counts[I]);
+
+      if (HottestFuncs.size() == TopN) {
+        if (HottestFuncs.top().second < FuncMax) {
+          HottestFuncs.pop();
+          HottestFuncs.emplace(std::make_pair(std::string(Func.Name), FuncMax));
+        }
+      } else
+        HottestFuncs.emplace(std::make_pair(std::string(Func.Name), FuncMax));
+    }
 
     if (Show) {
 
@@ -586,11 +669,25 @@ static int showInstrProfile(const std::string &Filename, bool ShowCounts,
   if (ShowCounts && TextFormat)
     return 0;
   std::unique_ptr<ProfileSummary> PS(Builder.getSummary());
+  OS << "Instrumentation level: "
+     << (Reader->isIRLevelProfile() ? "IR" : "Front-end") << "\n";
   if (ShowAllFunctions || !ShowFunction.empty())
     OS << "Functions shown: " << ShownFunctions << "\n";
   OS << "Total functions: " << PS->getNumFunctions() << "\n";
   OS << "Maximum function count: " << PS->getMaxFunctionCount() << "\n";
   OS << "Maximum internal block count: " << PS->getMaxInternalCount() << "\n";
+
+  if (TopN) {
+    std::vector<std::pair<std::string, uint64_t>> SortedHottestFuncs;
+    while (!HottestFuncs.empty()) {
+      SortedHottestFuncs.emplace_back(HottestFuncs.top());
+      HottestFuncs.pop();
+    }
+    OS << "Top " << TopN
+       << " functions with the largest internal block counts: \n";
+    for (auto &hotfunc : llvm::reverse(SortedHottestFuncs))
+      OS << "  " << hotfunc.first << ", max count = " << hotfunc.second << "\n";
+  }
 
   if (ShownFunctions && ShowIndirectCallTargets) {
     OS << "Statistics for indirect call sites profile:\n";
@@ -675,6 +772,9 @@ static int show_main(int argc, const char *argv[]) {
       cl::desc("Profile kind:"), cl::init(instr),
       cl::values(clEnumVal(instr, "Instrumentation profile (default)"),
                  clEnumVal(sample, "Sample profile")));
+  cl::opt<uint32_t> TopNFunctions(
+      "topn", cl::init(0),
+      cl::desc("Show the list of functions with the largest internal counts"));
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM profile data summary\n");
 
@@ -692,10 +792,10 @@ static int show_main(int argc, const char *argv[]) {
   std::vector<uint32_t> Cutoffs(DetailedSummaryCutoffs.begin(),
                                 DetailedSummaryCutoffs.end());
   if (ProfileKind == instr)
-    return showInstrProfile(Filename, ShowCounts, ShowIndirectCallTargets,
-                            ShowMemOPSizes, ShowDetailedSummary,
-                            DetailedSummaryCutoffs, ShowAllFunctions,
-                            ShowFunction, TextFormat, OS);
+    return showInstrProfile(Filename, ShowCounts, TopNFunctions,
+                            ShowIndirectCallTargets, ShowMemOPSizes,
+                            ShowDetailedSummary, DetailedSummaryCutoffs,
+                            ShowAllFunctions, ShowFunction, TextFormat, OS);
   else
     return showSampleProfile(Filename, ShowCounts, ShowAllFunctions,
                              ShowFunction, OS);

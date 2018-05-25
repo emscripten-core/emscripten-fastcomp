@@ -73,15 +73,25 @@ namespace llvm {
 
     constexpr Type getAsInteger() const { return Mask; }
 
-    static LaneBitmask getNone() { return LaneBitmask(0); }
-    static LaneBitmask getAll()  { return ~LaneBitmask(0); }
+    unsigned getNumLanes() const {
+      return countPopulation(Mask);
+    }
+    unsigned getHighestLane() const {
+      return Log2_32(Mask);
+    }
+
+    static constexpr LaneBitmask getNone() { return LaneBitmask(0); }
+    static constexpr LaneBitmask getAll() { return ~LaneBitmask(0); }
+    static constexpr LaneBitmask getLane(unsigned Lane) {
+      return LaneBitmask(Type(1) << Lane);
+    }
 
   private:
     Type Mask = 0;
   };
 
   /// Create Printable object to print LaneBitmasks on a \ref raw_ostream.
-  static LLVM_ATTRIBUTE_UNUSED Printable PrintLaneMask(LaneBitmask LaneMask) {
+  inline Printable PrintLaneMask(LaneBitmask LaneMask) {
     return Printable([LaneMask](raw_ostream &OS) {
       OS << format(LaneBitmask::FormatStr, LaneMask.getAsInteger());
     });

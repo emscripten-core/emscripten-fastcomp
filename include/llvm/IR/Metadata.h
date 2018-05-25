@@ -660,6 +660,19 @@ struct AAMDNodes {
 
   /// \brief The tag specifying the noalias scope.
   MDNode *NoAlias;
+
+  /// \brief Given two sets of AAMDNodes that apply to the same pointer,
+  /// give the best AAMDNodes that are compatible with both (i.e. a set of
+  /// nodes whose allowable aliasing conclusions are a subset of those
+  /// allowable by both of the inputs). However, for efficiency
+  /// reasons, do not create any new MDNodes.
+  AAMDNodes intersect(const AAMDNodes &Other) {
+    AAMDNodes Result;
+    Result.TBAA = Other.TBAA == TBAA ? TBAA : nullptr;
+    Result.Scope = Other.Scope == Scope ? Scope : nullptr;
+    Result.NoAlias = Other.NoAlias == NoAlias ? NoAlias : nullptr;
+    return Result;
+  }
 };
 
 // Specialize DenseMapInfo for AAMDNodes.
@@ -945,6 +958,9 @@ public:
   /// \pre No operands (or operands' operands, etc.) have \a isTemporary().
   void resolveCycles();
 
+  /// Resolve a unique, unresolved node.
+  void resolve();
+
   /// \brief Replace a temporary node with a permanent one.
   ///
   /// Try to create a uniqued version of \c N -- in place, if possible -- and
@@ -995,9 +1011,6 @@ protected:
 
 private:
   void handleChangedOperand(void *Ref, Metadata *New);
-
-  /// Resolve a unique, unresolved node.
-  void resolve();
 
   /// Drop RAUW support, if any.
   void dropReplaceableUses();
@@ -1175,7 +1188,8 @@ void TempMDNodeDeleter::operator()(MDNode *Node) const {
 /// particular Metadata subclass.
 template <class T>
 class TypedMDOperandIterator
-    : std::iterator<std::input_iterator_tag, T *, std::ptrdiff_t, void, T *> {
+    : public std::iterator<std::input_iterator_tag, T *, std::ptrdiff_t, void,
+                           T *> {
   MDNode::op_iterator I = nullptr;
 
 public:
@@ -1289,7 +1303,13 @@ public:
     if (!Use)
       return;
     *Use = MD;
-    Use = nullptr;
+
+    if (*Use)
+      MetadataTracking::track(*Use);
+
+    Metadata *T = cast<Metadata>(this);
+    MetadataTracking::untrack(T);
+    assert(!Use && "Use is still being tracked despite being untracked!");
   }
 };
 

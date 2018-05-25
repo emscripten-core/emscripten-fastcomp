@@ -51,7 +51,8 @@ file_magic llvm::identify_magic(StringRef Magic) {
       return file_magic::coff_import_library;
     }
     // Windows resource file
-    if (startswith(Magic, "\0\0\0\0\x20\0\0\0\xFF"))
+    if (Magic.size() >= sizeof(COFF::WinResMagic) &&
+        memcmp(Magic.data(), COFF::WinResMagic, sizeof(COFF::WinResMagic)) == 0)
       return file_magic::windows_resource;
     // 0x0000 = COFF unknown machine type
     if (Magic[1] == 0)
@@ -181,17 +182,17 @@ file_magic llvm::identify_magic(StringRef Magic) {
     break;
 
   case 'M': // Possible MS-DOS stub on Windows PE file
-    if (startswith(Magic, "MZ")) {
+    if (startswith(Magic, "MZ") && Magic.size() >= 0x3c + 4) {
       uint32_t off = read32le(Magic.data() + 0x3c);
       // PE/COFF file, either EXE or DLL.
-      if (off < Magic.size() &&
-          memcmp(Magic.data() + off, COFF::PEMagic, sizeof(COFF::PEMagic)) == 0)
+      if (Magic.substr(off).startswith(
+              StringRef(COFF::PEMagic, sizeof(COFF::PEMagic))))
         return file_magic::pecoff_executable;
     }
     break;
 
-  case 0x64: // x86-64 Windows.
-    if (Magic[1] == char(0x86))
+  case 0x64: // x86-64 or ARM64 Windows.
+    if (Magic[1] == char(0x86) || Magic[1] == char(0xaa))
       return file_magic::coff_object;
     break;
 

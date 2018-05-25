@@ -10,12 +10,12 @@
 ;
 ; CHECK: Before post-MI-sched:
 ; CHECK-LABEL: # Machine code for function test1:
-; CHECK: SU(2):   STRWui %WZR
-; CHECK: SU(3):   %X21<def>, %X20<def> = LDPXi %SP
+; CHECK: SU(2):   STRWui %wzr
+; CHECK: SU(3):   %x21, %x20 = LDPXi %sp
 ; CHECK:  Predecessors:
-; CHECK-NEXT:   out  SU(0)
-; CHECK-NEXT:   out  SU(0)
-; CHECK-NEXT:   ord  SU(0)
+; CHECK-NEXT:   SU(0): Out
+; CHECK-NEXT:   SU(0): Out
+; CHECK-NEXT:   SU(0): Ord
 ; CHECK-NEXT:  Successors:
 define void @test1() {
 entry:

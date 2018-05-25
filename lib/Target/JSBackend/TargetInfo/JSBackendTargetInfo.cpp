@@ -16,5 +16,5 @@ using namespace llvm;
 Target llvm::TheJSBackendTarget;
 
 extern "C" void LLVMInitializeJSBackendTargetInfo() { 
-  RegisterTarget<Triple::asmjs, /*HasJIT=*/false> X(TheJSBackendTarget, "js", "JavaScript (asm.js, emscripten) backend");
+  RegisterTarget<Triple::asmjs, /*HasJIT=*/false> X(TheJSBackendTarget, "js", "JavaScript (asm.js, emscripten) backend", "JSBackend");
 }

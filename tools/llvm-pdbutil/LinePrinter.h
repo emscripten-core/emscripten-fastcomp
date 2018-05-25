@@ -13,6 +13,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/BinaryStreamRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
@@ -20,9 +21,14 @@
 #include <list>
 
 namespace llvm {
+class BinaryStreamReader;
+namespace msf {
+class MSFStreamLayout;
+} // namespace msf
 namespace pdb {
 
 class ClassLayout;
+class PDBFile;
 
 class LinePrinter {
   friend class WithColor;
@@ -45,6 +51,16 @@ public:
 
   void formatBinary(StringRef Label, ArrayRef<uint8_t> Data,
                     uint32_t StartOffset);
+  void formatBinary(StringRef Label, ArrayRef<uint8_t> Data, uint64_t BaseAddr,
+                    uint32_t StartOffset);
+
+  void formatMsfStreamData(StringRef Label, PDBFile &File, uint32_t StreamIdx,
+                           StringRef StreamPurpose, uint32_t Offset,
+                           uint32_t Size);
+  void formatMsfStreamData(StringRef Label, PDBFile &File,
+                           const msf::MSFStreamLayout &Stream,
+                           BinarySubstreamRef Substream);
+  void formatMsfStreamBlocks(PDBFile &File, const msf::MSFStreamLayout &Stream);
 
   bool hasColor() const { return UseColor; }
   raw_ostream &getStream() { return OS; }
@@ -77,14 +93,41 @@ private:
   std::list<Regex> IncludeSymbolFilters;
 };
 
+struct PrintScope {
+  explicit PrintScope(LinePrinter &P, uint32_t IndentLevel)
+      : P(P), IndentLevel(IndentLevel) {}
+  explicit PrintScope(const PrintScope &Other, uint32_t LabelWidth)
+      : P(Other.P), IndentLevel(Other.IndentLevel), LabelWidth(LabelWidth) {}
+
+  LinePrinter &P;
+  uint32_t IndentLevel;
+  uint32_t LabelWidth = 0;
+};
+
+inline Optional<PrintScope> withLabelWidth(const Optional<PrintScope> &Scope,
+                                           uint32_t W) {
+  if (!Scope)
+    return None;
+  return PrintScope{*Scope, W};
+}
+
 struct AutoIndent {
   explicit AutoIndent(LinePrinter &L, uint32_t Amount = 0)
-      : L(L), Amount(Amount) {
+      : L(&L), Amount(Amount) {
     L.Indent(Amount);
   }
-  ~AutoIndent() { L.Unindent(Amount); }
+  explicit AutoIndent(const Optional<PrintScope> &Scope) {
+    if (Scope.hasValue()) {
+      L = &Scope->P;
+      Amount = Scope->IndentLevel;
+    }
+  }
+  ~AutoIndent() {
+    if (L)
+      L->Unindent(Amount);
+  }
 
-  LinePrinter &L;
+  LinePrinter *L = nullptr;
   uint32_t Amount = 0;
 };
 

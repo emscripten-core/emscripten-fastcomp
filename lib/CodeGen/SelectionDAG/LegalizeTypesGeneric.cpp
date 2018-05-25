@@ -57,7 +57,7 @@ void DAGTypeLegalizer::ExpandRes_BITCAST(SDNode *N, SDValue &Lo, SDValue &Hi) {
       // Expand the floating point operand only if it was converted to integers.
       // Otherwise, it is a legal type like f128 that can be saved in a register.
       auto SoftenedOp = GetSoftenedFloat(InOp);
-      if (SoftenedOp == InOp)
+      if (isLegalInHWReg(SoftenedOp.getValueType()))
         break;
       SplitInteger(SoftenedOp, Lo, Hi);
       Lo = DAG.getNode(ISD::BITCAST, dl, NOutVT, Lo);
@@ -484,8 +484,7 @@ SDValue DAGTypeLegalizer::ExpandOp_NormalStore(SDNode *N, unsigned OpNo) {
   Lo = DAG.getStore(Chain, dl, Lo, Ptr, St->getPointerInfo(), Alignment,
                     St->getMemOperand()->getFlags(), AAInfo);
 
-  Ptr = DAG.getNode(ISD::ADD, dl, Ptr.getValueType(), Ptr,
-                    DAG.getConstant(IncrementSize, dl, Ptr.getValueType()));
+  Ptr = DAG.getObjectPtrOffset(dl, Ptr, IncrementSize);
   Hi = DAG.getStore(Chain, dl, Hi, Ptr,
                     St->getPointerInfo().getWithOffset(IncrementSize),
                     MinAlign(Alignment, IncrementSize),

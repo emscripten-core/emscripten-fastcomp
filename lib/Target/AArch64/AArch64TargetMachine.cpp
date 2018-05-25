@@ -27,6 +27,7 @@
 #include "llvm/CodeGen/GlobalISel/RegBankSelect.h"
 #include "llvm/CodeGen/MachineScheduler.h"
 #include "llvm/CodeGen/Passes.h"
+#include "llvm/CodeGen/TargetLoweringObjectFile.h"
 #include "llvm/CodeGen/TargetPassConfig.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Function.h"
@@ -35,7 +36,6 @@
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Scalar.h"
 #include <memory>
@@ -46,6 +46,11 @@ using namespace llvm;
 static cl::opt<bool> EnableCCMP("aarch64-enable-ccmp",
                                 cl::desc("Enable the CCMP formation pass"),
                                 cl::init(true), cl::Hidden);
+
+static cl::opt<bool>
+    EnableCondBrTuning("aarch64-enable-cond-br-tune",
+                       cl::desc("Enable the conditional branch tuning pass"),
+                       cl::init(true), cl::Hidden);
 
 static cl::opt<bool> EnableMCR("aarch64-enable-mcr",
                                cl::desc("Enable the machine combiner pass"),
@@ -131,7 +136,10 @@ static cl::opt<bool>
 static cl::opt<int> EnableGlobalISelAtO(
     "aarch64-enable-global-isel-at-O", cl::Hidden,
     cl::desc("Enable GlobalISel at or below an opt level (-1 to disable)"),
-    cl::init(-1));
+    cl::init(0));
+
+static cl::opt<bool> EnableFalkorHWPFFix("aarch64-enable-falkor-hwpf-fix",
+                                         cl::init(true), cl::Hidden);
 
 extern "C" void LLVMInitializeAArch64Target() {
   // Register the target.
@@ -149,10 +157,12 @@ extern "C" void LLVMInitializeAArch64Target() {
   initializeAArch64DeadRegisterDefinitionsPass(*PR);
   initializeAArch64ExpandPseudoPass(*PR);
   initializeAArch64LoadStoreOptPass(*PR);
-  initializeAArch64VectorByElementOptPass(*PR);
+  initializeAArch64SIMDInstrOptPass(*PR);
   initializeAArch64PromoteConstantPass(*PR);
   initializeAArch64RedundantCopyEliminationPass(*PR);
   initializeAArch64StorePairSuppressPass(*PR);
+  initializeFalkorHWPFFixPass(*PR);
+  initializeFalkorMarkStridedAccessesLegacyPass(*PR);
   initializeLDTLSCleanupPass(*PR);
 }
 
@@ -162,6 +172,8 @@ extern "C" void LLVMInitializeAArch64Target() {
 static std::unique_ptr<TargetLoweringObjectFile> createTLOF(const Triple &TT) {
   if (TT.isOSBinFormatMachO())
     return llvm::make_unique<AArch64_MachoTargetObjectFile>();
+  if (TT.isOSBinFormatCOFF())
+    return llvm::make_unique<AArch64_COFFTargetObjectFile>();
 
   return llvm::make_unique<AArch64_ELFTargetObjectFile>();
 }
@@ -174,6 +186,8 @@ static std::string computeDataLayout(const Triple &TT,
     return "e-m:e-p:32:32-i8:8-i16:16-i64:64-S128";
   if (TT.isOSBinFormatMachO())
     return "e-m:o-i64:64-i128:128-n32:64-S128";
+  if (TT.isOSBinFormatCOFF())
+    return "e-m:w-p:64:64-i32:32-i64:64-i128:128-n32:64-S128";
   if (LittleEndian)
     return "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128";
   return "E-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128";
@@ -192,20 +206,42 @@ static Reloc::Model getEffectiveRelocModel(const Triple &TT,
   return *RM;
 }
 
+static CodeModel::Model getEffectiveCodeModel(const Triple &TT,
+                                              Optional<CodeModel::Model> CM,
+                                              bool JIT) {
+  if (CM) {
+    if (*CM != CodeModel::Small && *CM != CodeModel::Large) {
+      if (!TT.isOSFuchsia())
+        report_fatal_error(
+            "Only small and large code models are allowed on AArch64");
+      else if (CM != CodeModel::Kernel)
+        report_fatal_error(
+            "Only small, kernel, and large code models are allowed on AArch64");
+    }
+    return *CM;
+  }
+  // The default MCJIT memory managers make no guarantees about where they can
+  // find an executable page; JITed code needs to be able to refer to globals
+  // no matter how far away they are.
+  if (JIT)
+    return CodeModel::Large;
+  return CodeModel::Small;
+}
+
 /// Create an AArch64 architecture model.
 ///
-AArch64TargetMachine::AArch64TargetMachine(
-    const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
-    const TargetOptions &Options, Optional<Reloc::Model> RM,
-    CodeModel::Model CM, CodeGenOpt::Level OL, bool LittleEndian)
-    // This nested ternary is horrible, but DL needs to be properly
-    // initialized before TLInfo is constructed.
-    : LLVMTargetMachine(T, computeDataLayout(TT, Options.MCOptions,
-                                             LittleEndian),
-                        TT, CPU, FS, Options,
-			getEffectiveRelocModel(TT, RM), CM, OL),
-      TLOF(createTLOF(getTargetTriple())),
-      isLittle(LittleEndian) {
+AArch64TargetMachine::AArch64TargetMachine(const Target &T, const Triple &TT,
+                                           StringRef CPU, StringRef FS,
+                                           const TargetOptions &Options,
+                                           Optional<Reloc::Model> RM,
+                                           Optional<CodeModel::Model> CM,
+                                           CodeGenOpt::Level OL, bool JIT,
+                                           bool LittleEndian)
+    : LLVMTargetMachine(T,
+                        computeDataLayout(TT, Options.MCOptions, LittleEndian),
+                        TT, CPU, FS, Options, getEffectiveRelocModel(TT, RM),
+                        getEffectiveCodeModel(TT, CM, JIT), OL),
+      TLOF(createTLOF(getTargetTriple())), isLittle(LittleEndian) {
   initAsmInfo();
 }
 
@@ -240,16 +276,16 @@ void AArch64leTargetMachine::anchor() { }
 AArch64leTargetMachine::AArch64leTargetMachine(
     const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
     const TargetOptions &Options, Optional<Reloc::Model> RM,
-    CodeModel::Model CM, CodeGenOpt::Level OL)
-    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, true) {}
+    Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT)
+    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, JIT, true) {}
 
 void AArch64beTargetMachine::anchor() { }
 
 AArch64beTargetMachine::AArch64beTargetMachine(
     const Target &T, const Triple &TT, StringRef CPU, StringRef FS,
     const TargetOptions &Options, Optional<Reloc::Model> RM,
-    CodeModel::Model CM, CodeGenOpt::Level OL)
-    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, false) {}
+    Optional<CodeModel::Model> CM, CodeGenOpt::Level OL, bool JIT)
+    : AArch64TargetMachine(T, TT, CPU, FS, Options, RM, CM, OL, JIT, false) {}
 
 namespace {
 
@@ -268,17 +304,19 @@ public:
 
   ScheduleDAGInstrs *
   createMachineScheduler(MachineSchedContext *C) const override {
+    const AArch64Subtarget &ST = C->MF->getSubtarget<AArch64Subtarget>();
     ScheduleDAGMILive *DAG = createGenericSchedLive(C);
     DAG->addMutation(createLoadClusterDAGMutation(DAG->TII, DAG->TRI));
     DAG->addMutation(createStoreClusterDAGMutation(DAG->TII, DAG->TRI));
-    DAG->addMutation(createAArch64MacroFusionDAGMutation());
+    if (ST.hasFusion())
+      DAG->addMutation(createAArch64MacroFusionDAGMutation());
     return DAG;
   }
 
   ScheduleDAGInstrs *
   createPostMachineScheduler(MachineSchedContext *C) const override {
     const AArch64Subtarget &ST = C->MF->getSubtarget<AArch64Subtarget>();
-    if (ST.hasFuseAES() || ST.hasFuseLiterals()) {
+    if (ST.hasFusion()) {
       // Run the Macro Fusion after RA again since literals are expanded from
       // pseudos then (v. addPreSched2()).
       ScheduleDAGMI *DAG = createGenericSchedPostRA(C);
@@ -292,13 +330,11 @@ public:
   void addIRPasses()  override;
   bool addPreISel() override;
   bool addInstSelector() override;
-#ifdef LLVM_BUILD_GLOBAL_ISEL
   bool addIRTranslator() override;
   bool addLegalizeMachineIR() override;
   bool addRegBankSelect() override;
   void addPreGlobalInstructionSelect() override;
   bool addGlobalInstructionSelect() override;
-#endif
   bool addILPOpts() override;
   void addPreRegAlloc() override;
   void addPostRegAlloc() override;
@@ -310,10 +346,9 @@ public:
 
 } // end anonymous namespace
 
-TargetIRAnalysis AArch64TargetMachine::getTargetIRAnalysis() {
-  return TargetIRAnalysis([this](const Function &F) {
-    return TargetTransformInfo(AArch64TTIImpl(this, F));
-  });
+TargetTransformInfo
+AArch64TargetMachine::getTargetTransformInfo(const Function &F) {
+  return TargetTransformInfo(AArch64TTIImpl(this, F));
 }
 
 TargetPassConfig *AArch64TargetMachine::createPassConfig(PassManagerBase &PM) {
@@ -329,14 +364,18 @@ void AArch64PassConfig::addIRPasses() {
   // determine whether it succeeded. We can exploit existing control-flow in
   // ldrex/strex loops to simplify this, but it needs tidying up.
   if (TM->getOptLevel() != CodeGenOpt::None && EnableAtomicTidy)
-    addPass(createCFGSimplificationPass());
+    addPass(createCFGSimplificationPass(1, true, true, false, true));
 
   // Run LoopDataPrefetch
   //
   // Run this before LSR to remove the multiplies involved in computing the
   // pointer values N iterations ahead.
-  if (TM->getOptLevel() != CodeGenOpt::None && EnableLoopDataPrefetch)
-    addPass(createLoopDataPrefetchPass());
+  if (TM->getOptLevel() != CodeGenOpt::None) {
+    if (EnableLoopDataPrefetch)
+      addPass(createLoopDataPrefetchPass());
+    if (EnableFalkorHWPFFix)
+      addPass(createFalkorMarkStridedAccessesPass());
+  }
 
   TargetPassConfig::addIRPasses();
 
@@ -390,7 +429,6 @@ bool AArch64PassConfig::addInstSelector() {
   return false;
 }
 
-#ifdef LLVM_BUILD_GLOBAL_ISEL
 bool AArch64PassConfig::addIRTranslator() {
   addPass(new IRTranslator());
   return false;
@@ -416,7 +454,6 @@ bool AArch64PassConfig::addGlobalInstructionSelect() {
   addPass(new InstructionSelect());
   return false;
 }
-#endif
 
 bool AArch64PassConfig::isGlobalISelEnabled() const {
   return TM->getOptLevel() <= EnableGlobalISelAtO;
@@ -429,11 +466,13 @@ bool AArch64PassConfig::addILPOpts() {
     addPass(createAArch64ConditionalCompares());
   if (EnableMCR)
     addPass(&MachineCombinerID);
+  if (EnableCondBrTuning)
+    addPass(createAArch64CondBrTuning());
   if (EnableEarlyIfConversion)
     addPass(&EarlyIfConverterID);
   if (EnableStPairSuppress)
     addPass(createAArch64StorePairSuppressPass());
-  addPass(createAArch64VectorByElementOptPass());
+  addPass(createAArch64SIMDInstrOptPass());
   return true;
 }
 
@@ -465,8 +504,12 @@ void AArch64PassConfig::addPreSched2() {
   // Expand some pseudo instructions to allow proper scheduling.
   addPass(createAArch64ExpandPseudoPass());
   // Use load/store pair instructions when possible.
-  if (TM->getOptLevel() != CodeGenOpt::None && EnableLoadStoreOpt)
-    addPass(createAArch64LoadStoreOptimizationPass());
+  if (TM->getOptLevel() != CodeGenOpt::None) {
+    if (EnableLoadStoreOpt)
+      addPass(createAArch64LoadStoreOptimizationPass());
+    if (EnableFalkorHWPFFix)
+      addPass(createFalkorHWPFFixPass());
+  }
 }
 
 void AArch64PassConfig::addPreEmitPass() {

@@ -14,7 +14,6 @@
 
 #include "llvm-c/Core.h"
 #include "llvm/ADT/StringSwitch.h"
-#include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
@@ -50,6 +49,7 @@ void llvm::initializeCore(PassRegistry &Registry) {
   initializePrintModulePassWrapperPass(Registry);
   initializePrintFunctionPassWrapperPass(Registry);
   initializePrintBasicBlockPassPass(Registry);
+  initializeSafepointIRVerifierPass(Registry);
   initializeVerifierLegacyPassPass(Registry);
 }
 
@@ -85,15 +85,15 @@ LLVMContextRef LLVMGetGlobalContext() { return wrap(&*GlobalContext); }
 void LLVMContextSetDiagnosticHandler(LLVMContextRef C,
                                      LLVMDiagnosticHandler Handler,
                                      void *DiagnosticContext) {
-  unwrap(C)->setDiagnosticHandler(
-      LLVM_EXTENSION reinterpret_cast<LLVMContext::DiagnosticHandlerTy>(
+  unwrap(C)->setDiagnosticHandlerCallBack(
+      LLVM_EXTENSION reinterpret_cast<DiagnosticHandler::DiagnosticHandlerTy>(
           Handler),
       DiagnosticContext);
 }
 
 LLVMDiagnosticHandler LLVMContextGetDiagnosticHandler(LLVMContextRef C) {
   return LLVM_EXTENSION reinterpret_cast<LLVMDiagnosticHandler>(
-      unwrap(C)->getDiagnosticHandler());
+      unwrap(C)->getDiagnosticHandlerCallBack());
 }
 
 void *LLVMContextGetDiagnosticContext(LLVMContextRef C) {
@@ -276,7 +276,8 @@ LLVMBool LLVMPrintModuleToFile(LLVMModuleRef M, const char *Filename,
   dest.close();
 
   if (dest.has_error()) {
-    *ErrorMessage = strdup("Error printing to file");
+    std::string E = "Error printing to file: " + dest.error().message();
+    *ErrorMessage = strdup(E.c_str());
     return true;
   }
 
@@ -358,11 +359,9 @@ LLVMContextRef LLVMGetTypeContext(LLVMTypeRef Ty) {
   return wrap(&unwrap(Ty)->getContext());
 }
 
-#if !defined(NDEBUG) || defined(LLVM_ENABLE_DUMP)
-LLVM_DUMP_METHOD void LLVMDumpType(LLVMTypeRef Ty) {
-  return unwrap(Ty)->dump();
+void LLVMDumpType(LLVMTypeRef Ty) {
+  return unwrap(Ty)->print(errs(), /*IsForDebug=*/true);
 }
-#endif
 
 char *LLVMPrintTypeToString(LLVMTypeRef Ty) {
   std::string buf;
@@ -450,9 +449,6 @@ LLVMTypeRef LLVMPPCFP128TypeInContext(LLVMContextRef C) {
 }
 LLVMTypeRef LLVMX86MMXTypeInContext(LLVMContextRef C) {
   return (LLVMTypeRef) Type::getX86_MMXTy(*unwrap(C));
-}
-LLVMTypeRef LLVMTokenTypeInContext(LLVMContextRef C) {
-  return (LLVMTypeRef) Type::getTokenTy(*unwrap(C));
 }
 
 LLVMTypeRef LLVMHalfType(void) {
@@ -619,6 +615,12 @@ LLVMTypeRef LLVMVoidTypeInContext(LLVMContextRef C)  {
 LLVMTypeRef LLVMLabelTypeInContext(LLVMContextRef C) {
   return wrap(Type::getLabelTy(*unwrap(C)));
 }
+LLVMTypeRef LLVMTokenTypeInContext(LLVMContextRef C) {
+  return wrap(Type::getTokenTy(*unwrap(C)));
+}
+LLVMTypeRef LLVMMetadataTypeInContext(LLVMContextRef C) {
+  return wrap(Type::getMetadataTy(*unwrap(C)));
+}
 
 LLVMTypeRef LLVMVoidType(void)  {
   return LLVMVoidTypeInContext(LLVMGetGlobalContext());
@@ -654,7 +656,7 @@ void LLVMSetValueName(LLVMValueRef Val, const char *Name) {
   unwrap(Val)->setName(Name);
 }
 
-LLVM_DUMP_METHOD void LLVMDumpValue(LLVMValueRef Val) {
+void LLVMDumpValue(LLVMValueRef Val) {
   unwrap(Val)->print(errs(), /*IsForDebug=*/true);
 }
 
@@ -2755,11 +2757,14 @@ static LLVMAtomicOrdering mapToLLVMOrdering(AtomicOrdering Ordering) {
   llvm_unreachable("Invalid AtomicOrdering value!");
 }
 
+// TODO: Should this and other atomic instructions support building with
+// "syncscope"?
 LLVMValueRef LLVMBuildFence(LLVMBuilderRef B, LLVMAtomicOrdering Ordering,
                             LLVMBool isSingleThread, const char *Name) {
   return wrap(
     unwrap(B)->CreateFence(mapFromLLVMOrdering(Ordering),
-                           isSingleThread ? SingleThread : CrossThread,
+                           isSingleThread ? SyncScope::SingleThread
+                                          : SyncScope::System,
                            Name));
 }
 
@@ -3041,7 +3046,8 @@ LLVMValueRef LLVMBuildAtomicRMW(LLVMBuilderRef B,LLVMAtomicRMWBinOp op,
     case LLVMAtomicRMWBinOpUMin: intop = AtomicRMWInst::UMin; break;
   }
   return wrap(unwrap(B)->CreateAtomicRMW(intop, unwrap(PTR), unwrap(Val),
-    mapFromLLVMOrdering(ordering), singleThread ? SingleThread : CrossThread));
+    mapFromLLVMOrdering(ordering), singleThread ? SyncScope::SingleThread
+                                                : SyncScope::System));
 }
 
 LLVMValueRef LLVMBuildAtomicCmpXchg(LLVMBuilderRef B, LLVMValueRef Ptr,
@@ -3053,7 +3059,7 @@ LLVMValueRef LLVMBuildAtomicCmpXchg(LLVMBuilderRef B, LLVMValueRef Ptr,
   return wrap(unwrap(B)->CreateAtomicCmpXchg(unwrap(Ptr), unwrap(Cmp),
                 unwrap(New), mapFromLLVMOrdering(SuccessOrdering),
                 mapFromLLVMOrdering(FailureOrdering),
-                singleThread ? SingleThread : CrossThread));
+                singleThread ? SyncScope::SingleThread : SyncScope::System));
 }
 
 
@@ -3061,17 +3067,18 @@ LLVMBool LLVMIsAtomicSingleThread(LLVMValueRef AtomicInst) {
   Value *P = unwrap<Value>(AtomicInst);
 
   if (AtomicRMWInst *I = dyn_cast<AtomicRMWInst>(P))
-    return I->getSynchScope() == SingleThread;
-  return cast<AtomicCmpXchgInst>(P)->getSynchScope() == SingleThread;
+    return I->getSyncScopeID() == SyncScope::SingleThread;
+  return cast<AtomicCmpXchgInst>(P)->getSyncScopeID() ==
+             SyncScope::SingleThread;
 }
 
 void LLVMSetAtomicSingleThread(LLVMValueRef AtomicInst, LLVMBool NewValue) {
   Value *P = unwrap<Value>(AtomicInst);
-  SynchronizationScope Sync = NewValue ? SingleThread : CrossThread;
+  SyncScope::ID SSID = NewValue ? SyncScope::SingleThread : SyncScope::System;
 
   if (AtomicRMWInst *I = dyn_cast<AtomicRMWInst>(P))
-    return I->setSynchScope(Sync);
-  return cast<AtomicCmpXchgInst>(P)->setSynchScope(Sync);
+    return I->setSyncScopeID(SSID);
+  return cast<AtomicCmpXchgInst>(P)->setSyncScopeID(SSID);
 }
 
 LLVMAtomicOrdering LLVMGetCmpXchgSuccessOrdering(LLVMValueRef CmpXchgInst)  {

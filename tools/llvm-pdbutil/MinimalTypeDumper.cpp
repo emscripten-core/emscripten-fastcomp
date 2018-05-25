@@ -18,24 +18,13 @@
 #include "llvm/DebugInfo/CodeView/Formatters.h"
 #include "llvm/DebugInfo/CodeView/LazyRandomTypeCollection.h"
 #include "llvm/DebugInfo/CodeView/TypeRecord.h"
+#include "llvm/DebugInfo/PDB/Native/TpiHashing.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 
 using namespace llvm;
 using namespace llvm::codeview;
 using namespace llvm::pdb;
-
-static StringRef getLeafTypeName(TypeLeafKind K) {
-  switch (K) {
-#define TYPE_RECORD(EnumName, value, name)                                     \
-  case EnumName:                                                               \
-    return #EnumName;
-#include "llvm/DebugInfo/CodeView/CodeViewTypes.def"
-  default:
-    llvm_unreachable("Unknown type leaf kind!");
-  }
-  return "";
-}
 
 static std::string formatClassOptions(uint32_t IndentLevel,
                                       ClassOptions Options) {
@@ -211,16 +200,26 @@ Error MinimalTypeDumpVisitor::visitTypeBegin(CVType &Record, TypeIndex Index) {
   if (!Hashes) {
     P.formatLine("{0} | {1} [size = {2}]",
                  fmt_align(Index, AlignStyle::Right, Width),
-                 getLeafTypeName(Record.Type), Record.length());
+                 formatTypeLeafKind(Record.Type), Record.length());
   } else {
     std::string H;
-    if (Index.toArrayIndex() >= HashValues.size())
+    if (Index.toArrayIndex() >= HashValues.size()) {
       H = "(not present)";
-    else
-      H = utostr(HashValues[Index.toArrayIndex()]);
+    } else {
+      uint32_t Hash = HashValues[Index.toArrayIndex()];
+      Expected<uint32_t> MaybeHash = hashTypeRecord(Record);
+      if (!MaybeHash)
+        return MaybeHash.takeError();
+      uint32_t OurHash = *MaybeHash;
+      OurHash %= NumHashBuckets;
+      if (Hash == OurHash)
+        H = "0x" + utohexstr(Hash);
+      else
+        H = "0x" + utohexstr(Hash) + ", our hash = 0x" + utohexstr(OurHash);
+    }
     P.formatLine("{0} | {1} [size = {2}, hash = {3}]",
                  fmt_align(Index, AlignStyle::Right, Width),
-                 getLeafTypeName(Record.Type), Record.length(), H);
+                 formatTypeLeafKind(Record.Type), Record.length(), H);
   }
   P.Indent(Width + 3);
   return Error::success();
@@ -235,7 +234,7 @@ Error MinimalTypeDumpVisitor::visitTypeEnd(CVType &Record) {
 }
 
 Error MinimalTypeDumpVisitor::visitMemberBegin(CVMemberRecord &Record) {
-  P.formatLine("- {0}", getLeafTypeName(Record.Kind));
+  P.formatLine("- {0}", formatTypeLeafKind(Record.Kind));
   return Error::success();
 }
 
@@ -299,7 +298,7 @@ Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
 
 Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
                                                ClassRecord &Class) {
-  P.formatLine("class name: `{0}`", Class.Name);
+  P.format(" `{0}`", Class.Name);
   if (Class.hasUniqueName())
     P.formatLine("unique name: `{0}`", Class.UniqueName);
   P.formatLine("vtable: {0}, base list: {1}, field list: {2}",
@@ -311,7 +310,7 @@ Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
 
 Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
                                                UnionRecord &Union) {
-  P.formatLine("class name: `{0}`", Union.Name);
+  P.format(" `{0}`", Union.Name);
   if (Union.hasUniqueName())
     P.formatLine("unique name: `{0}`", Union.UniqueName);
   P.formatLine("field list: {0}", Union.FieldList);
@@ -321,7 +320,7 @@ Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
 }
 
 Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR, EnumRecord &Enum) {
-  P.formatLine("name: `{0}`", Enum.Name);
+  P.format(" `{0}`", Enum.Name);
   if (Enum.hasUniqueName())
     P.formatLine("unique name: `{0}`", Enum.UniqueName);
   P.formatLine("field list: {0}, underlying type: {1}", Enum.FieldList,
@@ -377,7 +376,7 @@ Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
 Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
                                                MemberFunctionRecord &MF) {
   P.formatLine("return type = {0}, # args = {1}, param list = {2}",
-               MF.ParameterCount, MF.ArgumentList, MF.ReturnType);
+               MF.ReturnType, MF.ParameterCount, MF.ArgumentList);
   P.formatLine("class type = {0}, this type = {1}, this adjust = {2}",
                MF.ClassType, MF.ThisType, MF.ThisPointerAdjustment);
   P.formatLine("calling conv = {0}, options = {1}",
@@ -395,8 +394,7 @@ Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
 
 Error MinimalTypeDumpVisitor::visitKnownRecord(CVType &CVR,
                                                TypeServer2Record &TS) {
-  P.formatLine("name = {0}, age = {1}, guid = {2}", TS.Name, TS.Age,
-               fmt_guid(TS.Guid));
+  P.formatLine("name = {0}, age = {1}, guid = {2}", TS.Name, TS.Age, TS.Guid);
   return Error::success();
 }
 

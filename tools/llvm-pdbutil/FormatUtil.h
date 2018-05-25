@@ -12,6 +12,7 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/DebugInfo/CodeView/CodeView.h"
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FormatAdapters.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -21,6 +22,14 @@
 
 namespace llvm {
 namespace pdb {
+
+std::string truncateStringBack(StringRef S, uint32_t MaxLen);
+std::string truncateStringMiddle(StringRef S, uint32_t MaxLen);
+std::string truncateStringFront(StringRef S, uint32_t MaxLen);
+std::string truncateQuotedNameFront(StringRef Label, StringRef Name,
+                                    uint32_t MaxLen);
+std::string truncateQuotedNameBack(StringRef Label, StringRef Name,
+                                   uint32_t MaxLen);
 
 #define PUSH_MASKED_FLAG(Enum, Mask, TheOpt, Value, Text)                      \
   if (Enum::TheOpt == (Value & Mask))                                          \
@@ -33,7 +42,7 @@ namespace pdb {
   case Enum::X:                                                                \
     return Ret;
 
-template <typename T> static std::string formatUnknownEnum(T Value) {
+template <typename T> std::string formatUnknownEnum(T Value) {
   return formatv("unknown ({0})",
                  static_cast<typename std::underlying_type<T>::type>(Value))
       .str();
@@ -41,11 +50,25 @@ template <typename T> static std::string formatUnknownEnum(T Value) {
 
 std::string formatSegmentOffset(uint16_t Segment, uint32_t Offset);
 
+enum class CharacteristicStyle {
+  HeaderDefinition, // format as windows header definition
+  Descriptive,      // format as human readable words
+};
+std::string formatSectionCharacteristics(
+    uint32_t IndentLevel, uint32_t C, uint32_t FlagsPerLine,
+    StringRef Separator,
+    CharacteristicStyle Style = CharacteristicStyle::HeaderDefinition);
+
 std::string typesetItemList(ArrayRef<std::string> Opts, uint32_t IndentLevel,
                             uint32_t GroupSize, StringRef Sep);
 
 std::string typesetStringList(uint32_t IndentLevel,
                               ArrayRef<StringRef> Strings);
+
+std::string formatChunkKind(codeview::DebugSubsectionKind Kind,
+                            bool Friendly = true);
+std::string formatSymbolKind(codeview::SymbolKind K);
+StringRef formatTypeLeafKind(codeview::TypeLeafKind K);
 
 /// Returns the number of digits in the given integer.
 inline int NumDigits(uint64_t N) {

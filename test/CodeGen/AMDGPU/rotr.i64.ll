@@ -1,5 +1,5 @@
-; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=BOTH %s
-; RUN: llc -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=VI -check-prefix=BOTH %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=SI -check-prefix=BOTH %s
+; RUN:  llc -amdgpu-scalarize-global-loads=false  -march=amdgcn -mcpu=tonga -verify-machineinstrs < %s | FileCheck -check-prefix=VI -check-prefix=BOTH %s
 
 ; BOTH-LABEL: {{^}}s_rotr_i64:
 ; BOTH-DAG: s_sub_i32
@@ -17,7 +17,7 @@ entry:
 }
 
 ; BOTH-LABEL: {{^}}v_rotr_i64:
-; BOTH-DAG: v_sub_i32
+; BOTH-DAG: v_sub_{{[iu]}}32
 ; SI-DAG: v_lshr_b64
 ; SI-DAG: v_lshl_b64
 ; VI-DAG: v_lshrrev_b64

@@ -73,10 +73,10 @@ public:
   void setSuccessor(unsigned idx, BasicBlock *B);
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) {
+  static bool classof(const Instruction *I) {
     return I->isTerminator();
   }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 
@@ -298,14 +298,14 @@ public:
   DECLARE_TRANSPARENT_OPERAND_ACCESSORS(Value);
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) {
+  static bool classof(const Instruction *I) {
     return I->getOpcode() == Instruction::Alloca ||
            I->getOpcode() == Instruction::Load ||
            I->getOpcode() == Instruction::VAArg ||
            I->getOpcode() == Instruction::ExtractValue ||
            (I->getOpcode() >= CastOpsBegin && I->getOpcode() < CastOpsEnd);
   }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 };
@@ -322,13 +322,13 @@ DEFINE_TRANSPARENT_OPERAND_ACCESSORS(UnaryInstruction, Value)
 //===----------------------------------------------------------------------===//
 
 class BinaryOperator : public Instruction {
+  void AssertOK();
+
 protected:
   BinaryOperator(BinaryOps iType, Value *S1, Value *S2, Type *Ty,
                  const Twine &Name, Instruction *InsertBefore);
   BinaryOperator(BinaryOps iType, Value *S1, Value *S2, Type *Ty,
                  const Twine &Name, BasicBlock *InsertAtEnd);
-
-  void init(BinaryOps iType);
 
   // Note: Instruction needs to be a friend here to call cloneImpl.
   friend class Instruction;
@@ -532,10 +532,10 @@ public:
   bool swapOperands();
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) {
+  static bool classof(const Instruction *I) {
     return I->isBinaryOp();
   }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 };
@@ -775,28 +775,21 @@ public:
 
   /// A no-op cast is one that can be effected without changing any bits.
   /// It implies that the source and destination types are the same size. The
-  /// IntPtrTy argument is used to make accurate determinations for casts
+  /// DataLayout argument is to determine the pointer size when examining casts
   /// involving Integer and Pointer types. They are no-op casts if the integer
   /// is the same size as the pointer. However, pointer size varies with
-  /// platform. Generally, the result of DataLayout::getIntPtrType() should be
-  /// passed in. If that's not available, use Type::Int64Ty, which will make
-  /// the isNoopCast call conservative.
+  /// platform.
   /// @brief Determine if the described cast is a no-op cast.
   static bool isNoopCast(
-    Instruction::CastOps Opcode,  ///< Opcode of cast
-    Type *SrcTy,   ///< SrcTy of cast
-    Type *DstTy,   ///< DstTy of cast
-    Type *IntPtrTy ///< Integer type corresponding to Ptr types
+    Instruction::CastOps Opcode, ///< Opcode of cast
+    Type *SrcTy,         ///< SrcTy of cast
+    Type *DstTy,         ///< DstTy of cast
+    const DataLayout &DL ///< DataLayout to get the Int Ptr type from.
   );
 
   /// @brief Determine if this cast is a no-op cast.
-  bool isNoopCast(
-    Type *IntPtrTy ///< Integer type corresponding to pointer
-  ) const;
-
-  /// @brief Determine if this cast is a no-op cast.
   ///
-  /// \param DL is the DataLayout to get the Int Ptr type from.
+  /// \param DL is the DataLayout to determine pointer size.
   bool isNoopCast(const DataLayout &DL) const;
 
   /// Determine how a pair of casts can be eliminated, if they can be at all.
@@ -833,10 +826,10 @@ public:
   static bool castIsValid(Instruction::CastOps op, Value *S, Type *DstTy);
 
   /// @brief Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) {
+  static bool classof(const Instruction *I) {
     return I->isCast();
   }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 };
@@ -1062,11 +1055,11 @@ public:
   static bool isImpliedFalseByMatchingCmp(Predicate Pred1, Predicate Pred2);
 
   /// @brief Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) {
+  static bool classof(const Instruction *I) {
     return I->getOpcode() == Instruction::ICmp ||
            I->getOpcode() == Instruction::FCmp;
   }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 
@@ -1152,8 +1145,8 @@ public:
   }
 
   // Methods for support type inquiry through isa, cast, and dyn_cast:
-  static inline bool classof(const Instruction *I) { return I->isFuncletPad(); }
-  static inline bool classof(const Value *V) {
+  static bool classof(const Instruction *I) { return I->isFuncletPad(); }
+  static bool classof(const Value *V) {
     return isa<Instruction>(V) && classof(cast<Instruction>(V));
   }
 };
@@ -1486,6 +1479,12 @@ protected:
     switch (A) {
     default:
       return false;
+
+    case Attribute::InaccessibleMemOrArgMemOnly:
+      return hasReadingOperandBundles();
+
+    case Attribute::InaccessibleMemOnly:
+      return hasReadingOperandBundles();
 
     case Attribute::ArgMemOnly:
       return hasReadingOperandBundles();

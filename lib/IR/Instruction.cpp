@@ -13,11 +13,9 @@
 
 #include "llvm/IR/Instruction.h"
 #include "llvm/ADT/DenseSet.h"
-#include "llvm/IR/CallSite.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/MDBuilder.h"
-#include "llvm/IR/Module.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/IR/Type.h"
 using namespace llvm;
@@ -89,6 +87,10 @@ void Instruction::moveBefore(Instruction *MovePos) {
   moveBefore(*MovePos->getParent(), MovePos->getIterator());
 }
 
+void Instruction::moveAfter(Instruction *MovePos) {
+  moveBefore(*MovePos->getParent(), ++MovePos->getIterator());
+}
+
 void Instruction::moveBefore(BasicBlock &BB,
                              SymbolTableList<Instruction>::iterator I) {
   assert(I == BB.end() || I->getParent() == &BB);
@@ -142,9 +144,14 @@ bool Instruction::isExact() const {
   return cast<PossiblyExactOperator>(this)->isExact();
 }
 
-void Instruction::setHasUnsafeAlgebra(bool B) {
+void Instruction::setFast(bool B) {
   assert(isa<FPMathOperator>(this) && "setting fast-math flag on invalid op");
-  cast<FPMathOperator>(this)->setHasUnsafeAlgebra(B);
+  cast<FPMathOperator>(this)->setFast(B);
+}
+
+void Instruction::setHasAllowReassoc(bool B) {
+  assert(isa<FPMathOperator>(this) && "setting fast-math flag on invalid op");
+  cast<FPMathOperator>(this)->setHasAllowReassoc(B);
 }
 
 void Instruction::setHasNoNaNs(bool B) {
@@ -167,6 +174,11 @@ void Instruction::setHasAllowReciprocal(bool B) {
   cast<FPMathOperator>(this)->setHasAllowReciprocal(B);
 }
 
+void Instruction::setHasApproxFunc(bool B) {
+  assert(isa<FPMathOperator>(this) && "setting fast-math flag on invalid op");
+  cast<FPMathOperator>(this)->setHasApproxFunc(B);
+}
+
 void Instruction::setFastMathFlags(FastMathFlags FMF) {
   assert(isa<FPMathOperator>(this) && "setting fast-math flag on invalid op");
   cast<FPMathOperator>(this)->setFastMathFlags(FMF);
@@ -177,9 +189,14 @@ void Instruction::copyFastMathFlags(FastMathFlags FMF) {
   cast<FPMathOperator>(this)->copyFastMathFlags(FMF);
 }
 
-bool Instruction::hasUnsafeAlgebra() const {
+bool Instruction::isFast() const {
   assert(isa<FPMathOperator>(this) && "getting fast-math flag on invalid op");
-  return cast<FPMathOperator>(this)->hasUnsafeAlgebra();
+  return cast<FPMathOperator>(this)->isFast();
+}
+
+bool Instruction::hasAllowReassoc() const {
+  assert(isa<FPMathOperator>(this) && "getting fast-math flag on invalid op");
+  return cast<FPMathOperator>(this)->hasAllowReassoc();
 }
 
 bool Instruction::hasNoNaNs() const {
@@ -205,6 +222,11 @@ bool Instruction::hasAllowReciprocal() const {
 bool Instruction::hasAllowContract() const {
   assert(isa<FPMathOperator>(this) && "getting fast-math flag on invalid op");
   return cast<FPMathOperator>(this)->hasAllowContract();
+}
+
+bool Instruction::hasApproxFunc() const {
+  assert(isa<FPMathOperator>(this) && "getting fast-math flag on invalid op");
+  return cast<FPMathOperator>(this)->hasApproxFunc();
 }
 
 FastMathFlags Instruction::getFastMathFlags() const {
@@ -362,13 +384,13 @@ static bool haveSameSpecialState(const Instruction *I1, const Instruction *I2,
            (LI->getAlignment() == cast<LoadInst>(I2)->getAlignment() ||
             IgnoreAlignment) &&
            LI->getOrdering() == cast<LoadInst>(I2)->getOrdering() &&
-           LI->getSynchScope() == cast<LoadInst>(I2)->getSynchScope();
+           LI->getSyncScopeID() == cast<LoadInst>(I2)->getSyncScopeID();
   if (const StoreInst *SI = dyn_cast<StoreInst>(I1))
     return SI->isVolatile() == cast<StoreInst>(I2)->isVolatile() &&
            (SI->getAlignment() == cast<StoreInst>(I2)->getAlignment() ||
             IgnoreAlignment) &&
            SI->getOrdering() == cast<StoreInst>(I2)->getOrdering() &&
-           SI->getSynchScope() == cast<StoreInst>(I2)->getSynchScope();
+           SI->getSyncScopeID() == cast<StoreInst>(I2)->getSyncScopeID();
   if (const CmpInst *CI = dyn_cast<CmpInst>(I1))
     return CI->getPredicate() == cast<CmpInst>(I2)->getPredicate();
   if (const CallInst *CI = dyn_cast<CallInst>(I1))
@@ -386,7 +408,7 @@ static bool haveSameSpecialState(const Instruction *I1, const Instruction *I2,
     return EVI->getIndices() == cast<ExtractValueInst>(I2)->getIndices();
   if (const FenceInst *FI = dyn_cast<FenceInst>(I1))
     return FI->getOrdering() == cast<FenceInst>(I2)->getOrdering() &&
-           FI->getSynchScope() == cast<FenceInst>(I2)->getSynchScope();
+           FI->getSyncScopeID() == cast<FenceInst>(I2)->getSyncScopeID();
   if (const AtomicCmpXchgInst *CXI = dyn_cast<AtomicCmpXchgInst>(I1))
     return CXI->isVolatile() == cast<AtomicCmpXchgInst>(I2)->isVolatile() &&
            CXI->isWeak() == cast<AtomicCmpXchgInst>(I2)->isWeak() &&
@@ -394,12 +416,13 @@ static bool haveSameSpecialState(const Instruction *I1, const Instruction *I2,
                cast<AtomicCmpXchgInst>(I2)->getSuccessOrdering() &&
            CXI->getFailureOrdering() ==
                cast<AtomicCmpXchgInst>(I2)->getFailureOrdering() &&
-           CXI->getSynchScope() == cast<AtomicCmpXchgInst>(I2)->getSynchScope();
+           CXI->getSyncScopeID() ==
+               cast<AtomicCmpXchgInst>(I2)->getSyncScopeID();
   if (const AtomicRMWInst *RMWI = dyn_cast<AtomicRMWInst>(I1))
     return RMWI->getOperation() == cast<AtomicRMWInst>(I2)->getOperation() &&
            RMWI->isVolatile() == cast<AtomicRMWInst>(I2)->isVolatile() &&
            RMWI->getOrdering() == cast<AtomicRMWInst>(I2)->getOrdering() &&
-           RMWI->getSynchScope() == cast<AtomicRMWInst>(I2)->getSynchScope();
+           RMWI->getSyncScopeID() == cast<AtomicRMWInst>(I2)->getSyncScopeID();
 
   return true;
 }
@@ -574,7 +597,7 @@ bool Instruction::isAssociative() const {
   switch (Opcode) {
   case FMul:
   case FAdd:
-    return cast<FPMathOperator>(this)->hasUnsafeAlgebra();
+    return cast<FPMathOperator>(this)->isFast();
   default:
     return false;
   }
@@ -620,7 +643,6 @@ void Instruction::copyMetadata(const Instruction &SrcInst,
   }
   if (WL.empty() || WLS.count(LLVMContext::MD_dbg))
     setDebugLoc(SrcInst.getDebugLoc());
-  return;
 }
 
 Instruction *Instruction::clone() const {

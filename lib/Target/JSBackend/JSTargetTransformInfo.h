@@ -20,7 +20,7 @@
 #include "JSTargetMachine.h"
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/CodeGen/BasicTTIImpl.h"
-#include "llvm/Target/TargetLowering.h"
+#include "llvm/CodeGen/TargetLowering.h"
 
 namespace llvm {
 
@@ -63,7 +63,8 @@ public:
 
   bool hasBranchDivergence() { return true; }
 
-  void getUnrollingPreferences(Loop *L, TTI::UnrollingPreferences &UP);
+  void getUnrollingPreferences(Loop *L, ScalarEvolution &,
+                               TTI::UnrollingPreferences &UP);
 
   TTI::PopcntSupportKind getPopcntSupport(
       unsigned TyWidth) {
@@ -84,12 +85,14 @@ public:
       TTI::OperandValueProperties Opd2PropInfo = TTI::OP_None,
       ArrayRef<const Value*> Args = {});
 
-  unsigned getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
+  int getVectorInstrCost(unsigned Opcode, Type *Val, unsigned Index);
 
-  unsigned getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
+  int getMemoryOpCost(unsigned Opcode, Type *Src, unsigned Alignment,
                            unsigned AddressSpace, const Instruction *I = nullptr);
 
-  unsigned getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src, const Instruction *I = nullptr);
+  int getCastInstrCost(unsigned Opcode, Type *Dst, Type *Src, const Instruction *I = nullptr);
+
+  int getFPOpCost(Type *Ty);
 };
 
 } // end namespace llvm

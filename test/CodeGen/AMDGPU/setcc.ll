@@ -1,5 +1,5 @@
-; RUN: llc -march=amdgcn -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=FUNC %s
-; RUN: llc -march=r600 -mcpu=redwood -verify-machineinstrs < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
+; RUN: llc -march=amdgcn -mtriple=amdgcn---amdgiz -verify-machineinstrs < %s | FileCheck -check-prefix=GCN -check-prefix=FUNC %s
+; RUN: llc -march=r600 -mtriple=r600---amdgiz -mcpu=redwood -verify-machineinstrs < %s | FileCheck -check-prefix=R600 -check-prefix=FUNC %s
 
 declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 
@@ -7,8 +7,8 @@ declare i32 @llvm.r600.read.tidig.x() nounwind readnone
 ; R600-DAG: SETE_INT * T{{[0-9]+\.[XYZW]}}, KC0[3].X, KC0[3].Z
 ; R600-DAG: SETE_INT * T{{[0-9]+\.[XYZW]}}, KC0[2].W, KC0[3].Y
 
-; GCN-DAG: v_cmp_eq_u32_e32
-; GCN-DAG: v_cmp_eq_u32_e64
+; GCN: v_cmp_eq_u32_e32
+; GCN: v_cmp_eq_u32_e32
 define amdgpu_kernel void @setcc_v2i32(<2 x i32> addrspace(1)* %out, <2 x i32> %a, <2 x i32> %b) #0 {
   %result = icmp eq <2 x i32> %a, %b
   %sext = sext <2 x i1> %result to <2 x i32>
@@ -23,9 +23,9 @@ define amdgpu_kernel void @setcc_v2i32(<2 x i32> addrspace(1)* %out, <2 x i32> %
 ; R600-DAG: SETE_INT * T{{[0-9]+\.[XYZW], T[0-9]+\.[XYZW], T[0-9]+\.[XYZW]}}
 
 ; GCN: v_cmp_eq_u32_e32
-; GCN: v_cmp_eq_u32_e64
-; GCN: v_cmp_eq_u32_e64
-; GCN: v_cmp_eq_u32_e64
+; GCN: v_cmp_eq_u32_e32
+; GCN: v_cmp_eq_u32_e32
+; GCN: v_cmp_eq_u32_e32
 define amdgpu_kernel void @setcc_v4i32(<4 x i32> addrspace(1)* %out, <4 x i32> addrspace(1)* %in) #0 {
   %b_ptr = getelementptr <4 x i32>, <4 x i32> addrspace(1)* %in, i32 1
   %a = load <4 x i32>, <4 x i32> addrspace(1)* %in
@@ -413,6 +413,58 @@ bb1:
   br label %bb2
 
 bb2:
+  ret void
+}
+
+; FUNC-LABEL: setcc_v2i32_expand
+; GCN: v_cmp_gt_i32
+; GCN: v_cmp_gt_i32
+define amdgpu_kernel void @setcc_v2i32_expand(
+  <2 x i32> addrspace(1)* %a,
+  <2 x i32> addrspace(1)* %b,
+  <2 x i32> addrspace(1)* %c,
+  <2 x float> addrspace(1)* %r) {
+entry:
+  %a.val = load <2 x i32>, <2 x i32> addrspace(1)* %a
+  %b.val = load <2 x i32>, <2 x i32> addrspace(1)* %b
+  %c.val = load <2 x i32>, <2 x i32> addrspace(1)* %c
+
+  %icmp.val.1 = icmp sgt <2 x i32> %a.val, <i32 1, i32 1>
+  %zext.val.1 = zext <2 x i1> %icmp.val.1 to <2 x i32>
+  %shl.val.1 = shl nuw <2 x i32> %zext.val.1, <i32 31, i32 31>
+  %xor.val.1 = xor <2 x i32> %shl.val.1, %b.val
+  %bitcast.val.1 = bitcast <2 x i32> %xor.val.1 to <2 x float>
+  %icmp.val.2 = icmp sgt <2 x i32> %c.val, <i32 1199570944, i32 1199570944>
+  %select.val.1 = select <2 x i1> %icmp.val.2, <2 x float> <float 1.000000e+00, float 1.000000e+00>, <2 x float> %bitcast.val.1
+
+  store <2 x float> %select.val.1, <2 x float> addrspace(1)* %r
+  ret void
+}
+
+; FUNC-LABEL: setcc_v4i32_expand
+; GCN: v_cmp_gt_i32
+; GCN: v_cmp_gt_i32
+; GCN: v_cmp_gt_i32
+; GCN: v_cmp_gt_i32
+define amdgpu_kernel void @setcc_v4i32_expand(
+  <4 x i32> addrspace(1)* %a,
+  <4 x i32> addrspace(1)* %b,
+  <4 x i32> addrspace(1)* %c,
+  <4 x float> addrspace(1)* %r) {
+entry:
+  %a.val = load <4 x i32>, <4 x i32> addrspace(1)* %a
+  %b.val = load <4 x i32>, <4 x i32> addrspace(1)* %b
+  %c.val = load <4 x i32>, <4 x i32> addrspace(1)* %c
+
+  %icmp.val.1 = icmp sgt <4 x i32> %a.val, <i32 1, i32 1, i32 1, i32 1>
+  %zext.val.1 = zext <4 x i1> %icmp.val.1 to <4 x i32>
+  %shl.val.1 = shl nuw <4 x i32> %zext.val.1, <i32 31, i32 31, i32 31, i32 31>
+  %xor.val.1 = xor <4 x i32> %shl.val.1, %b.val
+  %bitcast.val.1 = bitcast <4 x i32> %xor.val.1 to <4 x float>
+  %icmp.val.2 = icmp sgt <4 x i32> %c.val, <i32 1199570944, i32 1199570944, i32 1199570944, i32 1199570944>
+  %select.val.1 = select <4 x i1> %icmp.val.2, <4 x float> <float 1.000000e+00, float 1.000000e+00, float 1.000000e+00, float 1.000000e+00>, <4 x float> %bitcast.val.1
+
+  store <4 x float> %select.val.1, <4 x float> addrspace(1)* %r
   ret void
 }
 

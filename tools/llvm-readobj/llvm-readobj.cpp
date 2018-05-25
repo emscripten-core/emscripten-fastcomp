@@ -22,25 +22,24 @@
 #include "llvm-readobj.h"
 #include "Error.h"
 #include "ObjDumper.h"
-#include "llvm/DebugInfo/CodeView/TypeTableBuilder.h"
+#include "WindowsResourceDumper.h"
+#include "llvm/DebugInfo/CodeView/MergingTypeTableBuilder.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/COFFImportFile.h"
-#include "llvm/Object/ELFObjectFile.h"
 #include "llvm/Object/MachOUniversal.h"
 #include "llvm/Object/ObjectFile.h"
+#include "llvm/Object/WindowsResource.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/DataTypes.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Path.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/TargetRegistry.h"
-#include "llvm/Support/TargetSelect.h"
-#include <string>
-#include <system_error>
 
 using namespace llvm;
 using namespace llvm::object;
@@ -50,6 +49,13 @@ namespace opts {
     cl::desc("<input object files>"),
     cl::ZeroOrMore);
 
+  // -wide, -W
+  cl::opt<bool> WideOutput("wide",
+    cl::desc("Ignored for compatibility with GNU readelf"));
+  cl::alias WideOutputShort("W",
+    cl::desc("Alias for --wide"),
+    cl::aliasopt(WideOutput));
+
   // -file-headers, -h
   cl::opt<bool> FileHeaders("file-headers",
     cl::desc("Display file headers "));
@@ -57,10 +63,14 @@ namespace opts {
     cl::desc("Alias for --file-headers"),
     cl::aliasopt(FileHeaders));
 
-  // -sections, -s
+  // -sections, -s, -S
+  // Note: In GNU readelf, -s means --symbols!
   cl::opt<bool> Sections("sections",
     cl::desc("Display all sections."));
   cl::alias SectionsShort("s",
+    cl::desc("Alias for --sections"),
+    cl::aliasopt(Sections));
+  cl::alias SectionsShortUpper("S",
     cl::desc("Alias for --sections"),
     cl::aliasopt(Sections));
 
@@ -186,11 +196,6 @@ namespace opts {
   cl::opt<bool> MipsOptions("mips-options",
                             cl::desc("Display the MIPS .MIPS.options section"));
 
-  // -amdgpu-code-object-metadata
-  cl::opt<bool> AMDGPUCodeObjectMetadata(
-      "amdgpu-code-object-metadata",
-      cl::desc("Display AMDGPU code object metadata"));
-
   // -coff-imports
   cl::opt<bool>
   COFFImports("coff-imports", cl::desc("Display the PE/COFF import table"));
@@ -217,6 +222,11 @@ namespace opts {
   // -coff-resources
   cl::opt<bool> COFFResources("coff-resources",
                               cl::desc("Display the PE/COFF .rsrc section"));
+
+  // -coff-load-config
+  cl::opt<bool>
+  COFFLoadConfig("coff-load-config",
+                 cl::desc("Display the PE/COFF load config"));
 
   // -macho-data-in-code
   cl::opt<bool>
@@ -339,8 +349,8 @@ struct ReadObjTypeTableBuilder {
       : Allocator(), IDTable(Allocator), TypeTable(Allocator) {}
 
   llvm::BumpPtrAllocator Allocator;
-  llvm::codeview::TypeTableBuilder IDTable;
-  llvm::codeview::TypeTableBuilder TypeTable;
+  llvm::codeview::MergingTypeTableBuilder IDTable;
+  llvm::codeview::MergingTypeTableBuilder TypeTable;
 };
 }
 static ReadObjTypeTableBuilder CVTypes;
@@ -421,9 +431,6 @@ static void dumpObject(const ObjectFile *Obj) {
       if (opts::MipsOptions)
         Dumper->printMipsOptions();
     }
-    if (Obj->getArch() == llvm::Triple::amdgcn)
-      if (opts::AMDGPUCodeObjectMetadata)
-        Dumper->printAMDGPUCodeObjectMetadata();
     if (opts::SectionGroups)
       Dumper->printGroupSections();
     if (opts::HashHistogram)
@@ -444,6 +451,8 @@ static void dumpObject(const ObjectFile *Obj) {
       Dumper->printCOFFDebugDirectory();
     if (opts::COFFResources)
       Dumper->printCOFFResources();
+    if (opts::COFFLoadConfig)
+      Dumper->printCOFFLoadConfig();
     if (opts::CodeView)
       Dumper->printCodeViewDebugInfo();
     if (opts::CodeViewMergedTypes)
@@ -503,6 +512,15 @@ static void dumpMachOUniversalBinary(const MachOUniversalBinary *UBinary) {
   }
 }
 
+/// @brief Dumps \a WinRes, Windows Resource (.res) file;
+static void dumpWindowsResourceFile(WindowsResource *WinRes) {
+  ScopedPrinter Printer{outs()};
+  WindowsRes::Dumper Dumper(WinRes, Printer);
+  if (auto Err = Dumper.printData())
+    reportError(WinRes->getFileName(), std::move(Err));
+}
+
+
 /// @brief Opens \a File and dumps it.
 static void dumpInput(StringRef File) {
 
@@ -521,17 +539,25 @@ static void dumpInput(StringRef File) {
     dumpObject(Obj);
   else if (COFFImportFile *Import = dyn_cast<COFFImportFile>(&Binary))
     dumpCOFFImportFile(Import);
+  else if (WindowsResource *WinRes = dyn_cast<WindowsResource>(&Binary))
+    dumpWindowsResourceFile(WinRes);
   else
     reportError(File, readobj_error::unrecognized_file_format);
 }
 
 int main(int argc, const char *argv[]) {
-  sys::PrintStackTraceOnErrorSignal(argv[0]);
+  StringRef ToolName = argv[0];
+  sys::PrintStackTraceOnErrorSignal(ToolName);
   PrettyStackTraceProgram X(argc, argv);
   llvm_shutdown_obj Y;
 
   // Register the target printer for --version.
   cl::AddExtraVersionPrinter(TargetRegistry::printRegisteredTargetsForVersion);
+
+  opts::WideOutput.setHiddenFlag(cl::Hidden);
+
+  if (sys::path::stem(ToolName).find("readelf") != StringRef::npos)
+    opts::Output = opts::GNU;
 
   cl::ParseCommandLineOptions(argc, argv, "LLVM Object Reader\n");
 
@@ -539,8 +565,7 @@ int main(int argc, const char *argv[]) {
   if (opts::InputFilenames.size() == 0)
     opts::InputFilenames.push_back("-");
 
-  std::for_each(opts::InputFilenames.begin(), opts::InputFilenames.end(),
-                dumpInput);
+  llvm::for_each(opts::InputFilenames, dumpInput);
 
   if (opts::CodeViewMergedTypes) {
     ScopedPrinter W(outs());

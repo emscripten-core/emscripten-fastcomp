@@ -17,11 +17,11 @@ add_llvm_library(LLVMCore
   DebugInfo.cpp
   DebugInfoMetadata.cpp
   DebugLoc.cpp
+  DiagnosticHandler.cpp
   DiagnosticInfo.cpp
   DiagnosticPrinter.cpp
   Dominators.cpp
   Function.cpp
-  GCOV.cpp
   GVMaterializer.cpp
   Globals.cpp
   IRBuilder.cpp
@@ -44,6 +44,7 @@ add_llvm_library(LLVMCore
   Pass.cpp
   PassManager.cpp
   PassRegistry.cpp
+  SafepointIRVerifier.cpp
   ProfileSummary.cpp
   Statepoint.cpp
   Type.cpp

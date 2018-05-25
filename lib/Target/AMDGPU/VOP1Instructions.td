@@ -93,11 +93,6 @@ class VOP1_SDWA_Pseudo <string OpName, VOPProfile P, list<dag> pattern=[]> :
   let AsmMatchConverter = "cvtSdwaVOP1";
 }
 
-class VOP1_SDWA9_Pseudo <string OpName, VOPProfile P, list<dag> pattern=[]> :
-  VOP_SDWA9_Pseudo <OpName, P, pattern> {
-  let AsmMatchConverter = "cvtSdwaVOP1";
-}
-
 class getVOP1Pat64 <SDPatternOperator node, VOPProfile P> : LetDummies {
   list<dag> ret =
     !if(P.HasModifiers,
@@ -117,7 +112,6 @@ multiclass VOP1Inst <string opName, VOPProfile P,
   def _e32 : VOP1_Pseudo <opName, P>;
   def _e64 : VOP3_Pseudo <opName, P, getVOP1Pat64<node, P>.ret>;
   def _sdwa : VOP1_SDWA_Pseudo <opName, P>;
-  def _sdwa9 : VOP1_SDWA9_Pseudo <opName, P>;
 }
 
 // Special profile for instructions which have clamp
@@ -272,17 +266,16 @@ def VOP_MOVRELD : VOPProfile<[untyped, i32, untyped, untyped]> {
   let Outs = (outs);
   let Ins32 = (ins Src0RC32:$vdst, VSrc_b32:$src0);
   let Ins64 = (ins Src0RC64:$vdst, VSrc_b32:$src0);
-  let InsDPP = (ins Src0RC32:$vdst, Src0RC32:$src0, dpp_ctrl:$dpp_ctrl, row_mask:$row_mask,
+  let InsDPP = (ins DstRC:$vdst, DstRC:$old, Src0RC32:$src0,
+                    dpp_ctrl:$dpp_ctrl, row_mask:$row_mask,
                     bank_mask:$bank_mask, bound_ctrl:$bound_ctrl);
+
   let InsSDWA = (ins Src0RC32:$vdst, Src0ModSDWA:$src0_modifiers, Src0SDWA:$src0,
-                     clampmod:$clamp, dst_sel:$dst_sel, dst_unused:$dst_unused,
+                     clampmod:$clamp, omod:$omod, dst_sel:$dst_sel, dst_unused:$dst_unused,
                      src0_sel:$src0_sel);
-  let InsSDWA9 = (ins Src0RC32:$vdst, Src0ModSDWA9:$src0_modifiers, Src0SDWA9:$src0,
-                      clampmod:$clamp, omod:$omod, dst_sel:$dst_sel, dst_unused:$dst_unused,
-                      src0_sel:$src0_sel);
 
   let Asm32 = getAsm32<1, 1>.ret;
-  let Asm64 = getAsm64<1, 1, 0, 1>.ret;
+  let Asm64 = getAsm64<1, 1, 0, 0, 1>.ret;
   let AsmDPP = getAsmDPP<1, 1, 0>.ret;
   let AsmSDWA = getAsmSDWA<1, 1>.ret;
   let AsmSDWA9 = getAsmSDWA9<1, 0, 1>.ret;
@@ -368,14 +361,14 @@ defm V_COS_F16 : VOP1Inst <"v_cos_f16", VOP_F16_F16, AMDGPUcos>;
 
 }
 
-let Predicates = [Has16BitInsts] in {
+let OtherPredicates = [Has16BitInsts] in {
 
-def : Pat<
+def : GCNPat<
     (f32 (f16_to_fp i16:$src)),
     (V_CVT_F32_F16_e32 $src)
 >;
 
-def : Pat<
+def : GCNPat<
     (i16 (AMDGPUfp_to_f16 f32:$src)),
     (V_CVT_F16_F32_e32 $src)
 >;
@@ -512,8 +505,6 @@ class VOP1_DPP <bits<8> op, VOP1_Pseudo ps, VOPProfile P = ps.Pfl> :
   let Uses = ps.Uses;
   let SchedRW = ps.SchedRW;
   let hasSideEffects = ps.hasSideEffects;
-  let Constraints = ps.Constraints;
-  let DisableEncoding = ps.DisableEncoding;
 
   bits<8> vdst;
   let Inst{8-0}   = 0xfa; // dpp
@@ -545,8 +536,8 @@ multiclass VOP1_Real_vi <bits<10> op> {
     VOP1_SDWAe <op{7-0}, !cast<VOP1_SDWA_Pseudo>(NAME#"_sdwa").Pfl>;
 
   def _sdwa_gfx9 :
-    VOP_SDWA9_Real <!cast<VOP1_SDWA9_Pseudo>(NAME#"_sdwa9")>,
-    VOP1_SDWA9Ae <op{7-0}, !cast<VOP1_SDWA9_Pseudo>(NAME#"_sdwa9").Pfl>;
+    VOP_SDWA9_Real <!cast<VOP1_SDWA_Pseudo>(NAME#"_sdwa")>,
+    VOP1_SDWA9Ae <op{7-0}, !cast<VOP1_SDWA_Pseudo>(NAME#"_sdwa").Pfl>;
 
   // For now left dpp only for asm/dasm
   // TODO: add corresponding pseudo
@@ -662,36 +653,44 @@ def V_MOVRELD_B32_V4 : V_MOVRELD_B32_pseudo<VReg_128>;
 def V_MOVRELD_B32_V8 : V_MOVRELD_B32_pseudo<VReg_256>;
 def V_MOVRELD_B32_V16 : V_MOVRELD_B32_pseudo<VReg_512>;
 
-let Predicates = [isVI] in {
+let OtherPredicates = [isVI] in {
 
-def : Pat <
+def : GCNPat <
   (i32 (int_amdgcn_mov_dpp i32:$src, imm:$dpp_ctrl, imm:$row_mask, imm:$bank_mask,
                       imm:$bound_ctrl)),
-  (V_MOV_B32_dpp $src, (as_i32imm $dpp_ctrl), (as_i32imm $row_mask),
-                       (as_i32imm $bank_mask), (as_i1imm $bound_ctrl))
+  (V_MOV_B32_dpp $src, $src, (as_i32imm $dpp_ctrl),
+                       (as_i32imm $row_mask), (as_i32imm $bank_mask),
+                       (as_i1imm $bound_ctrl))
 >;
 
+def : GCNPat <
+  (i32 (int_amdgcn_update_dpp i32:$old, i32:$src, imm:$dpp_ctrl, imm:$row_mask,
+                      imm:$bank_mask, imm:$bound_ctrl)),
+  (V_MOV_B32_dpp $old, $src, (as_i32imm $dpp_ctrl),
+                       (as_i32imm $row_mask), (as_i32imm $bank_mask),
+                       (as_i1imm $bound_ctrl))
+>;
 
-def : Pat<
+def : GCNPat<
   (i32 (anyext i16:$src)),
   (COPY $src)
 >;
 
-def : Pat<
+def : GCNPat<
    (i64 (anyext i16:$src)),
    (REG_SEQUENCE VReg_64,
      (i32 (COPY $src)), sub0,
      (V_MOV_B32_e32 (i32 0)), sub1)
 >;
 
-def : Pat<
+def : GCNPat<
   (i16 (trunc i32:$src)),
   (COPY $src)
 >;
 
-def : Pat <
+def : GCNPat <
   (i16 (trunc i64:$src)),
   (EXTRACT_SUBREG $src, sub0)
 >;
 
-} // End Predicates = [isVI]
+} // End OtherPredicates = [isVI]

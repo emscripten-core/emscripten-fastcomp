@@ -2,6 +2,8 @@
 ; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=2 -dce -instcombine -S | FileCheck %s --check-prefix=UNROLL
 ; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=2 -S | FileCheck %s --check-prefix=UNROLL-NO-IC
 ; RUN: opt < %s -loop-vectorize -force-vector-width=1 -force-vector-interleave=2 -S | FileCheck %s --check-prefix=UNROLL-NO-VF
+; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S | FileCheck %s --check-prefix=SINK-AFTER
+; RUN: opt < %s -loop-vectorize -force-vector-width=4 -force-vector-interleave=1 -S | FileCheck %s --check-prefix=NO-SINK-AFTER
 
 target datalayout = "e-m:e-i64:64-i128:128-n32:64-S128"
 
@@ -20,7 +22,7 @@ target datalayout = "e-m:e-i64:64-i128:128-n32:64-S128"
 ; CHECK:       middle.block:
 ; CHECK:         %vector.recur.extract = extractelement <4 x i32> [[L1]], i32 3
 ; CHECK:       scalar.ph:
-; CHECK:         %scalar.recur.init = phi i32 [ %vector.recur.extract, %middle.block ], [ %pre_load, %vector.memcheck ], [ %pre_load, %min.iters.checked ], [ %pre_load, %for.preheader ]
+; CHECK:         %scalar.recur.init = phi i32 [ %vector.recur.extract, %middle.block ], [ %pre_load, %vector.memcheck ], [ %pre_load, %for.preheader ]
 ; CHECK:       scalar.body:
 ; CHECK:         %scalar.recur = phi i32 [ %scalar.recur.init, %scalar.ph ], [ {{.*}}, %scalar.body ]
 ;
@@ -77,7 +79,7 @@ for.exit:
 ; CHECK:       middle.block:
 ; CHECK:         %vector.recur.extract = extractelement <4 x i32> [[L1]], i32 3
 ; CHECK:       scalar.ph:
-; CHECK:         %scalar.recur.init = phi i32 [ %vector.recur.extract, %middle.block ], [ %.pre, %min.iters.checked ], [ %.pre, %for.preheader ]
+; CHECK:         %scalar.recur.init = phi i32 [ %vector.recur.extract, %middle.block ], [ %.pre, %for.preheader ]
 ; CHECK:       scalar.body:
 ; CHECK:         %scalar.recur = phi i32 [ %scalar.recur.init, %scalar.ph ], [ {{.*}}, %scalar.body ]
 ;
@@ -138,11 +140,14 @@ scalar.body:
 ; CHECK:       vector.body:
 ; CHECK:         %vector.recur = phi <4 x i16> [ %vector.recur.init, %vector.ph ], [ [[L1:%[a-zA-Z0-9.]+]], %vector.body ]
 ; CHECK:         [[L1]] = load <4 x i16>
-; CHECK:         {{.*}} = shufflevector <4 x i16> %vector.recur, <4 x i16> [[L1]], <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; CHECK:         [[SHUF:%[a-zA-Z0-9.]+]] = shufflevector <4 x i16> %vector.recur, <4 x i16> [[L1]], <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; Check also that the casts were not moved needlessly.
+; CHECK:         sitofp <4 x i16> [[L1]] to <4 x double>
+; CHECK:         sitofp <4 x i16> [[SHUF]] to <4 x double> 
 ; CHECK:       middle.block:
 ; CHECK:         %vector.recur.extract = extractelement <4 x i16> [[L1]], i32 3
 ; CHECK:       scalar.ph:
-; CHECK:         %scalar.recur.init = phi i16 [ %vector.recur.extract, %middle.block ], [ %0, %vector.memcheck ], [ %0, %min.iters.checked ], [ %0, %for.preheader ]
+; CHECK:         %scalar.recur.init = phi i16 [ %vector.recur.extract, %middle.block ], [ %0, %vector.memcheck ], [ %0, %for.preheader ]
 ; CHECK:       scalar.body:
 ; CHECK:         %scalar.recur = phi i16 [ %scalar.recur.init, %scalar.ph ], [ {{.*}}, %scalar.body ]
 ;
@@ -286,7 +291,7 @@ for.cond.cleanup3:
 
 ; UNROLL-NO-IC-LABEL: @PR30183(
 ; UNROLL-NO-IC:       vector.ph:
-; UNROLL-NO-IC-NEXT:    [[VECTOR_RECUR_INIT:%.*]] = insertelement <4 x i32> undef, i32 [[PRE_LOAD:%.*]], i32 3
+; UNROLL-NO-IC:         [[VECTOR_RECUR_INIT:%.*]] = insertelement <4 x i32> undef, i32 [[PRE_LOAD:%.*]], i32 3
 ; UNROLL-NO-IC-NEXT:    br label %vector.body
 ; UNROLL-NO-IC:       vector.body:
 ; UNROLL-NO-IC-NEXT:    [[INDEX:%.*]] = phi i64 [ 0, %vector.ph ], [ [[INDEX_NEXT:%.*]], %vector.body ]
@@ -295,14 +300,14 @@ for.cond.cleanup3:
 ; UNROLL-NO-IC-NEXT:    [[TMP28:%.*]] = load i32, i32* {{.*}}
 ; UNROLL-NO-IC-NEXT:    [[TMP29:%.*]] = load i32, i32* {{.*}}
 ; UNROLL-NO-IC-NEXT:    [[TMP30:%.*]] = load i32, i32* {{.*}}
-; UNROLL-NO-IC-NEXT:    [[TMP31:%.*]] = load i32, i32* {{.*}}
-; UNROLL-NO-IC-NEXT:    [[TMP32:%.*]] = load i32, i32* {{.*}}
-; UNROLL-NO-IC-NEXT:    [[TMP33:%.*]] = load i32, i32* {{.*}}
-; UNROLL-NO-IC-NEXT:    [[TMP34:%.*]] = load i32, i32* {{.*}}
 ; UNROLL-NO-IC-NEXT:    [[TMP35:%.*]] = insertelement <4 x i32> undef, i32 [[TMP27]], i32 0
 ; UNROLL-NO-IC-NEXT:    [[TMP36:%.*]] = insertelement <4 x i32> [[TMP35]], i32 [[TMP28]], i32 1
 ; UNROLL-NO-IC-NEXT:    [[TMP37:%.*]] = insertelement <4 x i32> [[TMP36]], i32 [[TMP29]], i32 2
 ; UNROLL-NO-IC-NEXT:    [[TMP38:%.*]] = insertelement <4 x i32> [[TMP37]], i32 [[TMP30]], i32 3
+; UNROLL-NO-IC-NEXT:    [[TMP31:%.*]] = load i32, i32* {{.*}}
+; UNROLL-NO-IC-NEXT:    [[TMP32:%.*]] = load i32, i32* {{.*}}
+; UNROLL-NO-IC-NEXT:    [[TMP33:%.*]] = load i32, i32* {{.*}}
+; UNROLL-NO-IC-NEXT:    [[TMP34:%.*]] = load i32, i32* {{.*}}
 ; UNROLL-NO-IC-NEXT:    [[TMP39:%.*]] = insertelement <4 x i32> undef, i32 [[TMP31]], i32 0
 ; UNROLL-NO-IC-NEXT:    [[TMP40:%.*]] = insertelement <4 x i32> [[TMP39]], i32 [[TMP32]], i32 1
 ; UNROLL-NO-IC-NEXT:    [[TMP41:%.*]] = insertelement <4 x i32> [[TMP40]], i32 [[TMP33]], i32 2
@@ -395,4 +400,175 @@ for.body:
 
 for.end:
   ret i32 %val.phi
+}
+
+; We vectorize this first order recurrence, with a set of insertelements for
+; each unrolled part. Make sure these insertelements are generated in-order,
+; because the shuffle of the first order recurrence will be added after the
+; insertelement of the last part UF - 1, assuming the latter appears after the
+; insertelements of all other parts.
+;
+; int PR33613(double *b, double j, int d) {
+;   int a = 0;
+;   for(int i = 0; i < 10240; i++, b+=25) {
+;     double f = b[d]; // Scalarize to form insertelements
+;     if (j * f)
+;       a++;
+;     j = f;
+;   }
+;   return a;
+; }
+;
+; UNROLL-NO-IC-LABEL: @PR33613(
+; UNROLL-NO-IC:     vector.body:
+; UNROLL-NO-IC:       [[VECTOR_RECUR:%.*]] = phi <4 x double>
+; UNROLL-NO-IC:       shufflevector <4 x double> [[VECTOR_RECUR]], <4 x double> {{.*}}, <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; UNROLL-NO-IC-NEXT:  shufflevector <4 x double> {{.*}}, <4 x double> {{.*}}, <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; UNROLL-NO-IC-NOT:   insertelement <4 x double>
+; UNROLL-NO-IC:     middle.block:
+;
+define i32 @PR33613(double* %b, double %j, i32 %d) {
+entry:
+  %idxprom = sext i32 %d to i64
+  br label %for.body
+
+for.cond.cleanup:
+  %a.1.lcssa = phi i32 [ %a.1, %for.body ]
+  ret i32 %a.1.lcssa
+
+for.body:
+  %b.addr.012 = phi double* [ %b, %entry ], [ %add.ptr, %for.body ]
+  %i.011 = phi i32 [ 0, %entry ], [ %inc1, %for.body ]
+  %a.010 = phi i32 [ 0, %entry ], [ %a.1, %for.body ]
+  %j.addr.09 = phi double [ %j, %entry ], [ %0, %for.body ]
+  %arrayidx = getelementptr inbounds double, double* %b.addr.012, i64 %idxprom
+  %0 = load double, double* %arrayidx, align 8
+  %mul = fmul double %j.addr.09, %0
+  %tobool = fcmp une double %mul, 0.000000e+00
+  %inc = zext i1 %tobool to i32
+  %a.1 = add nsw i32 %a.010, %inc
+  %inc1 = add nuw nsw i32 %i.011, 1
+  %add.ptr = getelementptr inbounds double, double* %b.addr.012, i64 25
+  %exitcond = icmp eq i32 %inc1, 10240
+  br i1 %exitcond, label %for.cond.cleanup, label %for.body
+}
+
+; void sink_after(short *a, int n, int *b) {
+;   for(int i = 0; i < n; i++)
+;     b[i] = (a[i] * a[i + 1]);
+; }
+;
+; SINK-AFTER-LABEL: sink_after
+; Check that the sext sank after the load in the vector loop.
+; SINK-AFTER: vector.body
+; SINK-AFTER:   %vector.recur = phi <4 x i16> [ %vector.recur.init, %vector.ph ], [ %wide.load, %vector.body ]
+; SINK-AFTER:   %wide.load = load <4 x i16>
+; SINK-AFTER:   %[[VSHUF:.+]] = shufflevector <4 x i16> %vector.recur, <4 x i16> %wide.load, <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; SINK-AFTER:   %[[VCONV:.+]] = sext <4 x i16> %[[VSHUF]] to <4 x i32>
+; SINK-AFTER:   %[[VCONV3:.+]] = sext <4 x i16> %wide.load to <4 x i32>
+; SINK-AFTER:   mul nsw <4 x i32> %[[VCONV3]], %[[VCONV]]
+;
+define void @sink_after(i16* %a, i32* %b, i64 %n) {
+entry:
+  %.pre = load i16, i16* %a
+  br label %for.body
+
+for.body:
+  %0 = phi i16 [ %.pre, %entry ], [ %1, %for.body ]
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %conv = sext i16 %0 to i32
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %arrayidx2 = getelementptr inbounds i16, i16* %a, i64 %indvars.iv.next
+  %1 = load i16, i16* %arrayidx2
+  %conv3 = sext i16 %1 to i32
+  %mul = mul nsw i32 %conv3, %conv
+  %arrayidx5 = getelementptr inbounds i32, i32* %b, i64 %indvars.iv
+  store i32 %mul, i32* %arrayidx5
+  %exitcond = icmp eq i64 %indvars.iv.next, %n
+  br i1 %exitcond, label %for.end, label %for.body
+
+for.end:
+  ret void
+}
+
+; PR34711: given three consecutive instructions such that the first will be
+; widened, the second is a cast that will be widened and needs to sink after the
+; third, and the third is a first-order-recurring load that will be replicated
+; instead of widened. Although the cast and the first instruction will both be
+; widened, and are originally adjacent to each other, make sure the replicated
+; load ends up appearing between them.
+;
+; void PR34711(short[2] *a, int *b, int *c, int n) {
+;   for(int i = 0; i < n; i++) {
+;     c[i] = 7;
+;     b[i] = (a[i][0] * a[i][1]);
+;   }
+; }
+;
+; SINK-AFTER-LABEL: @PR34711
+; Check that the sext sank after the load in the vector loop.
+; SINK-AFTER: vector.body
+; SINK-AFTER:   %vector.recur = phi <4 x i16> [ %vector.recur.init, %vector.ph ], [ {{.*}}, %vector.body ]
+; SINK-AFTER:   %[[VSHUF:.+]] = shufflevector <4 x i16> %vector.recur, <4 x i16> %{{.*}}, <4 x i32> <i32 3, i32 4, i32 5, i32 6>
+; SINK-AFTER:   %[[VCONV:.+]] = sext <4 x i16> %[[VSHUF]] to <4 x i32>
+; SINK-AFTER:   %[[VCONV3:.+]] = sext <4 x i16> {{.*}} to <4 x i32>
+; SINK-AFTER:   mul nsw <4 x i32> %[[VCONV3]], %[[VCONV]]
+;
+define void @PR34711([2 x i16]* %a, i32* %b, i32* %c, i64 %n) {
+entry:
+  %pre.index = getelementptr inbounds [2 x i16], [2 x i16]* %a, i64 0, i64 0
+  %.pre = load i16, i16* %pre.index
+  br label %for.body
+
+for.body:
+  %0 = phi i16 [ %.pre, %entry ], [ %1, %for.body ]
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %arraycidx = getelementptr inbounds i32, i32* %c, i64 %indvars.iv
+  %cur.index = getelementptr inbounds [2 x i16], [2 x i16]* %a, i64 %indvars.iv, i64 1
+  store i32 7, i32* %arraycidx   ; 1st instruction, to be widened.
+  %conv = sext i16 %0 to i32     ; 2nd, cast to sink after third.
+  %1 = load i16, i16* %cur.index ; 3rd, first-order-recurring load not widened.
+  %conv3 = sext i16 %1 to i32
+  %mul = mul nsw i32 %conv3, %conv
+  %arrayidx5 = getelementptr inbounds i32, i32* %b, i64 %indvars.iv
+  store i32 %mul, i32* %arrayidx5
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %exitcond = icmp eq i64 %indvars.iv.next, %n
+  br i1 %exitcond, label %for.end, label %for.body
+
+for.end:
+  ret void
+}
+
+; void no_sink_after(short *a, int n, int *b) {
+;   for(int i = 0; i < n; i++)
+;     b[i] = ((a[i] + 2) * a[i + 1]);
+; }
+;
+; NO-SINK-AFTER-LABEL: no_sink_after
+; NO-SINK-AFTER-NOT:   vector.ph:
+; NO-SINK-AFTER:       }
+;
+define void @no_sink_after(i16* %a, i32* %b, i64 %n) {
+entry:
+  %.pre = load i16, i16* %a
+  br label %for.body
+
+for.body:
+  %0 = phi i16 [ %.pre, %entry ], [ %1, %for.body ]
+  %indvars.iv = phi i64 [ 0, %entry ], [ %indvars.iv.next, %for.body ]
+  %conv = sext i16 %0 to i32
+  %add = add nsw i32 %conv, 2
+  %indvars.iv.next = add nuw nsw i64 %indvars.iv, 1
+  %arrayidx2 = getelementptr inbounds i16, i16* %a, i64 %indvars.iv.next
+  %1 = load i16, i16* %arrayidx2
+  %conv3 = sext i16 %1 to i32
+  %mul = mul nsw i32 %add, %conv3
+  %arrayidx5 = getelementptr inbounds i32, i32* %b, i64 %indvars.iv
+  store i32 %mul, i32* %arrayidx5
+  %exitcond = icmp eq i64 %indvars.iv.next, %n
+  br i1 %exitcond, label %for.end, label %for.body
+
+for.end:
+  ret void
 }

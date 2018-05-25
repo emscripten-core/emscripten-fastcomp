@@ -89,6 +89,9 @@ public:
   /// functions
   MachineIRBuilder MIRBuilder;
 
+  /// Expose LegalizerInfo so the clients can re-use.
+  const LegalizerInfo &getLegalizerInfo() const { return LI; }
+
 private:
 
   /// Helper function to split a wide generic register into bitwise blocks with
@@ -101,11 +104,11 @@ private:
   const LegalizerInfo &LI;
 };
 
-/// Helper function that replaces \p MI with a libcall.
+/// Helper function that creates the given libcall.
 LegalizerHelper::LegalizeResult
-replaceWithLibcall(MachineInstr &MI, MachineIRBuilder &MIRBuilder,
-                   RTLIB::Libcall Libcall, const CallLowering::ArgInfo &Result,
-                   ArrayRef<CallLowering::ArgInfo> Args);
+createLibcall(MachineIRBuilder &MIRBuilder, RTLIB::Libcall Libcall,
+              const CallLowering::ArgInfo &Result,
+              ArrayRef<CallLowering::ArgInfo> Args);
 
 } // End namespace llvm.
 

@@ -438,22 +438,26 @@ public:
   /// \brief Create and insert an element unordered-atomic memcpy between the
   /// specified pointers.
   ///
+  /// DstAlign/SrcAlign are the alignments of the Dst/Src pointers, respectively.
+  ///
   /// If the pointers aren't i8*, they will be converted.  If a TBAA tag is
   /// specified, it will be added to the instruction. Likewise with alias.scope
   /// and noalias tags.
   CallInst *CreateElementUnorderedAtomicMemCpy(
-      Value *Dst, Value *Src, uint64_t Size, uint32_t ElementSize,
-      MDNode *TBAATag = nullptr, MDNode *TBAAStructTag = nullptr,
-      MDNode *ScopeTag = nullptr, MDNode *NoAliasTag = nullptr) {
+      Value *Dst, unsigned DstAlign, Value *Src, unsigned SrcAlign,
+      uint64_t Size, uint32_t ElementSize, MDNode *TBAATag = nullptr,
+      MDNode *TBAAStructTag = nullptr, MDNode *ScopeTag = nullptr,
+      MDNode *NoAliasTag = nullptr) {
     return CreateElementUnorderedAtomicMemCpy(
-        Dst, Src, getInt64(Size), ElementSize, TBAATag, TBAAStructTag, ScopeTag,
-        NoAliasTag);
+        Dst, DstAlign, Src, SrcAlign, getInt64(Size), ElementSize, TBAATag,
+        TBAAStructTag, ScopeTag, NoAliasTag);
   }
 
   CallInst *CreateElementUnorderedAtomicMemCpy(
-      Value *Dst, Value *Src, Value *Size, uint32_t ElementSize,
-      MDNode *TBAATag = nullptr, MDNode *TBAAStructTag = nullptr,
-      MDNode *ScopeTag = nullptr, MDNode *NoAliasTag = nullptr);
+      Value *Dst, unsigned DstAlign, Value *Src, unsigned SrcAlign, Value *Size,
+      uint32_t ElementSize, MDNode *TBAATag = nullptr,
+      MDNode *TBAAStructTag = nullptr, MDNode *ScopeTag = nullptr,
+      MDNode *NoAliasTag = nullptr);
 
   /// \brief Create and insert a memmove between the specified
   /// pointers.
@@ -1062,7 +1066,7 @@ public:
 
   Value *CreateAnd(Value *LHS, Value *RHS, const Twine &Name = "") {
     if (Constant *RC = dyn_cast<Constant>(RHS)) {
-      if (isa<ConstantInt>(RC) && cast<ConstantInt>(RC)->isAllOnesValue())
+      if (isa<ConstantInt>(RC) && cast<ConstantInt>(RC)->isMinusOne())
         return LHS;  // LHS & -1 -> LHS
       if (Constant *LC = dyn_cast<Constant>(LHS))
         return Insert(Folder.CreateAnd(LC, RC), Name);
@@ -1203,22 +1207,22 @@ public:
     return SI;
   }
   FenceInst *CreateFence(AtomicOrdering Ordering,
-                         SynchronizationScope SynchScope = CrossThread,
+                         SyncScope::ID SSID = SyncScope::System,
                          const Twine &Name = "") {
-    return Insert(new FenceInst(Context, Ordering, SynchScope), Name);
+    return Insert(new FenceInst(Context, Ordering, SSID), Name);
   }
   AtomicCmpXchgInst *
   CreateAtomicCmpXchg(Value *Ptr, Value *Cmp, Value *New,
                       AtomicOrdering SuccessOrdering,
                       AtomicOrdering FailureOrdering,
-                      SynchronizationScope SynchScope = CrossThread) {
+                      SyncScope::ID SSID = SyncScope::System) {
     return Insert(new AtomicCmpXchgInst(Ptr, Cmp, New, SuccessOrdering,
-                                        FailureOrdering, SynchScope));
+                                        FailureOrdering, SSID));
   }
   AtomicRMWInst *CreateAtomicRMW(AtomicRMWInst::BinOp Op, Value *Ptr, Value *Val,
                                  AtomicOrdering Ordering,
-                               SynchronizationScope SynchScope = CrossThread) {
-    return Insert(new AtomicRMWInst(Op, Ptr, Val, Ordering, SynchScope));
+                                 SyncScope::ID SSID = SyncScope::System) {
+    return Insert(new AtomicRMWInst(Op, Ptr, Val, Ordering, SSID));
   }
   Value *CreateGEP(Value *Ptr, ArrayRef<Value *> IdxList,
                    const Twine &Name = "") {
@@ -1517,11 +1521,9 @@ public:
                                 const Twine &Name = "") {
     if (V->getType() == DestTy)
       return V;
-    if (V->getType()->getScalarType()->isPointerTy() &&
-        DestTy->getScalarType()->isIntegerTy())
+    if (V->getType()->isPtrOrPtrVectorTy() && DestTy->isIntOrIntVectorTy())
       return CreatePtrToInt(V, DestTy, Name);
-    if (V->getType()->getScalarType()->isIntegerTy() &&
-        DestTy->getScalarType()->isPointerTy())
+    if (V->getType()->isIntOrIntVectorTy() && DestTy->isPtrOrPtrVectorTy())
       return CreateIntToPtr(V, DestTy, Name);
 
     return CreateBitCast(V, DestTy, Name);
@@ -1808,26 +1810,28 @@ public:
 
   /// \brief Create an invariant.group.barrier intrinsic call, that stops
   /// optimizer to propagate equality using invariant.group metadata.
-  /// If Ptr type is different from i8*, it's casted to i8* before call
-  /// and casted back to Ptr type after call.
+  /// If Ptr type is different from pointer to i8, it's casted to pointer to i8
+  /// in the same address space before call and casted back to Ptr type after
+  /// call.
   Value *CreateInvariantGroupBarrier(Value *Ptr) {
+    assert(isa<PointerType>(Ptr->getType()) &&
+           "invariant.group.barrier only applies to pointers.");
+    auto *PtrType = Ptr->getType();
+    auto *Int8PtrTy = getInt8PtrTy(PtrType->getPointerAddressSpace());
+    if (PtrType != Int8PtrTy)
+      Ptr = CreateBitCast(Ptr, Int8PtrTy);
     Module *M = BB->getParent()->getParent();
-    Function *FnInvariantGroupBarrier = Intrinsic::getDeclaration(M,
-            Intrinsic::invariant_group_barrier);
+    Function *FnInvariantGroupBarrier = Intrinsic::getDeclaration(
+        M, Intrinsic::invariant_group_barrier, {Int8PtrTy});
 
-    Type *ArgumentAndReturnType = FnInvariantGroupBarrier->getReturnType();
-    assert(ArgumentAndReturnType ==
-        FnInvariantGroupBarrier->getFunctionType()->getParamType(0) &&
-        "InvariantGroupBarrier should take and return the same type");
-    Type *PtrType = Ptr->getType();
-
-    bool PtrTypeConversionNeeded = PtrType != ArgumentAndReturnType;
-    if (PtrTypeConversionNeeded)
-      Ptr = CreateBitCast(Ptr, ArgumentAndReturnType);
+    assert(FnInvariantGroupBarrier->getReturnType() == Int8PtrTy &&
+           FnInvariantGroupBarrier->getFunctionType()->getParamType(0) ==
+               Int8PtrTy &&
+           "InvariantGroupBarrier should take and return the same type");
 
     CallInst *Fn = CreateCall(FnInvariantGroupBarrier, {Ptr});
 
-    if (PtrTypeConversionNeeded)
+    if (PtrType != Int8PtrTy)
       return CreateBitCast(Fn, PtrType);
     return Fn;
   }

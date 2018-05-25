@@ -17,8 +17,8 @@
 
 #include "JS.h"
 #include "llvm/Target/TargetMachine.h"
-#include "llvm/Target/TargetSubtargetInfo.h"
-#include "llvm/Target/TargetLowering.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/CodeGen/TargetLowering.h"
 
 namespace llvm {
 
@@ -46,16 +46,16 @@ class JSTargetMachine : public LLVMTargetMachine {
 public:
   JSTargetMachine(const Target &T, const Triple &TT,
                   StringRef CPU, StringRef FS, const TargetOptions &Options,
-                  Optional<Reloc::Model>& RM, CodeModel::Model CM,
-                  CodeGenOpt::Level OL);
+                  Optional<Reloc::Model>& RM, Optional<CodeModel::Model> CM,
+                  CodeGenOpt::Level OL, bool JIT);
 
-  bool addPassesToEmitFile(
-      PassManagerBase &PM, raw_pwrite_stream &Out, CodeGenFileType FileType,
-      bool DisableVerify = true, AnalysisID StartBefore = nullptr,
-      AnalysisID StartAfter = nullptr, AnalysisID StopBefore = nullptr,
-      AnalysisID StopAfter = nullptr) override;
+  bool addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream &Out,
+                           CodeGenFileType FileType, bool DisableVerify = true,
+                           MachineModuleInfo *MMI = nullptr) override;
 
-  TargetIRAnalysis getTargetIRAnalysis() override;
+  TargetTransformInfo getTargetTransformInfo(const Function &F) override;
+
+  TargetIRAnalysis getTargetIRAnalysis(); // TODO: remove?
 
   const TargetSubtargetInfo *getJSSubtargetImpl() const {
     return &ST;
