@@ -1138,7 +1138,7 @@ int SIMDNumElements(VectorType *t) {
   return 0;
 }
 
-const char *SIMDType(VectorType *t) {
+const char *SIMDType(VectorType *t, bool signedIntegerType = true) {
   assert(t->getElementType()->getPrimitiveSizeInBits() <= 128);
 
   if (t->getElementType()->isIntegerTy()) {
@@ -1149,10 +1149,17 @@ const char *SIMDType(VectorType *t) {
       if (t->getNumElements() <= 16) return "Bool8x16";
       // fall-through to error
     } else {
-      if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Int64x2";
-      if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Int32x4";
-      if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Int16x8";
-      if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Int8x16";
+      if (signedIntegerType) {
+        if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Int64x2";
+        if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Int32x4";
+        if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Int16x8";
+        if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Int8x16";
+      } else {
+        if (t->getElementType()->getPrimitiveSizeInBits() > 32 && t->getNumElements() <= 2) return "Uint64x2";
+        if (t->getElementType()->getPrimitiveSizeInBits() > 16 && t->getNumElements() <= 4) return "Uint32x4";
+        if (t->getElementType()->getPrimitiveSizeInBits() > 8 && t->getNumElements() <= 8) return "Uint16x8";
+        if (t->getElementType()->getPrimitiveSizeInBits() <= 8 && t->getNumElements() <= 16) return "Uint8x16";
+      }
       // fall-through to error
     }
   } else { // float type
@@ -2275,14 +2282,21 @@ void JSWriter::generateShiftExpression(const BinaryOperator *I, raw_string_ostre
     // then we can use a ByScalar shift.
     const Value *Count = I->getOperand(1);
     if (const Value *Splat = getSplatValue(Count)) {
-        Code << getAssignIfNeeded(I) << "SIMD_" << SIMDType(cast<VectorType>(I->getType())) << '_';
-        if (I->getOpcode() == Instruction::AShr)
-            Code << "shiftRightArithmeticByScalar";
-        else if (I->getOpcode() == Instruction::LShr)
-            Code << "shiftRightLogicalByScalar";
-        else
-            Code << "shiftLeftByScalar";
-        Code << "(" << getValueAsStr(I->getOperand(0)) << ", " << getValueAsStr(Splat) << ")";
+        Code << getAssignIfNeeded(I);
+        VectorType *VT = cast<VectorType>(I->getType());
+        const char *signedSimdType = SIMDType(VT);
+        if (I->getOpcode() == Instruction::AShr) {
+            Code << "SIMD_" << signedSimdType << "_shiftRightByScalar(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(Splat) << ')';
+        } else if (I->getOpcode() == Instruction::LShr) {
+            const char *unsignedSimdType = SIMDType(VT, false);
+            /* TODO: Once 64-bit SIMD types are added in Wasm: if (VT->getElementType()->getPrimitiveSizeInBits() > 32 && VT->getNumElements() <= 2) UsesSIMDUint64x2 = true;
+            else */ if (VT->getElementType()->getPrimitiveSizeInBits() > 16 && VT->getNumElements() <= 4) UsesSIMDUint32x4 = true;
+            else if (VT->getElementType()->getPrimitiveSizeInBits() > 8 && VT->getNumElements() <= 8) UsesSIMDUint16x8 = true;
+            else if (VT->getElementType()->getPrimitiveSizeInBits() <= 8 && VT->getNumElements() <= 16) UsesSIMDUint8x16 = true;
+            Code << "SIMD_" << signedSimdType << "_from" << unsignedSimdType << "Bits(SIMD_" << unsignedSimdType << "_shiftRightByScalar(" << "SIMD_" << unsignedSimdType << "_from" << signedSimdType << "Bits(" << getValueAsStr(I->getOperand(0)) << ")," << getValueAsStr(Splat) << "))";
+        } else {
+            Code << "SIMD_" << signedSimdType << "_shiftLeftByScalar(" << getValueAsStr(I->getOperand(0)) << ',' << getValueAsStr(Splat) << ')';
+        }
         return;
     }
 

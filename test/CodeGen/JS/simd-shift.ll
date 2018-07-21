@@ -51,7 +51,7 @@ entry:
 
 ; CHECK: function _test3($a) {
 ; CHECK:  $a = SIMD_Int32x4_check($a);
-; CHECK:  SIMD_Int32x4_shiftRightArithmeticByScalar($a, 3);
+; CHECK:  SIMD_Int32x4_shiftRightByScalar($a, 3);
 ; CHECK:  return (SIMD_Int32x4_check($shr));
 ; CHECK: }
 define <4 x i32> @test3(<4 x i32> %a) {
@@ -63,7 +63,7 @@ entry:
 ; CHECK: function _test4($a,$b) {
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = $b|0;
-; CHECK:  SIMD_Int32x4_shiftRightArithmeticByScalar($a, $b);
+; CHECK:  SIMD_Int32x4_shiftRightByScalar($a, $b);
 ; CHECK:  return (SIMD_Int32x4_check($shr));
 ; CHECK: }
 define <4 x i32> @test4(<4 x i32> %a, i32 %b) {
@@ -97,7 +97,7 @@ entry:
 
 ; CHECK: function _test6($a) {
 ; CHECK:  $a = SIMD_Int32x4_check($a);
-; CHECK:  SIMD_Int32x4_shiftRightLogicalByScalar($a, 3);
+; CHECK:  SIMD_Int32x4_fromUint32x4Bits(SIMD_Uint32x4_shiftRightByScalar(SIMD_Uint32x4_fromInt32x4Bits($a), 3));
 ; CHECK:  return (SIMD_Int32x4_check($lshr));
 ; CHECK: }
 define <4 x i32> @test6(<4 x i32> %a) {
@@ -109,7 +109,7 @@ entry:
 ; CHECK: function _test7($a,$b) {
 ; CHECK:  $a = SIMD_Int32x4_check($a);
 ; CHECK:  $b = $b|0;
-; CHECK:  $lshr = SIMD_Int32x4_shiftRightLogicalByScalar($a, $b);
+; CHECK:  $lshr = SIMD_Int32x4_fromUint32x4Bits(SIMD_Uint32x4_shiftRightByScalar(SIMD_Uint32x4_fromInt32x4Bits($a), $b));
 ; CHECK:  return (SIMD_Int32x4_check($lshr));
 ; CHECK: }
 define <4 x i32> @test7(<4 x i32> %a, i32 %b) {
