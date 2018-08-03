@@ -2668,7 +2668,10 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
       case Instruction::FAdd: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " + " + getValueAsStr(I->getOperand(1)), I->getType()); break;
       case Instruction::FMul: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " * " + getValueAsStr(I->getOperand(1)), I->getType()); break;
       case Instruction::FDiv: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " / " + getValueAsStr(I->getOperand(1)), I->getType()); break;
-      case Instruction::FRem: Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " % " + getValueAsStr(I->getOperand(1)), I->getType()); break;
+      case Instruction::FRem:
+        if (PreciseF32 && !I->getType()->isDoubleTy()) Code << ensureFloat("+(" + getValueAsStr(I->getOperand(0)) + ") % +(" + getValueAsStr(I->getOperand(1)) + ")", I->getType());
+        else Code << ensureFloat(getValueAsStr(I->getOperand(0)) + " % " + getValueAsStr(I->getOperand(1)), I->getType());
+        break;
       case Instruction::FSub:
         // LLVM represents an fneg(x) as -0.0 - x.
         if (BinaryOperator::isFNeg(I)) {
