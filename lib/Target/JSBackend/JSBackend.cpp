@@ -165,6 +165,18 @@ EnableCyberDWARFIntrinsics("enable-debug-intrinsics",
                            cl::desc("Include debug intrinsics in generated output"),
                            cl::init(false));
 
+// Work around Safari/WebKit bug in iOS 9.3.5: https://bugs.webkit.org/show_bug.cgi?id=151514 where computing "a >> b" or "a >>> b" in JavaScript would erroneously
+// output 0 when a!=0 and b==0, after suitable JIT compiler optimizations have been applied to a function at runtime (bug does not occur in debug builds).
+// Fix was landed in https://trac.webkit.org/changeset/196591/webkit on Feb 15th 2016. iOS 9.3.5 was released on August 25 2016, but oddly did not have the fix.
+// iOS Safari 10.3.3 was released on July 19 2017, that no longer has the issue. Unknown which released version between these was the first to contain the patch,
+// though notable is that iOS 9.3.5 and iOS 10.3.3 are the two consecutive "end-of-life" versions of iOS that users are likely to be on, e.g.
+// iPhone 4s, iPad 2, iPad 3, iPad Mini 1, Pod Touch 5 all had end-of-life at iOS 9.3.5 (tested to be affected),
+// and iPad 4, iPhone 5 and iPhone 5c had end-of-life at iOS 10.3.3 (confirmed not affected)
+static cl::opt<bool>
+WorkAroundIos9RightShiftByZeroBug("emscripten-asmjs-work-around-ios-9-right-shift-bug",
+           cl::desc("Enables codegen to guard against broken right shift by (non-immediate) zero on WebKit/Safari 9 on ARM iOS 9.3.5 (iPhone 4s and older)"),
+           cl::init(false));
+
 static cl::opt<bool>
 WebAssembly("emscripten-wasm",
             cl::desc("Generate asm.js which will later be compiled to WebAssembly (see emscripten BINARYEN setting)"),
@@ -2661,7 +2673,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         if (I->getType()->getIntegerBitWidth() < 32) {
           Input = '(' + getCast(Input, I->getType(), opcode == Instruction::AShr ? ASM_SIGNED : ASM_UNSIGNED) + ')'; // fill in high bits, as shift needs those and is done in 32-bit
         }
-        Code << Input << (opcode == Instruction::AShr ? " >> " : " >>> ") <<  getValueAsStr(I->getOperand(1));
+        std::string shift = getValueAsStr(I->getOperand(1));
+        if (WorkAroundIos9RightShiftByZeroBug) {
+          Code << '(' << shift << ")?(" << Input << (opcode == Instruction::AShr ? " >> " : " >>> ") << shift << "):(" << Input << ')';
+        } else {
+          Code << Input << (opcode == Instruction::AShr ? " >> " : " >>> ") << shift;
+        }
         break;
       }
 
