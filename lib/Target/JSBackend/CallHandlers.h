@@ -203,11 +203,11 @@ DEF_CALL_HANDLER(emscripten_resume, {
 })
 
 std::string getTempRet0() {
-  return Relocatable ? "(getTempRet0() | 0)" : "tempRet0";
+  return "(getTempRet0() | 0)";
 }
 
 std::string setTempRet0(std::string Value) {
-  return Relocatable ? "setTempRet0((" + Value + ") | 0)" : "tempRet0 = (" + Value + ')';
+  return "setTempRet0((" + Value + ") | 0)";
 }
 
 // setjmp support
