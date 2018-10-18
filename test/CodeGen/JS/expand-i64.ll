@@ -5,7 +5,7 @@ target triple = "asmjs-unknown-emscripten"
 
 ; CHECK: function _add($0,$1,$2,$3) {
 ; CHECK:  $4 = (_i64Add(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @add(i64 %a, i64 %b) {
   %c = add i64 %a, %b
@@ -14,7 +14,7 @@ define i64 @add(i64 %a, i64 %b) {
 
 ; CHECK: function _sub($0,$1,$2,$3) {
 ; CHECK:  $4 = (_i64Subtract(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @sub(i64 %a, i64 %b) {
   %c = sub i64 %a, %b
@@ -23,7 +23,7 @@ define i64 @sub(i64 %a, i64 %b) {
 
 ; CHECK: function _mul($0,$1,$2,$3) {
 ; CHECK:  $4 = (___muldi3(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @mul(i64 %a, i64 %b) {
   %c = mul i64 %a, %b
@@ -32,7 +32,7 @@ define i64 @mul(i64 %a, i64 %b) {
 
 ; CHECK: function _sdiv($0,$1,$2,$3) {
 ; CHECK:  $4 = (___divdi3(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @sdiv(i64 %a, i64 %b) {
   %c = sdiv i64 %a, %b
@@ -41,7 +41,7 @@ define i64 @sdiv(i64 %a, i64 %b) {
 
 ; CHECK: function _udiv($0,$1,$2,$3) {
 ; CHECK:  $4 = (___udivdi3(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @udiv(i64 %a, i64 %b) {
   %c = udiv i64 %a, %b
@@ -50,7 +50,7 @@ define i64 @udiv(i64 %a, i64 %b) {
 
 ; CHECK: function _srem($0,$1,$2,$3) {
 ; CHECK:  $4 = (___remdi3(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @srem(i64 %a, i64 %b) {
   %c = srem i64 %a, %b
@@ -59,7 +59,7 @@ define i64 @srem(i64 %a, i64 %b) {
 
 ; CHECK: function _urem($0,$1,$2,$3) {
 ; CHECK:  $4 = (___uremdi3(($0|0),($1|0),($2|0),($3|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @urem(i64 %a, i64 %b) {
   %c = urem i64 %a, %b
@@ -95,7 +95,7 @@ define i64 @xor(i64 %a, i64 %b) {
 
 ; CHECK: function _lshr($0,$1,$2,$3) {
 ; CHECK:  $4 = (_bitshift64Lshr(($0|0),($1|0),($2|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @lshr(i64 %a, i64 %b) {
   %c = lshr i64 %a, %b
@@ -104,7 +104,7 @@ define i64 @lshr(i64 %a, i64 %b) {
 
 ; CHECK: function _ashr($0,$1,$2,$3) {
 ; CHECK:  $4 = (_bitshift64Ashr(($0|0),($1|0),($2|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @ashr(i64 %a, i64 %b) {
   %c = ashr i64 %a, %b
@@ -113,7 +113,7 @@ define i64 @ashr(i64 %a, i64 %b) {
 
 ; CHECK: function _shl($0,$1,$2,$3) {
 ; CHECK:  $4 = (_bitshift64Shl(($0|0),($1|0),($2|0))|0);
-; CHECK:  $5 = tempRet0;
+; CHECK:  $5 = (getTempRet0() | 0);
 ; CHECK: }
 define i64 @shl(i64 %a, i64 %b) {
   %c = shl i64 %a, %b
@@ -238,7 +238,7 @@ define i32 @trunc(i64 %x) {
 }
 
 ; CHECK: function _zext($x) {
-; CHECK:  tempRet0 = (0);
+; CHECK:  setTempRet0((0) | 0);
 ; CHECL:  return ($x|0);
 ; CHECK: }
 define i64 @zext(i32 %x) {
@@ -249,7 +249,7 @@ define i64 @zext(i32 %x) {
 ; CHECK: function _sext($x) {
 ; CHECK:  $0 = ($x|0)<(0);
 ; CHECK:  $1 = $0 << 31 >> 31;
-; CHECK:  tempRet0 = ($1);
+; CHECK:  setTempRet0(($1) | 0);
 ; CHECK:  return ($x|0);
 ; CHECK: }
 define i64 @sext(i32 %x) {
