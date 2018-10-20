@@ -3404,7 +3404,6 @@ void JSWriter::printFunctionBody(const Function *F) {
 
   if (Relocatable) {
     if (!F->hasInternalLinkage()) {
-      Exports.push_back(getJSName(F));
       // In wasm shared module mode with emulated function pointers, put all exported functions in the table. That lets us
       // use a simple i64-based ABI for everything, using function pointers for dlsym etc. (otherwise, if we used an
       // export which is callable by JS - not using the i64 ABI - that would not be a proper function pointer for
