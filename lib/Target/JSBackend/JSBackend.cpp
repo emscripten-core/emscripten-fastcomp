@@ -98,6 +98,11 @@ EmulatedFunctionPointers("emscripten-emulated-function-pointers",
                          cl::desc("Emulate function pointers, avoiding asm.js function tables (see emscripten EMULATED_FUNCTION_POINTERS option)"),
                          cl::init(false));
 
+static cl::opt<bool>
+EmulateFunctionPointerCasts("emscripten-emulate-function-pointer-casts",
+                         cl::desc("Emulate function pointers casts, handling extra or ignored parameters (see emscripten EMULATE_FUNCTION_POINTER_CASTS option)"),
+                         cl::init(false));
+
 static cl::opt<int>
 EmscriptenAssertions("emscripten-assertions",
                      cl::desc("Additional JS-specific assertions (see emscripten ASSERTIONS)"),
@@ -3409,7 +3414,7 @@ void JSWriter::printFunctionBody(const Function *F) {
       // use a simple i64-based ABI for everything, using function pointers for dlsym etc. (otherwise, if we used an
       // export which is callable by JS - not using the i64 ABI - that would not be a proper function pointer for
       // a wasm->wasm call).
-      if (WebAssembly && EmulatedFunctionPointers) {
+      if (WebAssembly && EmulateFunctionPointerCasts) {
         getFunctionIndex(F);
       }
     }
