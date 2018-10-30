@@ -3725,7 +3725,7 @@ void JSWriter::printModuleBody() {
       // need the expected name to be available TODO: optimize
       // that out, call handlers can declare their "function table
       // name").
-      std::string fullName = std::string("_") + I->getName().str();
+      std::string fullName = getJSName(&*I);
       if (CallHandlers.count(fullName) > 0) {
         if (IndexedFunctions.find(fullName) == IndexedFunctions.end()) {
           continue;
@@ -3743,7 +3743,7 @@ void JSWriter::printModuleBody() {
       } else {
         Out << ", ";
       }
-      Out << "\"" << I->getName() << "\"";
+      Out << "\"" << fullName.substr(1) << "\"";
     }
   }
   for (NameSet::const_iterator I = Declares.begin(), E = Declares.end();
