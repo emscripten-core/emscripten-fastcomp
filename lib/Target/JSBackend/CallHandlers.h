@@ -125,6 +125,7 @@ DEF_CALL_HANDLER(__default__, {
   if (Invoke) {
     Sig = getFunctionSignature(FT);
     Name = "invoke_" + Sig;
+    rememberUsedInvokeFunction(Name);
     NeedCasts = true;
   }
   std::string text = Name;
