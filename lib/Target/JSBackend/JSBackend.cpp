@@ -258,6 +258,7 @@ namespace {
     NameIntMap NamedGlobals; // globals that we export as metadata to JS, so it can access them by name
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
+    std::set<std::string> InvokeFuncNames; // Names of actually used invoke wrappers ('invoke_v', 'invoke_vii' etc)
     std::vector<std::string> GlobalInitializers;
     std::vector<std::string> Exports; // additional exports
     StringMap Aliases;
@@ -441,6 +442,9 @@ namespace {
         Ret += getFunctionSignatureLetter(*AI);
       }
       return Ret;
+    }
+    void rememberUsedInvokeFunction(const std::string &invokeFuncName) {
+      InvokeFuncNames.insert(invokeFuncName);
     }
     FunctionTable& ensureFunctionTable(const FunctionType *FT) {
       std::string Sig = getFunctionSignature(FT);
@@ -3985,6 +3989,20 @@ void JSWriter::printModuleBody() {
     }
     Out << "}";
   }
+
+  Out << ", \"invokeFuncs\": [";
+  std::vector<std::string> funcNames(InvokeFuncNames.begin(), InvokeFuncNames.end());
+  std::sort(funcNames.begin(), funcNames.end()); // Keep a canonical order for deterministic build output
+  first = true;
+  for (auto& sig : funcNames) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << sig << "\"";
+  }
+  Out << "]";
 
   Out << "\n}\n";
 }
