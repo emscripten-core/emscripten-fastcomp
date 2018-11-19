@@ -253,6 +253,7 @@ namespace {
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
     NameSet Declares; // funcs
+    NameSet FtCallHelpers;
     StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
     std::vector<std::string> PostSets;
     NameIntMap NamedGlobals; // globals that we export as metadata to JS, so it can access them by name
@@ -459,11 +460,22 @@ namespace {
       while (Table.size() < MinSize) Table.push_back("0");
       return Table;
     }
+    bool isInt64Type(const Type *T) {
+      return T->isIntegerTy() && T->getIntegerBitWidth() == 64;
+    }
     bool usesFloat32(FunctionType* F) {
       if (F->getReturnType()->isFloatTy()) return true;
       for (FunctionType::param_iterator AI = F->param_begin(),
              AE = F->param_end(); AI != AE; ++AI) {
         if ((*AI)->isFloatTy()) return true;
+      }
+      return false;
+    }
+    bool usesInt64(FunctionType* F) {
+      if (isInt64Type(F->getReturnType())) return true;
+      for (FunctionType::param_iterator AI = F->param_begin(),
+             AE = F->param_end(); AI != AE; ++AI) {
+        if (isInt64Type((*AI))) return true;
       }
       return false;
     }
@@ -506,7 +518,54 @@ namespace {
       }
       LegalFunc += Call + ";\n}";
       ExtraFunctions.push_back(LegalFunc);
-      return LegalName;
+	  return LegalName;
+    }
+    // Return a function which can be used to indirectly invoke wasm functions from js
+    void makeFtCallHelper(const Function *F) {
+      auto* FT = F->getFunctionType();
+      std::string Signature = getFunctionSignature(F->getFunctionType());
+      std::string Name = "ftCall_helper_" + Signature;
+
+      if (FtCallHelpers.find(Name) != FtCallHelpers.end())
+        return;
+      // We are creating:
+      // function ftCall_helper_j(index) { index = index|0; return (i64(ftCall_j(index|0))); }
+      std::string Func = "function " + Name + "(";
+      std::string Declares = "";
+      std::string Call = "ftCall_" + Signature + "(";
+      int Index = 0;
+
+      // The function pointer argument
+      std::string IndexArg = "index";
+      Func += IndexArg;
+      Declares += IndexArg + " = " + IndexArg + "|0;";
+      Call += IndexArg + "|0";
+      Index ++;
+
+      for (FunctionType::param_iterator AI = FT->param_begin(),
+             AE = FT->param_end(); AI != AE; ++AI) {
+        if (Index > 0) {
+          Func += ", ";
+          Declares += " ";
+          Call += ", ";
+        }
+        auto Arg = getArgLetter(Index);
+        Func += Arg;
+        Declares += Arg + " = " + getCast(Arg, *AI) + ';';
+        Call += getCast(Arg, *AI, ASM_NONSPECIFIC | ASM_FFI_OUT);
+        Index++;
+      }
+      Func += ") {\n ";
+      Func += Declares + "\n ";
+      Call += ")";
+      if (!FT->getReturnType()->isVoidTy()) {
+        Call = "return " + getCast(Call, FT->getReturnType(), ASM_FFI_IN);
+      }
+      Func += Call + ";\n}";
+      ExtraFunctions.push_back(Func);
+      // Export it so it gets a legal export stub
+      Exports.push_back(Name);
+      FtCallHelpers.insert(Name);
     }
     unsigned getFunctionIndex(const Function *F) {
       const std::string &Name = getJSName(F);
@@ -559,6 +618,12 @@ namespace {
         if (F->isDeclaration()) {
           DeclaresNeedingTypeDeclarations.insert(F);
         }
+      }
+
+      if (WebAssembly && EmulatedFunctionPointers && usesInt64(F->getFunctionType())) {
+        // The invoke_<sig> functions need a way to indirectly call wasm functions even
+        // for non-legal signatures.
+        makeFtCallHelper(F);
       }
 
       return Index;
