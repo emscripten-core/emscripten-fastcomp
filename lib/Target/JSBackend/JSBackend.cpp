@@ -518,7 +518,7 @@ namespace {
       }
       LegalFunc += Call + ";\n}";
       ExtraFunctions.push_back(LegalFunc);
-	  return LegalName;
+      return LegalName;
     }
     // Return a function which can be used to indirectly invoke wasm functions from js
     void makeFtCallHelper(const Function *F) {
