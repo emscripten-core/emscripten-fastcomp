@@ -254,7 +254,7 @@ namespace {
     NameSet Externals; // vars
     NameSet Declares; // funcs
     StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
-    std::vector<std::string> PostSets;
+    std::vector<std::string> Relocations;
     NameIntMap NamedGlobals; // globals that we export as metadata to JS, so it can access them by name
     std::map<std::string, unsigned> IndexedFunctions; // name -> index
     FunctionTableMap FunctionTables; // sig => list of functions
@@ -619,7 +619,7 @@ namespace {
       V = resolveFully(V);
       if (const Function *F = dyn_cast<const Function>(V)) {
         if (Relocatable) {
-          PostSets.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateFunctionPointer(utostr(getFunctionIndex(F))) + ';');
+          Relocations.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateFunctionPointer(utostr(getFunctionIndex(F))) + ';');
           return 0; // emit zero in there for now, until the postSet
         }
         return getFunctionIndex(F);
@@ -634,19 +634,19 @@ namespace {
             Externals.insert(Name);
             if (Relocatable) {
               std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
-              PostSets.push_back(
+              Relocations.push_back(
                 "\n temp = g$" + Name + "() | 0;" // we access linked externs through calls, and must do so to a temp for heap growth validation
                 + "\n " + access + " = (" + access + " | 0) + temp;" // see later down about adding to an offset
               );
             } else {
-              PostSets.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';');
+              Relocations.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';');
             }
             return 0; // emit zero in there for now, until the postSet
           } else if (Relocatable) {
             // this is one of our globals, but we must relocate it. we return zero, but the caller may store
             // an added offset, which we read at postSet time; in other words, we just add to that offset
             std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
-            PostSets.push_back("\n " + access + " = (" + access + " | 0) + " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';');
+            Relocations.push_back("\n " + access + " = (" + access + " | 0) + " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';');
             return 0; // emit zero in there for now, until the postSet
           }
         }
@@ -3581,36 +3581,43 @@ void JSWriter::printModuleBody() {
     auto I = &*II;
     if (!I->isDeclaration()) printFunction(I);
   }
-  // Emit postSets, split up into smaller functions to avoid one massive one that is slow to compile (more likely to occur in dynamic linking, as more postsets)
+  // Emit postSets, split up into smaller functions to avoid one massive one
+  // that is slow to compile (more likely to occur in dynamic linking, as more
+  // postsets)
   {
     const int CHUNK = 100;
     int i = 0;
     int chunk = 0;
-    int num = PostSets.size();
-    do {
-      if (chunk == 0) {
-        Out << "function runPostSets() {\n";
-      } else {
-        Out << "function runPostSets" << chunk << "() {\n";
-      }
-      if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
-      int j = i + CHUNK;
-      if (j > num) j = num;
-      while (i < j) {
-        Out << PostSets[i] << "\n";
-        i++;
-      }
-      // call the next chunk, if there is one
-      chunk++;
-      if (i < num) {
-        Out << " runPostSets" << chunk << "();\n";
-      }
-      Out << "}\n";
-    } while (i < num);
-    PostSets.clear();
+    int num = Relocations.size();
+    if (num) {
+      do {
+        if (chunk == 0) {
+          Out << "function __apply_relocations() {\n";
+        } else {
+          Out << "function __apply_relocations" << chunk << "() {\n";
+        }
+        if (Relocatable) Out << " var temp = 0;\n"; // need a temp var for relocation calls, for proper validation in heap growth
+        int j = i + CHUNK;
+        if (j > num) j = num;
+        while (i < j) {
+          Out << Relocations[i] << "\n";
+          i++;
+        }
+        // call the next chunk, if there is one
+        chunk++;
+        if (i < num) {
+          Out << " __apply_relocations" << chunk << "();\n";
+        }
+        Out << "}\n";
+      } while (i < num);
+      Relocations.clear();
+      // Insert __apply_relocations as the first static initializer
+      GlobalInitializers.insert(GlobalInitializers.begin(), "__apply_relocations");
+    }
+  }
+  {
     if (WebAssembly && SideModule) {
-      // emit the init method for a wasm side module,
-      // which runs postsets and global inits
+      // emit the init method for a wasm side module which runs global inits.
       // note that we can't use the wasm start mechanism, as the JS side is
       // not yet ready - imagine that in the start method we call out to JS,
       // then try to call back in, but we haven't yet captured the exports
@@ -3620,7 +3627,6 @@ void JSWriter::printModuleBody() {
         Out << " STACKTOP = " << relocateGlobal(utostr(getGlobalAddress("wasm-module-stack"))) << ";\n";
         Out << " STACK_MAX = STACKTOP + " << StackSize << " | 0;\n";
       }
-      Out << " runPostSets();\n";
       for (auto& init : GlobalInitializers) {
         Out << " " << init << "();\n";
       }
