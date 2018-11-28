@@ -170,7 +170,15 @@ DEF_CALL_HANDLER(__default__, {
                            // it should have 0 uses, but just to be safe
   } else if (!ActualRT->isVoidTy()) {
     unsigned FFI_IN = FFI ? ASM_FFI_IN : 0;
-    text = getAssignIfNeeded(CI) + '(' + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN) + ')';
+    text = '(' + getCast(text, ActualRT, ASM_NONSPECIFIC | FFI_IN) + ')';
+    // in wasm-only mode, we may have full i64s, and LLVM may bitcast them at the call site, e.g.
+    //  %5 = call zeroext i1 bitcast (i64 (i8*, i64*, i64, i32, i32, i32)* @__atomic_compare_exchange_8 to i1 (i8*, i8*, i64, i32, i32)*)(i8* nonnull %4, i8* nonnull %3, i64 undef, i32 2, i32 2)
+    // in such a case we must add a truncation operation
+    if (OnlyWebAssembly && InstRT->isIntegerTy()   && InstRT->getIntegerBitWidth() < 64 &&
+                           ActualRT->isIntegerTy() && ActualRT->getIntegerBitWidth() == 64) {
+      text = "i64_trunc(" + text + ")";
+    }
+    text = getAssignIfNeeded(CI) + text;
   }
   return text;
 })
@@ -358,28 +366,6 @@ DEF_CALL_HANDLER(name, { \
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i8, "HEAP8");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i16, "HEAP16");
 CMPXCHG_HANDLER(llvm_nacl_atomic_cmpxchg_i32, "HEAP32");
-
-DEF_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64, {
-  if (EnablePthreads) {
-    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
-  } else {
-    const Value *P = CI->getOperand(0);
-    return getLoad(CI, P, CI->getType(), 0) + ';' +
-             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " +
-                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0);
-  }
-})
-
-DEF_CALL_HANDLER(__atomic_compare_exchange_8, {
-  if (EnablePthreads) {
-    return getAssign(CI) + "(i64_atomics_compareExchange(" + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
-  } else {
-    const Value *P = CI->getOperand(0);
-    return getLoad(CI, P, CI->getType(), 0) + ';' +
-             "if ((" + getCast(getJSName(CI), CI->getType()) + ") == " + getValueAsCastParenStr(CI->getOperand(1)) + ") " +
-                getStore(CI, P, CI->getType(), getValueAsStr(CI->getOperand(2)), 0);
-  }
-})
 
 #define UNROLL_LOOP_MAX 8
 #define WRITE_LOOP_MAX 128
@@ -1754,7 +1740,6 @@ void setupCallHandlers() {
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i8);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i16);
   SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i32);
-  SETUP_CALL_HANDLER(llvm_nacl_atomic_cmpxchg_i64);
   SETUP_CALL_HANDLER(llvm_memcpy_p0i8_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memset_p0i8_i32);
   SETUP_CALL_HANDLER(llvm_memmove_p0i8_p0i8_i32);
@@ -2271,7 +2256,6 @@ void setupCallHandlers() {
       // Otherwise these will be passed through to JS/C library functions that do the
       // equivalent operations, e.g. for asm.js that doesn't have 64-bit atomics.
       SETUP_CALL_HANDLER(__atomic_exchange_8);
-      SETUP_CALL_HANDLER(__atomic_compare_exchange_8);
       SETUP_CALL_HANDLER(__atomic_fetch_add_8);
       SETUP_CALL_HANDLER(__atomic_fetch_sub_8);
       SETUP_CALL_HANDLER(__atomic_fetch_and_8);
