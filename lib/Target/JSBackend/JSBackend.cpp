@@ -509,6 +509,13 @@ namespace {
       return LegalName;
     }
     unsigned getFunctionIndex(const Function *F) {
+      // If a function's linkage is external weak, that means it has not been
+      // linked in, and is weakly linked in the sense that if it is not linked
+      // in, it will be null. If we are done with linking, then we can set it as
+      // null here.
+      if (F->hasExternalWeakLinkage() && !Relocatable) {
+        return 0;
+      }
       const std::string &Name = getJSName(F);
       if (IndexedFunctions.find(Name) != IndexedFunctions.end()) return IndexedFunctions[Name];
       FunctionTable& Table = ensureFunctionTable(F->getFunctionType());
