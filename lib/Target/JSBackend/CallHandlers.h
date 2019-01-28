@@ -48,6 +48,27 @@ bool canInvoke(const Value *V) {
 #define DEF_CALL_HANDLER(Ident, Code) \
   std::string CH_##Ident(const Instruction *CI, std::string Name, int NumArgs=-1) { Code }
 
+void RegisterMathUse(const std::string &Name) {
+  if (Name == "Math_floor") JSWriter::UsesMathFloor = true;
+  else if (Name == "Math_abs") JSWriter::UsesMathAbs = true;
+  else if (Name == "Math_sqrt") JSWriter::UsesMathSqrt = true;
+  else if (Name == "Math_pow") JSWriter::UsesMathPow = true;
+  else if (Name == "Math_cos") JSWriter::UsesMathCos = true;
+  else if (Name == "Math_sin") JSWriter::UsesMathSin = true;
+  else if (Name == "Math_tan") JSWriter::UsesMathAcos = true;
+  else if (Name == "Math_asin") JSWriter::UsesMathAsin = true;
+  else if (Name == "Math_atan") JSWriter::UsesMathAtan = true;
+  else if (Name == "Math_atan2") JSWriter::UsesMathAtan2 = true;
+  else if (Name == "Math_exp") JSWriter::UsesMathExp = true;
+  else if (Name == "Math_log") JSWriter::UsesMathLog = true;
+  else if (Name == "Math_ceil") JSWriter::UsesMathCeil = true;
+  else if (Name == "Math_imul") JSWriter::UsesMathImul = true;
+  else if (Name == "Math_min") JSWriter::UsesMathMin = true;
+  else if (Name == "Math_max") JSWriter::UsesMathMax = true;
+  else if (Name == "Math_clz32") JSWriter::UsesMathClz32 = true;
+  else if (Name == "Math_fround") JSWriter::UsesMathFround = true;
+}
+
 DEF_CALL_HANDLER(__default__, {
   if (!CI) return ""; // we are just called from a handler that was called from getFunctionIndex, only to ensure the handler was run at least once
   const Value *CV = getActuallyCalledValue(CI);
@@ -61,6 +82,7 @@ DEF_CALL_HANDLER(__default__, {
   }
   std::string Sig;
   bool IsMath = Name.find("Math_") == 0;
+  if (IsMath) RegisterMathUse(Name);
   bool ForcedNumArgs = NumArgs != -1;
   if (!ForcedNumArgs) NumArgs = getNumArgOperands(CI);
 
@@ -185,11 +207,13 @@ DEF_CALL_HANDLER(__default__, {
 
 // exceptions support
 DEF_CALL_HANDLER(emscripten_preinvoke, {
+  UsesThrew = true;
   // InvokeState is normally 0 here, but might be otherwise if a block was split apart TODO: add a function attribute for this
   InvokeState = 1;
   return "__THREW__ = 0";
 })
 DEF_CALL_HANDLER(emscripten_postinvoke, {
+  UsesThrew = true;
   // InvokeState is normally 2 here, but can be 1 if the call in between was optimized out, or 0 if a block was split apart
   InvokeState = 0;
   return getAssign(CI) + "__THREW__; __THREW__ = 0";
@@ -222,6 +246,7 @@ std::string setTempRet0(std::string Value) {
 // setjmp support
 
 DEF_CALL_HANDLER(emscripten_prep_setjmp, {
+  UsesInt32Array = true;
   return getAdHocAssign("_setjmpTableSize", Type::getInt32Ty(CI->getContext())) + "4;" +
          getAdHocAssign("_setjmpTable", Type::getInt32Ty(CI->getContext())) + "_malloc(40) | 0;" +
          "HEAP32[_setjmpTable>>2]=0";
@@ -239,11 +264,13 @@ DEF_CALL_HANDLER(emscripten_longjmp, {
   return CH___default__(CI, "_longjmp");
 })
 DEF_CALL_HANDLER(emscripten_check_longjmp, {
+  UsesThrewValue = true;
   std::string Threw = getValueAsStr(CI->getOperand(0));
   std::string Target = getJSName(CI);
   std::string Assign = getAssign(CI);
   Declares.insert("testSetjmp");
   Declares.insert("longjmp");
+  UsesInt32Array = true;
   return "if (((" + Threw + "|0) != 0) & ((threwValue|0) != 0)) { " +
            Assign + "_testSetjmp(HEAP32[" + Threw + ">>2]|0, _setjmpTable|0, _setjmpTableSize|0)|0; " +
            "if ((" + Target + "|0) == 0) { _longjmp(" + Threw + "|0, threwValue|0); } " + // rethrow
@@ -305,20 +332,25 @@ DEF_CALL_HANDLER(low, { \
 DEF_CALL_HANDLER(high, { \
   std::string Input = getValueAsStr(CI->getOperand(0)); \
   if (PreciseF32 && CI->getOperand(0)->getType()->isFloatTy()) Input = '+' + Input; \
+  UsesMathAbs = UsesMathMin = UsesMathFloor = UsesMathCeil = true; \
   return getAssign(CI) + "+Math_abs(" + Input + ") >= +1 ? " + Input + " > +0 ? (~~+Math_min(+Math_floor(" + Input + " / +4294967296), +4294967295)) >>> 0 : ~~+Math_ceil((" + Input + " - +(~~" + Input + " >>> 0)) / +4294967296) >>> 0 : 0"; \
 })
 TO_I(FtoILow, FtoIHigh);
 TO_I(DtoILow, DtoIHigh);
 DEF_CALL_HANDLER(BDtoILow, {
+  UsesFloat64Array = true;
+  UsesInt32Array = true;
   return "HEAPF64[tempDoublePtr>>3] = " + getValueAsStr(CI->getOperand(0)) + ';' + getAssign(CI) + "HEAP32[tempDoublePtr>>2]|0";
 })
 DEF_CALL_HANDLER(BDtoIHigh, {
+  UsesInt32Array = true;
   return getAssign(CI) + "HEAP32[tempDoublePtr+4>>2]|0";
 })
 DEF_CALL_HANDLER(SItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_SIGNED) +   "))";
   if (PreciseF32 && CI->getType()->isFloatTy()) {
+    UsesMathFround = true;
     Ret = "Math_fround(" + Ret + ')';
   }
   return getAssign(CI) + Ret;
@@ -327,6 +359,7 @@ DEF_CALL_HANDLER(UItoF, {
   std::string Ret = "(+" + getValueAsCastParenStr(CI->getOperand(0), ASM_UNSIGNED) + ") + " +
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
   if (PreciseF32 && CI->getType()->isFloatTy()) {
+    UsesMathFround = true;
     Ret = "Math_fround(" + Ret + ')';
   }
   return getAssign(CI) + Ret;
@@ -340,6 +373,8 @@ DEF_CALL_HANDLER(UItoD, {
                                        "(+4294967296*(+" + getValueAsCastParenStr(CI->getOperand(1), ASM_UNSIGNED) + "))";
 })
 DEF_CALL_HANDLER(BItoD, {
+  UsesInt32Array = true;
+  UsesFloat64Array = true;
   return "HEAP32[tempDoublePtr>>2] = " +   getValueAsStr(CI->getOperand(0)) + ';' +
          "HEAP32[tempDoublePtr+4>>2] = " + getValueAsStr(CI->getOperand(1)) + ';' +
          getAssign(CI) + "+HEAPF64[tempDoublePtr>>3]";
@@ -348,11 +383,15 @@ DEF_CALL_HANDLER(BItoD, {
 // misc
 
 DEF_CALL_HANDLER(llvm_nacl_atomic_store_i32, {
+  UsesInt32Array = true;
   return "HEAP32[" + getValueAsStr(CI->getOperand(0)) + ">>2]=" + getValueAsStr(CI->getOperand(1));
 })
 
 #define CMPXCHG_HANDLER(name, HeapName) \
 DEF_CALL_HANDLER(name, { \
+  if (!strcmp(HeapName, "HEAP8")) UsesInt8Array = true; \
+  else if (!strcmp(HeapName, "HEAP16")) UsesInt16Array = true; \
+  else if (!strcmp(HeapName, "HEAP32")) UsesInt32Array = true; \
   const Value *P = CI->getOperand(0); \
   if (EnablePthreads) { \
     return getAssign(CI) + "(Atomics_compareExchange(" HeapName ", " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)"; \
@@ -668,6 +707,7 @@ DEF_CALL_HANDLER(bitshift64Shl, {
 })
 
 DEF_CALL_HANDLER(llvm_ctlz_i32, {
+  UsesMathClz32 = true;
   return CH___default__(CI, "Math_clz32", 1);
 })
 
@@ -802,12 +842,15 @@ DEF_CALL_HANDLER(emscripten_asm_const_async_on_main_thread, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_exchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_exchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_exchange_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_exchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_exchange_8, {
@@ -819,28 +862,35 @@ DEF_CALL_HANDLER(__atomic_exchange_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_cas_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_compareExchange(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_compareExchange(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_cas_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_compareExchange(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + getValueAsStr(CI->getOperand(2)) + ")|0)";
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_load_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_load(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_load(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_load(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_load_f32, {
   // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 is implemented, we could use the commented out version. Until then,
   // we must emulate manually.
   Declares.insert("_Atomics_load_f32_emulated");
+  UsesMathFround = true;
   return getAssign(CI) + (PreciseF32 ? "Math_fround(" : "+") + "__Atomics_load_f32_emulated(" + getShiftedPtr(CI->getOperand(0), 4) + (PreciseF32 ? "))" : ")");
 //  return getAssign(CI) + "Atomics_load(HEAPF32, " + getShiftedPtr(CI->getOperand(0), 4) + ')';
 })
@@ -860,12 +910,15 @@ DEF_CALL_HANDLER(__atomic_load_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_store_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_store(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_store(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_store(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_store_f32, {
@@ -891,12 +944,15 @@ DEF_CALL_HANDLER(__atomic_store_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_add_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_add(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_add(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_add_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_add(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_fetch_add_8, {
@@ -908,12 +964,15 @@ DEF_CALL_HANDLER(__atomic_fetch_add_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_sub_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_sub(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_sub(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_sub_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_sub(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_fetch_sub_8, {
@@ -925,12 +984,15 @@ DEF_CALL_HANDLER(__atomic_fetch_sub_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_and_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_and(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_and(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_and_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_and(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_fetch_and_8, {
@@ -942,12 +1004,15 @@ DEF_CALL_HANDLER(__atomic_fetch_and_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_or_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_or(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_or(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_or_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_or(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_fetch_or_8, {
@@ -959,12 +1024,15 @@ DEF_CALL_HANDLER(__atomic_fetch_or_8, {
 })
 
 DEF_CALL_HANDLER(emscripten_atomic_xor_u8, {
+  UsesInt8Array = true;
   return getAssign(CI) + "(Atomics_xor(HEAP8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u16, {
+  UsesInt16Array = true;
   return getAssign(CI) + "(Atomics_xor(HEAP16, " + getShiftedPtr(CI->getOperand(0), 2) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(emscripten_atomic_xor_u32, {
+  UsesInt32Array = true;
   return getAssign(CI) + "(Atomics_xor(HEAP32, " + getShiftedPtr(CI->getOperand(0), 4) + ',' + getValueAsStr(CI->getOperand(1)) + ")|0)";
 })
 DEF_CALL_HANDLER(__atomic_fetch_xor_8, {
@@ -980,6 +1048,12 @@ DEF_CALL_HANDLER(name, { \
   return CH___default__(CI, #to); \
 })
 
+#define DEF_MATH_BUILTIN_HANDLER(name, to, usesTracker) \
+DEF_CALL_HANDLER(name, { \
+  usesTracker = true; \
+  return CH___default__(CI, #to); \
+})
+
 #define DEF_MAYBE_BUILTIN_HANDLER(name, to) \
 DEF_CALL_HANDLER(name, { \
   if (!WebAssembly) return CH___default__(CI, #to); \
@@ -987,78 +1061,88 @@ DEF_CALL_HANDLER(name, { \
   return CH___default__(CI, "_" #name); \
 })
 
+#define DEF_MATH_MAYBE_BUILTIN_HANDLER(name, to, usesTracker) \
+DEF_CALL_HANDLER(name, { \
+  usesTracker = true; \
+  if (!WebAssembly) return CH___default__(CI, #to); \
+  Declares.insert(#name); \
+  return CH___default__(CI, "_" #name); \
+})
+
 // Various simple redirects for our js libc, see library.js and LibraryManager.load
-DEF_BUILTIN_HANDLER(abs, Math_abs);
-DEF_BUILTIN_HANDLER(labs, Math_abs);
-DEF_MAYBE_BUILTIN_HANDLER(cos, Math_cos);
-DEF_MAYBE_BUILTIN_HANDLER(cosf, Math_cos);
-DEF_MAYBE_BUILTIN_HANDLER(cosl, Math_cos);
-DEF_MAYBE_BUILTIN_HANDLER(sin, Math_sin);
-DEF_MAYBE_BUILTIN_HANDLER(sinf, Math_sin);
-DEF_MAYBE_BUILTIN_HANDLER(sinl, Math_sin);
-DEF_MAYBE_BUILTIN_HANDLER(tan, Math_tan);
-DEF_MAYBE_BUILTIN_HANDLER(tanf, Math_tan);
-DEF_MAYBE_BUILTIN_HANDLER(tanl, Math_tan);
-DEF_MAYBE_BUILTIN_HANDLER(acos, Math_acos);
-DEF_MAYBE_BUILTIN_HANDLER(acosf, Math_acos);
-DEF_MAYBE_BUILTIN_HANDLER(acosl, Math_acos);
-DEF_MAYBE_BUILTIN_HANDLER(asin, Math_asin);
-DEF_MAYBE_BUILTIN_HANDLER(asinf, Math_asin);
-DEF_MAYBE_BUILTIN_HANDLER(asinl, Math_asin);
-DEF_MAYBE_BUILTIN_HANDLER(atan, Math_atan);
-DEF_MAYBE_BUILTIN_HANDLER(atanf, Math_atan);
-DEF_MAYBE_BUILTIN_HANDLER(atanl, Math_atan);
-DEF_MAYBE_BUILTIN_HANDLER(atan2, Math_atan2);
-DEF_MAYBE_BUILTIN_HANDLER(atan2f, Math_atan2);
-DEF_MAYBE_BUILTIN_HANDLER(atan2l, Math_atan2);
-DEF_MAYBE_BUILTIN_HANDLER(exp, Math_exp);
-DEF_MAYBE_BUILTIN_HANDLER(expf, Math_exp);
-DEF_MAYBE_BUILTIN_HANDLER(expl, Math_exp);
-DEF_MAYBE_BUILTIN_HANDLER(log, Math_log);
-DEF_MAYBE_BUILTIN_HANDLER(logf, Math_log);
-DEF_MAYBE_BUILTIN_HANDLER(logl, Math_log);
-DEF_BUILTIN_HANDLER(sqrt, Math_sqrt);
-DEF_BUILTIN_HANDLER(sqrtf, Math_sqrt);
-DEF_BUILTIN_HANDLER(sqrtl, Math_sqrt);
-DEF_BUILTIN_HANDLER(fabs, Math_abs);
-DEF_BUILTIN_HANDLER(fabsf, Math_abs);
-DEF_BUILTIN_HANDLER(fabsl, Math_abs);
-DEF_BUILTIN_HANDLER(llvm_fabs_f32, Math_abs);
-DEF_BUILTIN_HANDLER(llvm_fabs_f64, Math_abs);
-DEF_BUILTIN_HANDLER(ceil, Math_ceil);
-DEF_BUILTIN_HANDLER(ceilf, Math_ceil);
-DEF_BUILTIN_HANDLER(ceill, Math_ceil);
-DEF_BUILTIN_HANDLER(llvm_ceil_f32, Math_ceil);
-DEF_BUILTIN_HANDLER(llvm_ceil_f64, Math_ceil);
-DEF_BUILTIN_HANDLER(floor, Math_floor);
-DEF_BUILTIN_HANDLER(floorf, Math_floor);
-DEF_BUILTIN_HANDLER(floorl, Math_floor);
-DEF_BUILTIN_HANDLER(llvm_floor_f32, Math_floor);
-DEF_BUILTIN_HANDLER(llvm_floor_f64, Math_floor);
-DEF_MAYBE_BUILTIN_HANDLER(pow, Math_pow);
-DEF_MAYBE_BUILTIN_HANDLER(powf, Math_pow);
-DEF_MAYBE_BUILTIN_HANDLER(powl, Math_pow);
-DEF_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt);
-DEF_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt);
-DEF_BUILTIN_HANDLER(llvm_pow_f32, Math_pow); // XXX these will be slow in wasm, but need to link in libc before getting here, or stop
-DEF_BUILTIN_HANDLER(llvm_pow_f64, Math_pow); //     LLVM from creating these intrinsics
-DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f32, Math_cos);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_cos_f64, Math_cos);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f32, Math_sin);
-DEF_MAYBE_BUILTIN_HANDLER(llvm_sin_f64, Math_sin);
+DEF_MATH_BUILTIN_HANDLER(abs, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(labs, Math_abs, UsesMathAbs);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(cos, Math_cos, UsesMathCos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(cosf, Math_cos, UsesMathCos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(cosl, Math_cos, UsesMathCos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(sin, Math_sin, UsesMathSin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(sinf, Math_sin, UsesMathSin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(sinl, Math_sin, UsesMathSin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(tan, Math_tan, UsesMathTan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(tanf, Math_tan, UsesMathTan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(tanl, Math_tan, UsesMathTan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(acos, Math_acos, UsesMathAcos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(acosf, Math_acos, UsesMathAcos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(acosl, Math_acos, UsesMathAcos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(asin, Math_asin, UsesMathAsin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(asinf, Math_asin, UsesMathAsin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(asinl, Math_asin, UsesMathAsin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atan, Math_atan, UsesMathAtan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atanf, Math_atan, UsesMathAtan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atanl, Math_atan, UsesMathAtan);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atan2, Math_atan2, UsesMathAtan2);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atan2f, Math_atan2, UsesMathAtan2);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(atan2l, Math_atan2, UsesMathAtan2);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(exp, Math_exp, UsesMathExp);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(expf, Math_exp, UsesMathExp);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(expl, Math_exp, UsesMathExp);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(log, Math_log, UsesMathLog);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(logf, Math_log, UsesMathLog);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(logl, Math_log, UsesMathLog);
+DEF_MATH_BUILTIN_HANDLER(sqrt, Math_sqrt, UsesMathSqrt);
+DEF_MATH_BUILTIN_HANDLER(sqrtf, Math_sqrt, UsesMathSqrt);
+DEF_MATH_BUILTIN_HANDLER(sqrtl, Math_sqrt, UsesMathSqrt);
+DEF_MATH_BUILTIN_HANDLER(fabs, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(fabsf, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(fabsl, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(llvm_fabs_f32, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(llvm_fabs_f64, Math_abs, UsesMathAbs);
+DEF_MATH_BUILTIN_HANDLER(ceil, Math_ceil, UsesMathCeil);
+DEF_MATH_BUILTIN_HANDLER(ceilf, Math_ceil, UsesMathCeil);
+DEF_MATH_BUILTIN_HANDLER(ceill, Math_ceil, UsesMathCeil);
+DEF_MATH_BUILTIN_HANDLER(llvm_ceil_f32, Math_ceil, UsesMathCeil);
+DEF_MATH_BUILTIN_HANDLER(llvm_ceil_f64, Math_ceil, UsesMathCeil);
+DEF_MATH_BUILTIN_HANDLER(floor, Math_floor, UsesMathFloor);
+DEF_MATH_BUILTIN_HANDLER(floorf, Math_floor, UsesMathFloor);
+DEF_MATH_BUILTIN_HANDLER(floorl, Math_floor, UsesMathFloor);
+DEF_MATH_BUILTIN_HANDLER(llvm_floor_f32, Math_floor, UsesMathFloor);
+DEF_MATH_BUILTIN_HANDLER(llvm_floor_f64, Math_floor, UsesMathFloor);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(pow, Math_pow, UsesMathPow);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(powf, Math_pow, UsesMathPow);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(powl, Math_pow, UsesMathPow);
+DEF_MATH_BUILTIN_HANDLER(llvm_sqrt_f32, Math_sqrt, UsesMathSqrt);
+DEF_MATH_BUILTIN_HANDLER(llvm_sqrt_f64, Math_sqrt, UsesMathSqrt);
+DEF_MATH_BUILTIN_HANDLER(llvm_pow_f32, Math_pow, UsesMathPow); // XXX these will be slow in wasm, but need to link in libc before getting here, or stop
+DEF_MATH_BUILTIN_HANDLER(llvm_pow_f64, Math_pow, UsesMathPow); //     LLVM from creating these intrinsics
+DEF_MATH_MAYBE_BUILTIN_HANDLER(llvm_cos_f32, Math_cos, UsesMathCos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(llvm_cos_f64, Math_cos, UsesMathCos);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(llvm_sin_f32, Math_sin, UsesMathSin);
+DEF_MATH_MAYBE_BUILTIN_HANDLER(llvm_sin_f64, Math_sin, UsesMathSin);
 // The NaN semantics of llvm_[min|max]num_* do not quite match what asm.js and wasm's float min/max do, sadly
 
 DEF_CALL_HANDLER(llvm_powi_f32, {
+  UsesMathPow = true;
   return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ',' + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ')', CI->getType());
 })
 DEF_CALL_HANDLER(llvm_powi_f64, {
+  UsesMathPow = true;
   return getAssign(CI) + getParenCast("Math_pow(" + getValueAsCastStr(CI->getOperand(0)) + ',' + getCast(getValueAsCastStr(CI->getOperand(1)), CI->getOperand(0)->getType()) + ')', CI->getType());
 })
 
-DEF_BUILTIN_HANDLER(llvm_log_f32, Math_log);
-DEF_BUILTIN_HANDLER(llvm_log_f64, Math_log);
-DEF_BUILTIN_HANDLER(llvm_exp_f32, Math_exp);
-DEF_BUILTIN_HANDLER(llvm_exp_f64, Math_exp);
+DEF_MATH_BUILTIN_HANDLER(llvm_log_f32, Math_log, UsesMathLog);
+DEF_MATH_BUILTIN_HANDLER(llvm_log_f64, Math_log, UsesMathLog);
+DEF_MATH_BUILTIN_HANDLER(llvm_exp_f32, Math_exp, UsesMathExp);
+DEF_MATH_BUILTIN_HANDLER(llvm_exp_f64, Math_exp, UsesMathExp);
 
 // SIMD.js Float64x2
 DEF_BUILTIN_HANDLER(emscripten_float64x2_set, SIMD_Float64x2);
@@ -1112,18 +1196,22 @@ DEF_BUILTIN_HANDLER(emscripten_float64x2_extractLane, SIMD_Float64x2_extractLane
 DEF_BUILTIN_HANDLER(emscripten_float64x2_replaceLane, SIMD_Float64x2_replaceLane);
 DEF_CALL_HANDLER(emscripten_float64x2_store, {
   UsesSIMDFloat64x2 = true;
+  UsesUint8Array = true;
   return "SIMD_Float64x2_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_store1, {
   UsesSIMDFloat64x2 = true;
+  UsesUint8Array = true;
   return "SIMD_Float64x2_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_load, {
   UsesSIMDFloat64x2 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float64x2_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float64x2_load1, {
   UsesSIMDFloat64x2 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float64x2_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_float64x2_fromFloat32x4Bits, SIMD_Float64x2_fromFloat32x4Bits);
@@ -1202,34 +1290,42 @@ DEF_BUILTIN_HANDLER(emscripten_float32x4_extractLane, SIMD_Float32x4_extractLane
 DEF_BUILTIN_HANDLER(emscripten_float32x4_replaceLane, SIMD_Float32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_float32x4_store, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Float32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store1, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Float32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store2, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Float32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_store3, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Float32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load1, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load2, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_float32x4_load3, {
   UsesSIMDFloat32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Float32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_float32x4_fromFloat64x2Bits, SIMD_Float32x4_fromFloat64x2Bits);
@@ -1302,34 +1398,42 @@ DEF_BUILTIN_HANDLER(emscripten_int32x4_extractLane, SIMD_Int32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int32x4_replaceLane, SIMD_Int32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_int32x4_store, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Int32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store1, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Int32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store2, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Int32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_store3, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Int32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load1, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load2, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int32x4_load3, {
   UsesSIMDInt32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int32x4_fromFloat64x2Bits, SIMD_Int32x4_fromFloat64x2Bits);
@@ -1384,34 +1488,42 @@ DEF_BUILTIN_HANDLER(emscripten_uint32x4_extractLane, SIMD_Uint32x4_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_replaceLane, SIMD_Uint32x4_replaceLane);
 DEF_CALL_HANDLER(emscripten_uint32x4_store, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Uint32x4_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store1, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Uint32x4_store1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store2, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Uint32x4_store2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_store3, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return "SIMD_Uint32x4_store3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ',' + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Uint32x4_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load1, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Uint32x4_load1(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load2, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Uint32x4_load2(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_uint32x4_load3, {
   UsesSIMDUint32x4 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Uint32x4_load3(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_uint32x4_fromFloat64x2Bits, SIMD_Uint32x4_fromFloat64x2Bits);
@@ -1485,10 +1597,12 @@ DEF_BUILTIN_HANDLER(emscripten_int16x8_extractLane, SIMD_Int16x8_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int16x8_replaceLane, SIMD_Int16x8_replaceLane);
 DEF_CALL_HANDLER(emscripten_int16x8_store, {
   UsesSIMDInt16x8 = true;
+  UsesUint8Array = true;
   return "SIMD_Int16x8_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int16x8_load, {
   UsesSIMDInt16x8 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int16x8_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int16x8_fromFloat64x2Bits, SIMD_Int16x8_fromFloat64x2Bits);
@@ -1610,10 +1724,12 @@ DEF_BUILTIN_HANDLER(emscripten_int8x16_extractLane, SIMD_Int8x16_extractLane);
 DEF_BUILTIN_HANDLER(emscripten_int8x16_replaceLane, SIMD_Int8x16_replaceLane);
 DEF_CALL_HANDLER(emscripten_int8x16_store, {
   UsesSIMDInt8x16 = true;
+  UsesUint8Array = true;
   return "SIMD_Int8x16_store(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ',' + getValueAsStr(CI->getOperand(1)) + ')';
 })
 DEF_CALL_HANDLER(emscripten_int8x16_load, {
   UsesSIMDInt8x16 = true;
+  UsesUint8Array = true;
   return getAssign(CI) + "SIMD_Int8x16_load(HEAPU8, " + getValueAsStr(CI->getOperand(0)) + ')';
 })
 DEF_BUILTIN_HANDLER(emscripten_int8x16_fromFloat64x2Bits, SIMD_Int8x16_fromFloat64x2Bits);
@@ -1694,7 +1810,10 @@ DEF_BUILTIN_HANDLER(emscripten_bool8x16_anyTrue, SIMD_Bool8x16_anyTrue);
 DEF_BUILTIN_HANDLER(emscripten_bool8x16_allTrue, SIMD_Bool8x16_allTrue);
 
 DEF_CALL_HANDLER(emscripten_atomic_fence, {
-  if (EnablePthreads) return "(Atomics_add(HEAP32, 0, 0)|0) /* fence */";
+  if (EnablePthreads) {
+    UsesInt32Array = true;
+    return "(Atomics_add(HEAP32, 0, 0)|0) /* fence */";
+  }
   else return "/* fence */";
 })
 

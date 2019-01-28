@@ -305,7 +305,44 @@ namespace {
     #include "CallHandlers.h"
 
   public:
-    static char ID;
+  static bool UsesInt8Array;
+  static bool UsesUint8Array;
+  static bool UsesInt16Array;
+  static bool UsesUint16Array;
+  static bool UsesInt32Array;
+  static bool UsesUint32Array;
+  static bool UsesInt64Array; // JS does not have Int64Array/Uint64Array, but still track 64-bit accesses to be consistent
+  static bool UsesUint64Array;
+  static bool UsesFloat32Array;
+  static bool UsesFloat64Array;
+
+  static bool UsesNaN;
+  static bool UsesInfinity;
+
+  static bool UsesMathFloor;
+  static bool UsesMathAbs;
+  static bool UsesMathSqrt;
+  static bool UsesMathPow;
+  static bool UsesMathCos;
+  static bool UsesMathSin;
+  static bool UsesMathTan;
+  static bool UsesMathAcos;
+  static bool UsesMathAsin;
+  static bool UsesMathAtan;
+  static bool UsesMathAtan2;
+  static bool UsesMathExp;
+  static bool UsesMathLog;
+  static bool UsesMathCeil;
+  static bool UsesMathImul;
+  static bool UsesMathMin;
+  static bool UsesMathMax;
+  static bool UsesMathClz32;
+  static bool UsesMathFround;
+
+  static bool UsesThrew;
+  static bool UsesThrewValue;
+
+  static char ID;
     JSWriter(raw_pwrite_stream &o, CodeGenOpt::Level OptLevel)
       : ModulePass(ID), Out(o), UniqueNum(0), NextFunctionIndex(0), CantValidate(""),
         UsesSIMDUint8x16(false), UsesSIMDInt8x16(false), UsesSIMDUint16x8(false),
@@ -626,6 +663,7 @@ namespace {
       V = resolveFully(V);
       if (const Function *F = dyn_cast<const Function>(V)) {
         if (Relocatable) {
+          UsesInt32Array = true;
           Relocations.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + relocateFunctionPointer(utostr(getFunctionIndex(F))) + ';');
           return 0; // emit zero in there for now, until the postSet
         }
@@ -639,6 +677,7 @@ namespace {
             // All postsets are of external values, so they are pointers, hence 32-bit
             std::string Name = getOpName(V);
             Externals.insert(Name);
+            UsesInt32Array = true;
             if (Relocatable) {
               std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
               Relocations.push_back(
@@ -650,6 +689,7 @@ namespace {
             }
             return 0; // emit zero in there for now, until the postSet
           } else if (Relocatable) {
+            UsesInt32Array = true;
             // this is one of our globals, but we must relocate it. we return zero, but the caller may store
             // an added offset, which we read at postSet time; in other words, we just add to that offset
             std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
@@ -812,8 +852,10 @@ namespace {
       const APFloat &flt = CFP->getValueAPF();
 
       // Emscripten has its own spellings for infinity and NaN.
-      if (flt.getCategory() == APFloat::fcInfinity) return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
-      else if (flt.getCategory() == APFloat::fcNaN) {
+      if (flt.getCategory() == APFloat::fcInfinity) {
+        UsesInfinity = true;
+        return ensureCast(flt.isNegative() ? "-inf" : "inf", CFP->getType(), sign);
+      } else if (flt.getCategory() == APFloat::fcNaN) {
         APInt i = flt.bitcastToAPInt();
         if ((i.getBitWidth() == 32 && i != APInt(32, 0x7FC00000)) || (i.getBitWidth() == 64 && i != APInt(64, 0x7FF8000000000000ULL))) {
           // If we reach here, things have already gone bad, and JS engine NaN canonicalization will kill the bits in the float. However can't make
@@ -827,6 +869,7 @@ namespace {
             }
           }
         }
+        UsesNaN = true;
         return ensureCast("nan", CFP->getType(), sign);
       }
 
@@ -1013,6 +1056,7 @@ static inline void sanitizeLocal(std::string& str) {
 
 static inline std::string ensureFloat(const std::string &S, Type *T) {
   if (PreciseF32 && T->isFloatTy()) {
+    JSWriter::UsesMathFround = true;
     return "Math_fround(" + S + ')';
   }
   return S;
@@ -1020,6 +1064,7 @@ static inline std::string ensureFloat(const std::string &S, Type *T) {
 
 static inline std::string ensureFloat(const std::string &value, bool wrap) {
   if (wrap) {
+    JSWriter::UsesMathFround = true;
     return "Math_fround(" + value + ')';
   }
   return value;
@@ -1211,6 +1256,7 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
       return std::string("SIMD_") + SIMDType(cast<VectorType>(t)) + "_check(" + s.str() + ")";
     case Type::FloatTyID: {
       if (PreciseF32 && !(sign & ASM_FFI_OUT)) {
+        UsesMathFround = true;
         if (sign & ASM_FFI_IN) {
           return ("Math_fround(+(" + s + "))").str();
         } else {
@@ -1267,17 +1313,70 @@ std::string JSWriter::getIMul(const Value *V1, const Value *V2) {
     }
     if (Orig < (1<<20)) return "(" + OtherStr + "*" + utostr(Orig) + ")|0"; // small enough, avoid imul
   }
+  UsesMathImul = true;
   return "Math_imul(" + getValueAsStr(V1) + ", " + getValueAsStr(V2) + ")|0"; // unknown or too large, emit imul
 }
+
+bool JSWriter::UsesInt8Array = false;
+bool JSWriter::UsesUint8Array = false;
+bool JSWriter::UsesInt16Array = false;
+bool JSWriter::UsesUint16Array = false;
+bool JSWriter::UsesInt32Array = false;
+bool JSWriter::UsesUint32Array = false;
+bool JSWriter::UsesInt64Array = false;
+bool JSWriter::UsesUint64Array = false;
+bool JSWriter::UsesFloat32Array = false;
+bool JSWriter::UsesFloat64Array = false;
+bool JSWriter::UsesNaN = false;
+bool JSWriter::UsesInfinity = false;
+bool JSWriter::UsesMathFloor = false;
+bool JSWriter::UsesMathAbs = false;
+bool JSWriter::UsesMathSqrt = false;
+bool JSWriter::UsesMathPow = false;
+bool JSWriter::UsesMathCos = false;
+bool JSWriter::UsesMathSin = false;
+bool JSWriter::UsesMathTan = false;
+bool JSWriter::UsesMathAcos = false;
+bool JSWriter::UsesMathAsin = false;
+bool JSWriter::UsesMathAtan = false;
+bool JSWriter::UsesMathAtan2 = false;
+bool JSWriter::UsesMathExp = false;
+bool JSWriter::UsesMathLog = false;
+bool JSWriter::UsesMathCeil = false;
+bool JSWriter::UsesMathImul = false;
+bool JSWriter::UsesMathMin = false;
+bool JSWriter::UsesMathMax = false;
+bool JSWriter::UsesMathClz32 = false;
+bool JSWriter::UsesMathFround = false;
+bool JSWriter::UsesThrew = false;
+bool JSWriter::UsesThrewValue = false;
 
 static inline const char *getHeapName(int Bytes, int Integer)
 {
   switch (Bytes) {
     default: llvm_unreachable("Unsupported type");
-    case 8: return Integer ? "HEAP64" : "HEAPF64";
-    case 4: return Integer ? "HEAP32" : "HEAPF32";
-    case 2: return "HEAP16";
-    case 1: return "HEAP8";
+  case 8:
+    if (Integer) {
+      JSWriter::UsesInt64Array = true;
+      return "HEAP64";
+    } else {
+      JSWriter::UsesFloat64Array = true;
+      return "HEAPF64";
+    }
+  case 4:
+    if (Integer) {
+      JSWriter::UsesInt32Array = true;
+      return "HEAP32";
+    } else {
+      JSWriter::UsesFloat32Array = true;
+      return "HEAPF32";
+    }
+  case 2:
+    JSWriter::UsesInt16Array = true;
+    return "HEAP16";
+  case 1:
+    JSWriter::UsesInt8Array = true;
+    return "HEAP8";
   }
 }
 
@@ -1365,16 +1464,28 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
     }
     if (T->isIntegerTy() || T->isPointerTy()) {
       switch (Bytes) {
-        case 1: return Assign + "load1(" + getValueAsStr(P) + ")";
-        case 2: return Assign + "load2(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 4: return Assign + "load4(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return Assign + "load8(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 1:
+          UsesInt8Array = true;
+          return Assign + "load1(" + getValueAsStr(P) + ")";
+        case 2:
+          UsesInt16Array = true;
+          return Assign + "load2(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4:
+          UsesInt32Array = true;
+          return Assign + "load4(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8:
+          UsesInt64Array = true;
+          return Assign + "load8(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
         default: llvm_unreachable("invalid wasm-only int load size");
       }
     } else {
       switch (Bytes) {
-        case 4: return Assign + "loadf(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-        case 8: return Assign + "loadd(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 4:
+          UsesFloat32Array = true;
+          return Assign + "loadf(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+        case 8:
+          UsesFloat64Array = true;
+          return Assign + "loadd(" + getValueAsStr(P) + (Aligned ? "" : "," + itostr(Alignment)) + ")";
         default: llvm_unreachable("invalid wasm-only float load size");
       }
     }
@@ -1390,6 +1501,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
+        if (fround) UsesMathFround = true;
         text = Assign + (fround ? "Math_fround(" : "+") + "_emscripten_atomic_load_" + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + (fround ? "))" : ")");
       } else {
         text = Assign + "(Atomics_load(" + HeapName + ',' + Index + ")|0)";
@@ -1420,11 +1532,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
       case 8: {
         switch (Alignment) {
           case 4: {
+            UsesInt32Array = true;
             text = "HEAP32[tempDoublePtr>>2]=HEAP32[" + PS + ">>2]" + sep +
                     "HEAP32[tempDoublePtr+4>>2]=HEAP32[" + PS + "+4>>2]";
             break;
           }
           case 2: {
+            UsesInt16Array = true;
             text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1]" + sep +
                    "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1]" + sep +
                    "HEAP16[tempDoublePtr+4>>1]=HEAP16[" + PS + "+4>>1]" + sep +
@@ -1432,6 +1546,7 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
             break;
           }
           case 1: {
+            UsesInt8Array = true;
             text = "HEAP8[tempDoublePtr>>0]=HEAP8[" + PS + ">>0]" + sep +
                    "HEAP8[tempDoublePtr+1>>0]=HEAP8[" + PS + "+1>>0]" + sep +
                    "HEAP8[tempDoublePtr+2>>0]=HEAP8[" + PS + "+2>>0]" + sep +
@@ -1451,11 +1566,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
         if (T->isIntegerTy() || T->isPointerTy()) {
           switch (Alignment) {
             case 2: {
+              UsesUint16Array = true;
               text = Assign + "HEAPU16[" + PS + ">>1]|" +
                              "(HEAPU16[" + PS + "+2>>1]<<16)";
               break;
             }
             case 1: {
+              UsesUint8Array = true;
               text = Assign + "HEAPU8[" + PS + ">>0]|" +
                              "(HEAPU8[" + PS + "+1>>0]<<8)|" +
                              "(HEAPU8[" + PS + "+2>>0]<<16)|" +
@@ -1468,11 +1585,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
           assert(T->isFloatingPointTy());
           switch (Alignment) {
             case 2: {
+              UsesInt16Array = true;
               text = "HEAP16[tempDoublePtr>>1]=HEAP16[" + PS + ">>1]" + sep +
                      "HEAP16[tempDoublePtr+2>>1]=HEAP16[" + PS + "+2>>1]";
               break;
             }
             case 1: {
+              UsesInt8Array = true;
               text = "HEAP8[tempDoublePtr>>0]=HEAP8[" + PS + ">>0]" + sep +
                      "HEAP8[tempDoublePtr+1>>0]=HEAP8[" + PS + "+1>>0]" + sep +
                      "HEAP8[tempDoublePtr+2>>0]=HEAP8[" + PS + "+2>>0]" + sep +
@@ -1481,11 +1600,13 @@ std::string JSWriter::getLoad(const Instruction *I, const Value *P, Type *T, uns
             }
             default: assert(0 && "bad 4f store");
           }
+          UsesFloat32Array = true;
           text += sep + Assign + getCast("HEAPF32[tempDoublePtr>>2]", Type::getFloatTy(TheModule->getContext()));
         }
         break;
       }
       case 2: {
+        UsesUint8Array = true;
         text = Assign + "HEAPU8[" + PS + ">>0]|" +
                        "(HEAPU8[" + PS + "+1>>0]<<8)";
         break;
@@ -1516,16 +1637,28 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
     if (!EnablePthreads || !cast<StoreInst>(I)->isVolatile() || FallbackUnalignedVolatileOperation) {
       if (T->isIntegerTy() || T->isPointerTy()) {
         switch (Bytes) {
-          case 1: return "store1(" + getValueAsStr(P) + "," + VS + ")";
-          case 2: return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-          case 4: return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-          case 8: return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 1:
+            UsesInt8Array = true;
+            return "store1(" + getValueAsStr(P) + "," + VS + ")";
+          case 2:
+            UsesInt16Array = true;
+            return "store2(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 4:
+            UsesInt32Array = true;
+            return "store4(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8:
+            UsesInt64Array = true;
+            return "store8(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
           default: llvm_unreachable("invalid wasm-only int load size");
         }
       } else {
         switch (Bytes) {
-          case 4: return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
-          case 8: return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 4:
+            UsesFloat32Array = true;
+            return "storef(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
+          case 8:
+            UsesFloat64Array = true;
+            return "stored(" + getValueAsStr(P) + "," + VS + (Aligned ? "" : "," + itostr(Alignment)) + ")";
           default: llvm_unreachable("invalid wasm-only float load size");
         }
       }
@@ -1542,10 +1675,12 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         text = std::string("_emscripten_atomic_store_") + heapNameToAtomicTypeName(HeapName) + "(" + getValueAsStr(P) + ',' + VS + ')';
-        if (PreciseF32 && !strcmp(HeapName, "HEAPF32"))
+        if (PreciseF32 && !strcmp(HeapName, "HEAPF32")) {
+          UsesMathFround = true;
           text = "Math_fround(" + text + ")";
-        else
+        } else {
           text = "+" + text;
+        }
       } else {
         text = std::string("Atomics_store(") + HeapName + ',' + Index + ',' + VS + ")|0";
       }
@@ -1570,14 +1705,17 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
     std::string PS = getValueAsStr(P);
     switch (Bytes) {
       case 8: {
+        UsesFloat64Array = true;
         text = "HEAPF64[tempDoublePtr>>3]=" + VS + ';';
         switch (Alignment) {
           case 4: {
+            UsesInt32Array = true;
             text += "HEAP32[" + PS + ">>2]=HEAP32[tempDoublePtr>>2];" +
                     "HEAP32[" + PS + "+4>>2]=HEAP32[tempDoublePtr+4>>2]";
             break;
           }
           case 2: {
+            UsesInt16Array = true;
             text += "HEAP16[" + PS + ">>1]=HEAP16[tempDoublePtr>>1];" +
                     "HEAP16[" + PS + "+2>>1]=HEAP16[tempDoublePtr+2>>1];" +
                     "HEAP16[" + PS + "+4>>1]=HEAP16[tempDoublePtr+4>>1];" +
@@ -1585,6 +1723,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
             break;
           }
           case 1: {
+            UsesInt8Array = true;
             text += "HEAP8[" + PS + ">>0]=HEAP8[tempDoublePtr>>0];" +
                     "HEAP8[" + PS + "+1>>0]=HEAP8[tempDoublePtr+1>>0];" +
                     "HEAP8[" + PS + "+2>>0]=HEAP8[tempDoublePtr+2>>0];" +
@@ -1603,11 +1742,13 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         if (T->isIntegerTy() || T->isPointerTy()) {
           switch (Alignment) {
             case 2: {
+              UsesInt16Array = true;
               text = "HEAP16[" + PS + ">>1]=" + VS + "&65535;" +
                      "HEAP16[" + PS + "+2>>1]=" + VS + ">>>16";
               break;
             }
             case 1: {
+              UsesInt8Array = true;
               text = "HEAP8[" + PS + ">>0]=" + VS + "&255;" +
                      "HEAP8[" + PS + "+1>>0]=(" + VS + ">>8)&255;" +
                      "HEAP8[" + PS + "+2>>0]=(" + VS + ">>16)&255;" +
@@ -1618,14 +1759,17 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
           }
         } else { // float
           assert(T->isFloatingPointTy());
+          UsesFloat32Array = true;
           text = "HEAPF32[tempDoublePtr>>2]=" + VS + ';';
           switch (Alignment) {
             case 2: {
+              UsesInt16Array = true;
               text += "HEAP16[" + PS + ">>1]=HEAP16[tempDoublePtr>>1];" +
                       "HEAP16[" + PS + "+2>>1]=HEAP16[tempDoublePtr+2>>1]";
               break;
             }
             case 1: {
+              UsesInt8Array = true;
               text += "HEAP8[" + PS + ">>0]=HEAP8[tempDoublePtr>>0];" +
                       "HEAP8[" + PS + "+1>>0]=HEAP8[tempDoublePtr+1>>0];" +
                       "HEAP8[" + PS + "+2>>0]=HEAP8[tempDoublePtr+2>>0];" +
@@ -1638,6 +1782,7 @@ std::string JSWriter::getStore(const Instruction *I, const Value *P, Type *T, co
         break;
       }
       case 2: {
+        UsesInt8Array = true;
         text = "HEAP8[" + PS + ">>0]=" + VS + "&255;" +
                "HEAP8[" + PS + "+1>>0]=" + VS + ">>8";
         break;
@@ -1697,6 +1842,7 @@ std::string JSWriter::getUndefValue(Type* T, AsmCast sign) {
     }
     S = T->isFloatingPointTy() ? "+0" : "0"; // XXX refactor this
     if (PreciseF32 && T->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+      UsesMathFround = true;
       S = "Math_fround(" + S + ")";
     }
   }
@@ -1734,6 +1880,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
     if (!(sign & ASM_FORCE_FLOAT_AS_INTBITS)) {
       std::string S = ftostr(CFP, sign);
       if (PreciseF32 && CV->getType()->isFloatTy() && !(sign & ASM_FFI_OUT)) {
+        UsesMathFround = true;
         S = "Math_fround(" + S + ")";
       }
       return S;
@@ -1983,6 +2130,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
         if (!PreciseF32) {
           // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
+          UsesMathFround = true;
           operand = "Math_fround(" + operand + ")";
         }
         Code << std::string("SIMD_") + SIMDType(VT) + "_splat(" << operand << ")";
@@ -1997,6 +2145,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
         if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
           // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
+          UsesMathFround = true;
           operand = "Math_fround(" + operand + ")";
         }
         Code << operand;
@@ -2011,6 +2160,7 @@ void JSWriter::generateInsertElementExpression(const InsertElementInst *III, raw
         continue;
       std::string operand = getValueAsStr(Operands[Index]);
       if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
+        UsesMathFround = true;
         operand = "Math_fround(" + operand + ")";
       }
       Result = std::string("SIMD_") + SIMDType(VT) + "_replaceLane(" + Result + ',' + utostr(Index) + ',' + operand + ')';
@@ -2091,6 +2241,7 @@ void JSWriter::generateShuffleVectorExpression(const ShuffleVectorInst *SVI, raw
         if (!PreciseF32 && SVI->getType()->getElementType()->isFloatTy()) {
           // SIMD_Float32x4_splat requires an actual float32 even if we're
           // otherwise not being precise about it.
+          UsesMathFround = true;
           operand = "Math_fround(" + operand + ")";
         }
         Code << "SIMD_" << SIMDType(SVI->getType()) << "_splat(" << operand << ')';
@@ -2349,6 +2500,7 @@ void JSWriter::generateUnrolledExpression(const User *I, raw_string_ostream& Cod
     if (Index != 0)
         Code << ", ";
     if (!PreciseF32 && VT->getElementType()->isFloatTy()) {
+        UsesMathFround = true;
         Code << "Math_fround(";
     }
     std::string Extract;
@@ -2499,6 +2651,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
             default: break;
           }
         }
+        UsesUint8Array = true;
         Code << getAssignIfNeeded(I) << "SIMD_" << simdType << load << "(HEAPU8, " << PS << ")";
         break;
       }
@@ -2544,6 +2697,7 @@ bool JSWriter::generateSIMDExpression(const User *I, raw_string_ostream& Code) {
           default: break;
         }
       }
+      UsesUint8Array = true;
       Code << "SIMD_" << simdType << store << "(HEAPU8, " << PS << ", " << VS << ")";
       return true;
     } else if (Operator::getOpcode(I) == Instruction::ExtractElement) {
@@ -3125,6 +3279,7 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
         // TODO: If https://bugzilla.mozilla.org/show_bug.cgi?id=1131613 and https://bugzilla.mozilla.org/show_bug.cgi?id=1131624 are
         // implemented, we could remove the emulation, but until then we must emulate manually.
         bool fround = PreciseF32 && !strcmp(HeapName, "HEAPF32");
+        if (fround) UsesMathFround = true;
         Code << Assign << (fround ? "Math_fround(" : "+") << "_emscripten_atomic_" << atomicFunc << "_" << heapNameToAtomicTypeName(HeapName) << "(" << getValueAsStr(P) << ", " << VS << (fround ? "))" : ")"); break;
       } else {
         Code << Assign << "(Atomics_" << atomicFunc << "(" << HeapName << ", " << Index << ", " << VS << ")|0)"; break;
@@ -3150,8 +3305,12 @@ void JSWriter::generateExpression(const User *I, raw_string_ostream& Code) {
     break;
   }
   case Instruction::Fence:
-    if (EnablePthreads) Code << "(Atomics_add(HEAP32, 0, 0)|0) /* fence */";
-    else Code << "/* fence */";
+    if (EnablePthreads) {
+      UsesInt32Array = true;
+      Code << "(Atomics_add(HEAP32, 0, 0)|0) /* fence */";
+    } else {
+      Code << "/* fence */";
+    }
     break;
   }
 
@@ -3348,6 +3507,7 @@ void JSWriter::printFunctionBody(const Function *F) {
           break;
         case Type::FloatTyID:
           if (PreciseF32) {
+            UsesMathFround = true;
             Out << "Math_fround(0)";
             break;
           }
@@ -3891,6 +4051,51 @@ void JSWriter::printModuleBody() {
   Out << "\"simdBool16x8\": " << (UsesSIMDBool16x8 ? "1" : "0") << ",";
   Out << "\"simdBool32x4\": " << (UsesSIMDBool32x4 ? "1" : "0") << ",";
   Out << "\"simdBool64x2\": " << (UsesSIMDBool64x2 ? "1" : "0") << ",";
+
+  std::vector<std::string> externs;
+  if (UsesInt8Array) externs.push_back("Int8Array");
+  if (UsesUint8Array) externs.push_back("Uint8Array");
+  if (UsesInt16Array) externs.push_back("Int16Array");
+  if (UsesUint16Array) externs.push_back("Uint16Array");
+  if (UsesInt32Array) externs.push_back("Int32Array");
+  if (UsesUint32Array) externs.push_back("Uint32Array");
+  if (UsesInt64Array) externs.push_back("Int64Array");
+  if (UsesUint64Array) externs.push_back("Uint64Array");
+  if (UsesFloat32Array) externs.push_back("Float32Array");
+  if (UsesFloat64Array) externs.push_back("Float64Array");
+  if (UsesNaN) externs.push_back("NaN");
+  if (UsesInfinity) externs.push_back("Infinity");
+  if (UsesMathFloor) externs.push_back("Math.floor");
+  if (UsesMathAbs) externs.push_back("Math.abs");
+  if (UsesMathSqrt) externs.push_back("Math.sqrt");
+  if (UsesMathPow) externs.push_back("Math.pow");
+  if (UsesMathCos) externs.push_back("Math.cos");
+  if (UsesMathSin) externs.push_back("Math.sin");
+  if (UsesMathTan) externs.push_back("Math.tan");
+  if (UsesMathAcos) externs.push_back("Math.acos");
+  if (UsesMathAsin) externs.push_back("Math.asin");
+  if (UsesMathAtan) externs.push_back("Math.atan");
+  if (UsesMathAtan2) externs.push_back("Math.atan2");
+  if (UsesMathExp) externs.push_back("Math.exp");
+  if (UsesMathLog) externs.push_back("Math.log");
+  if (UsesMathCeil) externs.push_back("Math.ceil");
+  if (UsesMathImul) externs.push_back("Math.imul");
+  if (UsesMathMin) externs.push_back("Math.min");
+  if (UsesMathMax) externs.push_back("Math.max");
+  if (UsesMathClz32) externs.push_back("Math.clz32");
+  if (UsesMathFround) externs.push_back("Math.fround");
+  if (UsesThrew) externs.push_back("__THREW__");
+  if (UsesThrewValue) externs.push_back("threwValue");
+
+  Out << "\"externUses\": [";
+  first = true;
+  for (auto iter : externs) {
+    if (!first)
+      Out << ",";
+    first = false;
+    Out << '"' << iter << '"';
+  }
+  Out << "],";
 
   Out << "\"maxGlobalAlign\": " << utostr(MaxGlobalAlign) << ",";
 
