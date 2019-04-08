@@ -252,6 +252,7 @@ namespace {
     AlignedHeapStartMap AlignedHeapStarts, ZeroInitStarts;
     GlobalAddressMap GlobalAddresses;
     NameSet Externals; // vars
+    NameSet ExternalFuncs; // funcs
     NameSet Declares; // funcs
     StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
     std::vector<std::string> Relocations;
@@ -265,9 +266,14 @@ namespace {
     BlockAddressMap BlockAddresses;
     std::map<std::string, AsmConstInfo> AsmConsts; // code => { index, list of seen sigs }
     std::map<std::string, std::string> EmJsFunctions; // name => code
-    NameSet FuncRelocatableExterns; // which externals are accessed in this function; we load them once at the beginning (avoids a potential call in a heap access, and might be faster)
+    // which externals are accessed in this function; we load them once at the
+    // beginning (avoids a potential call in a heap access, and might be faster)
+    NameSet FuncRelocatableExterns;
+    NameSet FuncRelocatableExternFunctions;
     std::vector<std::string> ExtraFunctions;
-    std::set<const Function*> DeclaresNeedingTypeDeclarations; // list of declared funcs whose type we must declare asm.js-style with a usage, as they may not have another usage
+    // list of declared funcs whose type we must declare asm.js-style with a
+    // usage, as they may not have another usage
+    std::set<const Function*> DeclaresNeedingTypeDeclarations;
 
     struct {
       // 0 is reserved for void type
@@ -1850,6 +1856,22 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
   if (const Function *F = dyn_cast<Function>(CV)) {
+    if (!F->isDSOLocal() && Relocatable) {
+      std::string Name = getOpName(F) + '$' + getFunctionSignature(F->getFunctionType());
+      ExternalFuncs.insert(Name);
+      // We access linked function addresses through calls, which we load at the
+      // beginning of basic blocks.  The first time we call this function the
+      // dynamic linker will assign a table index for this function and return
+      // it.
+      FuncRelocatableExternFunctions.insert(Name);
+      // If we also implement this function we need to export it so that the
+      // dynamic linker can assign it a table index.
+      if (!F->isDeclaration())
+        Exports.push_back(getJSName(F));
+      Name = "t$" + Name;
+      UsedVars[Name] = i32;
+      return Name;
+    }
     return relocateFunctionPointer(utostr(getFunctionIndex(F)));
   }
 
@@ -3558,6 +3580,14 @@ void JSWriter::printFunctionBody(const Function *F) {
       }
       FuncRelocatableExterns.clear();
     }
+    if (FuncRelocatableExternFunctions.size() > 0) {
+      for (auto& RE : FuncRelocatableExternFunctions) {
+        std::string Temp = "t$" + RE;
+        std::string Call = "fp$" + RE;
+        Out << Temp + " = " + Call + "() | 0;\n";
+      }
+      FuncRelocatableExternFunctions.clear();
+    }
   }
 
   // Emit (relooped) code
@@ -3947,6 +3977,19 @@ void JSWriter::printModuleBody() {
   Out << "\"externs\": [";
   first = true;
   for (NameSet::const_iterator I = Externals.begin(), E = Externals.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << *I << "\"";
+  }
+  Out << "],";
+
+  Out << "\"externFunctions\": [";
+  first = true;
+  for (NameSet::const_iterator I = ExternalFuncs.begin(), E = ExternalFuncs.end();
        I != E; ++I) {
     if (first) {
       first = false;
