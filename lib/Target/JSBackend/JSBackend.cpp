@@ -4775,6 +4775,10 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream
     // function arguments and returns into something ExpandStructRegs can expand.
     PM.add(createSimplifyStructRegSignaturesPass());
 
+    // ExpandStructRegs must be run after ExpandArithWithOverflow to expand out
+    // the insertvalue instructions that ExpandArithWithOverflow introduces.
+    PM.add(createExpandArithWithOverflowPass());
+
     // TODO(mtrofin) Remove the following and only run it as a post-opt pass once
     //               the following bug is fixed.
     // https://code.google.com/p/nativeclient/issues/detail?id=3857
@@ -4784,10 +4788,6 @@ bool JSTargetMachine::addPassesToEmitFile(PassManagerBase &PM, raw_pwrite_stream
 
     if (EnableEmAsyncify)
       PM.add(createLowerEmAsyncifyPass());
-
-    // ExpandStructRegs must be run after ExpandArithWithOverflow to expand out
-    // the insertvalue instructions that ExpandArithWithOverflow introduces.
-    PM.add(createExpandArithWithOverflowPass());
 
     // We place ExpandByVal after optimization passes because some byval
     // arguments can be expanded away by the ArgPromotion pass.  Leaving
