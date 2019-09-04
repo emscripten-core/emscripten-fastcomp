@@ -800,7 +800,6 @@ std::string handleAsmConst(const Instruction *CI, EmAsmCallType callType) {
   case EmAsmOnCallingThread: callTypeFunc = ""; break;
   case EmAsmSyncOnMainThread: callTypeFunc = "sync_on_main_thread_"; break;
   case EmAsmAsyncOnMainThread: callTypeFunc = "async_on_main_thread_"; break;
-  default: llvm_unreachable("Unsupported call type");
   }
   std::string func = callTypeFunc + Sig;
   std::string ret = "_emscripten_asm_const_" + func + '(' + utostr(getAsmConstId(CI->getOperand(0), callTypeFunc, Sig));

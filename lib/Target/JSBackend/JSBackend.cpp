@@ -658,7 +658,7 @@ namespace {
     }
 
     // Return a constant we are about to write into a global as a numeric offset. If the
-    // value is not known at compile time, emit a postSet to that location.
+    // value is not known at compile time, emit a relocation to that location.
     unsigned getConstAsOffset(const Value *V, unsigned AbsoluteTarget) {
       V = resolveFully(V);
       if (const Function *F = dyn_cast<const Function>(V)) {
@@ -673,8 +673,8 @@ namespace {
       } else {
         if (const GlobalVariable *GV = dyn_cast<GlobalVariable>(V)) {
           if (!GV->hasInitializer()) {
-            // We don't have a constant to emit here, so we must emit a postSet
-            // All postsets are of external values, so they are pointers, hence 32-bit
+            // We don't have a constant to emit here, so we must emit a
+            // relocation
             std::string Name = getOpName(V);
             Externals.insert(Name);
             UsesInt32Array = true;
@@ -687,14 +687,14 @@ namespace {
             } else {
               Relocations.push_back("\n HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2] = " + Name + ';');
             }
-            return 0; // emit zero in there for now, until the postSet
+            return 0; // emit zero in there for now, until the relocation
           } else if (Relocatable) {
             UsesInt32Array = true;
             // this is one of our globals, but we must relocate it. we return zero, but the caller may store
-            // an added offset, which we read at postSet time; in other words, we just add to that offset
+            // an added offset, which we read at relocation time; in other words, we just add to that offset
             std::string access = "HEAP32[" + relocateGlobal(utostr(AbsoluteTarget)) + " >> 2]";
             Relocations.push_back("\n " + access + " = (" + access + " | 0) + " + relocateGlobal(utostr(getGlobalAddress(V->getName().str()))) + ';');
-            return 0; // emit zero in there for now, until the postSet
+            return 0; // emit zero in there for now, until the relocation
           }
         }
         assert(!Relocatable);
@@ -971,10 +971,6 @@ namespace {
 
     void calculateNativizedVars(const Function *F);
 
-    // special analyses
-
-    bool canReloop(const Function *F);
-
     // main entry point
 
     void printModuleBody();
@@ -1248,10 +1244,6 @@ const char *SIMDType(VectorType *t, bool signedIntegerType = true) {
 
 std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
   switch (t->getTypeID()) {
-    default: {
-      errs() << *t << "\n";
-      assert(false && "Unsupported type");
-    }
     case Type::VectorTyID:
       return std::string("SIMD_") + SIMDType(cast<VectorType>(t)) + "_check(" + s.str() + ")";
     case Type::FloatTyID: {
@@ -1264,21 +1256,26 @@ std::string JSWriter::getCast(const StringRef &s, Type *t, AsmCast sign) {
         }
       }
       // otherwise fall through to double
+      LLVM_FALLTHROUGH;
     }
     case Type::DoubleTyID: return ("+" + s).str();
     case Type::IntegerTyID: {
       // fall through to the end for nonspecific
       switch (t->getIntegerBitWidth()) {
-        case 1:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&1").str()     : (s + "<<31>>31").str();
-        case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str();
-        case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str();
-        case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
+        case 1:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&1").str()     : (s + "<<31>>31").str(); LLVM_FALLTHROUGH;
+        case 8:  if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&255").str()   : (s + "<<24>>24").str(); LLVM_FALLTHROUGH;
+        case 16: if (!(sign & ASM_NONSPECIFIC)) return sign == ASM_UNSIGNED ? (s + "&65535").str() : (s + "<<16>>16").str(); LLVM_FALLTHROUGH;
+        case 32: return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str(); LLVM_FALLTHROUGH;
         case 64: return ("i64(" + s + ")").str();
         default: llvm_unreachable("Unsupported integer cast bitwidth");
       }
     }
     case Type::PointerTyID:
       return (sign == ASM_SIGNED || (sign & ASM_NONSPECIFIC) ? s + "|0" : s + ">>>0").str();
+    default: {
+      errs() << *t << "\n";
+      llvm_unreachable("Unsupported type");
+    }
   }
 }
 
@@ -3358,7 +3355,6 @@ void JSWriter::printFunctionBody(const Function *F) {
   // Prepare relooper
   Relooper::MakeOutputBuffer(1024*1024);
   Relooper R;
-  //if (!canReloop(F)) R.SetEmulate(true);
   if (F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Attribute::MinSize) ||
       F->getAttributes().hasAttribute(AttributeList::FunctionIndex, Attribute::OptimizeForSize)) {
     R.SetMinSize(true);
@@ -3512,6 +3508,7 @@ void JSWriter::printFunctionBody(const Function *F) {
             break;
           }
           // otherwise fall through to double
+          LLVM_FALLTHROUGH;
         case Type::DoubleTyID:
           Out << "+0";
           break;
@@ -4649,12 +4646,6 @@ void JSWriter::calculateNativizedVars(const Function *F) {
       }
     }
   }
-}
-
-// special analyses
-
-bool JSWriter::canReloop(const Function *F) {
-  return true;
 }
 
 // main entry
