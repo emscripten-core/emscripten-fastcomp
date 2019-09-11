@@ -1856,7 +1856,7 @@ std::string JSWriter::getConstant(const Constant* CV, AsmCast sign) {
   if (isa<ConstantPointerNull>(CV)) return "0";
 
   if (const Function *F = dyn_cast<Function>(CV)) {
-    if (!F->isDSOLocal() && Relocatable) {
+    if (Relocatable && !F->isDSOLocal() && !F->hasLocalLinkage()) {
       std::string Name = getOpName(F) + '$' + getFunctionSignature(F->getFunctionType());
       ExternalFuncs.insert(Name);
       // We access linked function addresses through calls, which we load at the
