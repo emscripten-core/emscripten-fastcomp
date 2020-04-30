@@ -254,6 +254,7 @@ namespace {
     NameSet Externals; // vars
     NameSet ExternalFuncs; // funcs
     NameSet Declares; // funcs
+    NameSet WeakDeclares; // funcs
     StringMap Redirects; // library function redirects actually used, needed for wrapper funcs in tables
     std::vector<std::string> Relocations;
     NameIntMap NamedGlobals; // globals that we export as metadata to JS, so it can access them by name
@@ -3942,6 +3943,10 @@ void JSWriter::printModuleBody() {
         continue;
       }
 
+      if (I->hasExternalWeakLinkage()) {
+        WeakDeclares.insert(fullName);
+      }
+
       if (first) {
         first = false;
       } else {
@@ -3951,6 +3956,19 @@ void JSWriter::printModuleBody() {
     }
   }
   for (NameSet::const_iterator I = Declares.begin(), E = Declares.end();
+       I != E; ++I) {
+    if (first) {
+      first = false;
+    } else {
+      Out << ", ";
+    }
+    Out << "\"" << *I << "\"";
+  }
+  Out << "],";
+
+  Out << "\"weakDeclares\": [";
+  first = true;
+  for (NameSet::const_iterator I = WeakDeclares.begin(), E = WeakDeclares.end();
        I != E; ++I) {
     if (first) {
       first = false;
