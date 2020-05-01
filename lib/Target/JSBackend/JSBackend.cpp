@@ -3695,17 +3695,15 @@ void JSWriter::processConstants() {
       parseConstant(I->getName().str(), I->getInitializer(), I->getAlignment(), false);
     }
   }
-  if (Relocatable) {
-    for (Module::const_global_iterator II = TheModule->global_begin(),
-           E = TheModule->global_end(); II != E; ++II) {
-      auto I = &*II;
-      if (I->hasInitializer() && !I->hasInternalLinkage()) {
-        std::string Name = I->getName().str();
-        if (GlobalAddresses.find(Name) != GlobalAddresses.end()) {
-          std::string JSName = getJSName(I).substr(1);
-          if (Name == JSName) { // don't export things that have weird internal names, that C can't dlsym anyhow
-            NamedGlobals[Name] = getGlobalAddress(Name);
-          }
+  for (Module::const_global_iterator II = TheModule->global_begin(),
+         E = TheModule->global_end(); II != E; ++II) {
+    auto I = &*II;
+    if (I->hasInitializer() && !I->hasInternalLinkage()) {
+      std::string Name = I->getName().str();
+      if (GlobalAddresses.find(Name) != GlobalAddresses.end()) {
+        std::string JSName = getJSName(I).substr(1);
+        if (Name == JSName) { // don't export things that have weird internal names, that C can't dlsym anyhow
+          NamedGlobals[Name] = getGlobalAddress(Name);
         }
       }
     }
