@@ -1,3 +1,6 @@
+This repository is no longer active - Emscripten is now based
+on the upstream llvm WebAssembly backend.
+
 Low Level Virtual Machine (LLVM)
 ================================
 
